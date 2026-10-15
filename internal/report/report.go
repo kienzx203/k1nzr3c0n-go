@@ -52,6 +52,45 @@ td,th{border:1px solid #232a3a;padding:.5rem .7rem;text-align:left;font-size:.9r
 	return b.String()
 }
 
+// Engagement renders a full-run + cross-run engagement summary (all open
+// findings grouped by severity, asset counts).
+func Engagement(target string, findings []*store.Finding, assetCount int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Engagement report — %s\n\n", target)
+	fmt.Fprintf(&b, "Total open findings: **%d** · assets in graph: **%d**\n\n", len(findings), assetCount)
+	bySev := map[string][]*store.Finding{}
+	for _, f := range findings {
+		sev := "info"
+		if f.Severity != nil {
+			sev = *f.Severity
+		}
+		bySev[sev] = append(bySev[sev], f)
+	}
+	for _, sev := range []string{"critical", "high", "medium", "low", "info"} {
+		group := bySev[sev]
+		if len(group) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "## %s (%d)\n\n", strings.ToUpper(sev), len(group))
+		for _, f := range group {
+			name := f.Host
+			if f.TemplateID != nil && *f.TemplateID != "" {
+				name = *f.TemplateID + " — " + f.Host
+			}
+			fmt.Fprintf(&b, "- **%s** (run `%s`)", name, f.RunID)
+			if f.URL != nil && *f.URL != "" {
+				fmt.Fprintf(&b, " · %s", *f.URL)
+			}
+			if f.Notes != nil && *f.Notes != "" {
+				fmt.Fprintf(&b, " · notes: %s", *f.Notes)
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 type draftSection struct{ Header, Body string }
 
 // Draft renders the per-vuln markdown drafts for a platform format.

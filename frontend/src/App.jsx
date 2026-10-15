@@ -13,6 +13,9 @@ import WorkflowEditor from './pages/WorkflowEditor.jsx'
 import Upload from './pages/Upload.jsx'
 import Schedules from './pages/Schedules.jsx'
 import Targets from './pages/Targets.jsx'
+import Agent from './pages/Agent.jsx'
+import AssetGraph from './pages/AssetGraph.jsx'
+import Traffic from './pages/Traffic.jsx'
 import CommandPalette from './components/CommandPalette.jsx'
 import { getTheme, applyTheme } from './theme.js'
 
@@ -65,6 +68,7 @@ const NAV_GROUPS = [
   {
     title: 'Operations',
     items: [
+      { to: '/agent',     label: 'AI Agent',  icon: I.spark },
       { to: '/runs',      label: 'Runs',      icon: I.radar },
       { to: '/workflows', label: 'Workflows', icon: I.flow },
       { to: '/findings',  label: 'Findings',  icon: I.flag },
@@ -75,7 +79,11 @@ const NAV_GROUPS = [
   },
   {
     title: 'Capture',
-    items: [{ to: '/upload', label: 'Upload', icon: I.upload }],
+    items: [
+      { to: '/traffic', label: 'Traffic', icon: I.upload },
+      { to: '/graph',   label: 'Asset Graph', icon: I.boxes },
+      { to: '/upload',  label: 'Upload',  icon: I.upload },
+    ],
   },
   {
     title: 'System',
@@ -181,6 +189,9 @@ export default function App() {
       <main className="flex-1 overflow-y-auto" style={{ background: 'var(--bg)' }}>
         <Routes>
           <Route path="/"                      element={<Dashboard />} />
+          <Route path="/agent"                 element={<Agent />} />
+          <Route path="/graph"                 element={<AssetGraph />} />
+          <Route path="/traffic"               element={<Traffic />} />
           <Route path="/runs"                  element={<Runs />} />
           <Route path="/runs/:id"              element={<RunDetail />} />
           <Route path="/workflows"             element={<Workflows />} />

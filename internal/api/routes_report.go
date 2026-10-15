@@ -49,4 +49,15 @@ func (s *Server) handleReportDraft(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(report.Draft(run, items, format)))
 }
 
+// handleEngagementReport renders the whole engagement (all open vulns).
+func (s *Server) handleEngagementReport(w http.ResponseWriter, r *http.Request) {
+	items, _, _ := s.St.ListFindings(store.FindingFilter{Kind: "vuln", Status: "open", Limit: 1000})
+	report.SortBySeverity(items)
+	assets, _ := s.St.ListAssetsGraph(store.GraphAssetFilter{Limit: 5000})
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"engagement-report.md\"")
+	target := r.URL.Query().Get("target")
+	w.Write([]byte(report.Engagement(target, items, len(assets))))
+}
+
 var _ = strconv.Itoa

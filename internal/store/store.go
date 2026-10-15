@@ -344,6 +344,9 @@ func (s *Store) init() error {
 	for _, q := range migrations {
 		_, _ = s.db.Exec(q) // ignore "duplicate column" errors
 	}
+	if _, err := s.db.Exec(agentSchema); err != nil {
+		return fmt.Errorf("agent schema: %w", err)
+	}
 	return nil
 }
 
