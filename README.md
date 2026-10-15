@@ -9,6 +9,23 @@ workflows run unchanged.
 > permission to test. Scope enforcement (deny-wins) is built in, but final
 > responsibility is yours.
 
+## AI agent layer (ScopeWeaver integration)
+
+Four ScopeWeaver capabilities are integrated into this single binary:
+
+| Feature | What it does |
+|---|---|
+| **AI Agent Chat** (`/agent` page) | GLM/Z.ai-driven agent (OpenAI-compatible function calling) that OPERATES the platform through 13 tools: register targets, launch/monitor/cancel runs, triage findings, maintain the asset graph, bind traffic evidence. Multi-round tool loops, conversations persisted in SQLite. Configure the LLM profile in the Agent page sidebar (`https://api.z.ai/api/paas/v4`, model `glm-4.7`). |
+| **Asset Graph** (`/graph` page) | Companies + assets (domain/subdomain/ip/port/site/endpoint). Findings from every run are auto-ingested into the graph (subdomains, live sites with title/tech/status, open ports). |
+| **Traffic Capture** (`/traffic` page) | Recording MITM proxy: a local CA is generated on first start (`<base>/ca/ca-cert.pem`); HTTPS is intercepted with per-host forged certs; every request/response pair is stored as evidence. When capture is ON, run subprocesses automatically receive `HTTP_PROXY`/`HTTPS_PROXY` so tool traffic is recorded and tagged with the run id. Import the CA into the trust store (or run tools with TLS verification disabled) for interception to work. |
+| **Findings workflow** | Evidence binding (traffic ↔ finding), triage via agent or UI, engagement report at `GET /api/v1/report/engagement`. |
+
+API surface: `/api/v1/llm` (profiles CRUD), `/api/v1/agent/chat` +
+`/agent/conversations`, `/api/v1/companies`, `/api/v1/graph/assets`,
+`/api/v1/traffic` (+ `/bind`), `/api/v1/capture/{status,toggle}`.
+
+Env: `K1NZR3C0N_PROXY_ADDR` (recording proxy listen, default `127.0.0.1:8083`).
+
 ## What replaces what
 
 | Python original | Go port |
@@ -23,6 +40,9 @@ workflows run unchanged.
 | scope.py deny-wins | `internal/scope` |
 | webhooks | `internal/notify` |
 | ptyprocess terminal | creack/pty (`/ws/terminal/{id}`) |
+| scopeweaver agent layer | `internal/agent` + `/agent` page (GLM client, tool loop) |
+| scopeweaver asset graph | `internal/store` companies/assets + auto-ingest |
+| scopeweaver traffic capture | `internal/capture` MITM recording proxy |
 | report.py | `internal/report` |
 | tools.py inventory | `internal/toolsmeta` (subset, pragmatic) |
 

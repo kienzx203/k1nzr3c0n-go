@@ -12,6 +12,7 @@ Environment=K1NZR3C0N_WORKERS=2
 # Environment=K1NZR3C0N_API_TOKEN=change-me
 # Environment=K1NZR3C0N_WEBHOOK_URL=https://discord.com/api/webhooks/...
 # Environment=GITHUB_TOKEN=ghp_...
+# Environment=K1NZR3C0N_PROXY_ADDR=127.0.0.1:8083  # recording proxy listen
 ExecStart=/opt/k1nzr3c0n/k1nzr3c0n serve
 WorkingDirectory=/opt/k1nzr3c0n
 Restart=on-failure
