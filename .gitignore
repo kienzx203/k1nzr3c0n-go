@@ -1,5 +1,5 @@
-# build artifacts
-k1nzr3c0n
+# build artifacts (root-anchored: chỉ ignore BINARY, không trúng cmd/k1nzr3c0n/)
+/k1nzr3c0n
 *.exe
 frontend/node_modules/
 frontend/dist/
