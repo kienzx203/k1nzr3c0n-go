@@ -35,6 +35,29 @@ export const api = {
   authStatus: () => req('GET', '/auth/status'),
   getHealth:  () => req('GET', '/health'),
 
+  // AI agent layer
+  listLLM:        () => req('GET', '/llm'),
+  createLLM:      (body) => req('POST', '/llm', body),
+  deleteLLM:      (id) => req('DELETE', `/llm/${id}`),
+  listConvs:      () => req('GET', '/agent/conversations'),
+  convMessages:   (id) => req('GET', `/agent/conversations/${id}/messages`),
+  deleteConv:     (id) => req('DELETE', `/agent/conversations/${id}`),
+  agentChat:      (body) => req('POST', '/agent/chat', body),
+
+  // Asset graph + companies
+  listCompanies:  () => req('GET', '/companies'),
+  createCompany:  (body) => req('POST', '/companies', body),
+  graphAssets:    (params = {}) => req('GET', `/graph/assets?${new URLSearchParams(params)}`),
+  insertAsset:    (body) => req('POST', '/graph/assets', body),
+  deleteAsset:    (id) => req('DELETE', `/graph/assets/${id}`),
+
+  // Traffic capture
+  listTraffic:    (params = {}) => req('GET', `/traffic?${new URLSearchParams(params)}`),
+  getTraffic:     (id) => req('GET', `/traffic/${id}`),
+  bindTraffic:    (body) => req('POST', '/traffic/bind', body),
+  captureStatus:  () => req('GET', '/capture/status'),
+  captureToggle:  (enabled) => req('POST', '/capture/toggle', { enabled }),
+
   // Network & DNS diagnostics + one-click fix
   networkCheck: () => req('GET', '/network/check'),
   networkFix:   (body = {}) => req('POST', '/network/fix', body),

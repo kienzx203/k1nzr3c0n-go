@@ -74,6 +74,7 @@ const NAV_GROUPS = [
       { to: '/findings',  label: 'Findings',  icon: I.flag },
       { to: '/inventory', label: 'Inventory', icon: I.boxes },
       { to: '/targets',   label: 'Targets',   icon: I.target },
+      { to: '/graph',     label: 'Asset Graph', icon: I.boxes },
       { to: '/schedules', label: 'Schedules', icon: I.clock },
     ],
   },
@@ -81,7 +82,6 @@ const NAV_GROUPS = [
     title: 'Capture',
     items: [
       { to: '/traffic', label: 'Traffic', icon: I.upload },
-      { to: '/graph',   label: 'Asset Graph', icon: I.boxes },
       { to: '/upload',  label: 'Upload',  icon: I.upload },
     ],
   },
