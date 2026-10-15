@@ -138,15 +138,28 @@ CREATE INDEX IF NOT EXISTS ix_traffic_finding ON traffic (finding_id);
 
 // ── llm profiles ─────────────────────────────────────────────────────────────
 
+// CreateLLMProfile upserts by name: re-submitting an existing name updates
+// its credentials instead of failing the UNIQUE constraint.
 func (s *Store) CreateLLMProfile(p *LLMProfile) error {
-	p.CreatedAt = NowUTC()
-	p.UpdatedAt = p.CreatedAt
+	now := NowUTC()
+	p.CreatedAt, p.UpdatedAt = now, now
 	res, err := s.db.Exec(`INSERT INTO llm_profiles (name, base_url, api_key, model, temperature, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?)`, p.Name, p.BaseURL, p.APIKey, p.Model, p.Temperature, SqlTime(p.CreatedAt), SqlTime(p.UpdatedAt))
+		VALUES (?,?,?,?,?,?,?)
+		ON CONFLICT(name) DO UPDATE SET
+		  base_url=excluded.base_url, api_key=excluded.api_key,
+		  model=excluded.model, temperature=excluded.temperature,
+		  updated_at=excluded.updated_at`,
+		p.Name, p.BaseURL, p.APIKey, p.Model, p.Temperature, SqlTime(now), SqlTime(now))
 	if err != nil {
 		return err
 	}
-	p.ID, _ = res.LastInsertId()
+	if id, err := res.LastInsertId(); err == nil && id > 0 {
+		p.ID = id
+		return nil
+	}
+	// upsert-hit: fetch the existing row id
+	row := s.db.QueryRow(`SELECT id FROM llm_profiles WHERE name=?`, p.Name)
+	_ = row.Scan(&p.ID)
 	return nil
 }
 
