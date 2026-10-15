@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -165,7 +167,7 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 	client := agent.NewClient(prof.BaseURL, prof.APIKey, prof.Model, prof.Temperature)
 	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Minute)
 	defer cancel()
-	res, err := agent.RunTurn(ctx, s.St, s.Runner, client, convID, body.Message, agent.LoopConfig{})
+	res, err := agent.RunTurnMCP(ctx, s.St, s.Runner, client, convID, body.Message, agent.LoopConfig{})
 	if err != nil {
 		writeDetail(w, 502, "agent error: "+err.Error())
 		return
@@ -393,6 +395,165 @@ func (s *Server) handleRulesDelete(w http.ResponseWriter, r *http.Request) {
 	id, _ := parseID(r.PathValue("id"))
 	_ = s.St.DeleteTrafficRule(id)
 	w.WriteHeader(204)
+}
+
+// ── MCP servers ──────────────────────────────────────────────────────────────
+
+func (s *Server) handleMCPList(w http.ResponseWriter, r *http.Request) {
+	items, err := s.St.ListMCP()
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, items)
+}
+
+func (s *Server) handleMCPCreate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name    string   `json:"name"`
+		Command string   `json:"command"`
+		Args    []string `json:"args"`
+		Enabled *bool    `json:"enabled"`
+	}
+	if err := readJSON(r, &body); err != nil || body.Name == "" || body.Command == "" {
+		writeDetail(w, 422, "name and command are required")
+		return
+	}
+	enabled := true
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+	id, err := s.St.CreateMCP(store.MCPServer{Name: body.Name, Command: body.Command, Args: body.Args, Enabled: enabled})
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 201, map[string]any{"id": id})
+}
+
+func (s *Server) handleMCPDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := parseID(r.PathValue("id"))
+	_ = s.St.DeleteMCP(id)
+	w.WriteHeader(204)
+}
+
+// ── pending approvals ────────────────────────────────────────────────────────
+
+func (s *Server) handleApprovalsList(w http.ResponseWriter, r *http.Request) {
+	only := r.URL.Query().Get("pending") == "1"
+	items, err := s.St.ListPendingApprovals(only)
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, items)
+}
+
+func (s *Server) handleApprovalDecide(w http.ResponseWriter, r *http.Request) {
+	id, _ := parseID(r.PathValue("id"))
+	var body struct {
+		Decision string `json:"decision"`
+	}
+	if err := readJSON(r, &body); err != nil || (body.Decision != "approve" && body.Decision != "deny") {
+		writeDetail(w, 422, "decision must be approve|deny")
+		return
+	}
+	if err := s.St.SetApprovalDecision(id, body.Decision); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"id": id, "decision": body.Decision})
+}
+
+// ── side question: ask about a run without touching it ───────────────────────
+
+func (s *Server) handleSideQuestion(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RunID    string `json:"run_id"`
+		Question string `json:"question"`
+	}
+	if err := readJSON(r, &body); err != nil || body.RunID == "" || body.Question == "" {
+		writeDetail(w, 422, "run_id and question are required")
+		return
+	}
+	profiles, _ := s.St.ListLLMProfiles()
+	if len(profiles) == 0 {
+		writeDetail(w, 503, "No LLM profile configured")
+		return
+	}
+	prof := profiles[0]
+	run, err := s.St.GetRun(body.RunID)
+	if err != nil {
+		writeDetail(w, 404, "Run not found")
+		return
+	}
+	items, _, _ := s.St.ListRunFindings(run.ID, store.FindingFilter{Limit: 100})
+	logs, _, _ := s.St.ListLogs(run.ID, 0, 80)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	client := agent.NewClient(prof.BaseURL, prof.APIKey, prof.Model, prof.Temperature)
+
+	var findingsTxt strings.Builder
+	for _, f := range items {
+		sev := "info"
+		if f.Severity != nil {
+			sev = *f.Severity
+		}
+		findingsTxt.WriteString(fmt.Sprintf("- [%s] %s %s %s\n", f.Kind, sev, f.Host, deref(f.TemplateID)))
+	}
+	prompt := fmt.Sprintf("Run %s (workflow %s, target %s, status %s).\nFindings (top 100):\n%s\nRecent logs (tail):\n%s\n\nQuestion: %s",
+		run.ID, run.Workflow, run.Target, run.Status, findingsTxt.String(), strings.Join(logs, "\n"), body.Question)
+	turn, _, err := client.ChatCompletion(ctx, []agent.Message{{Role: "user", Content: prompt}}, nil)
+	if err != nil {
+		writeDetail(w, 502, "LLM error: "+err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"answer": turn.Content})
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// handleAutopilot runs an autonomous engagement (multi-phase agent loop).
+func (s *Server) handleAutopilot(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Goal      string `json:"goal"`
+		MaxSteps  int    `json:"max_steps"`
+		ProfileID *int64 `json:"profile_id"`
+	}
+	if err := readJSON(r, &body); err != nil || strings.TrimSpace(body.Goal) == "" {
+		writeDetail(w, 422, "goal is required")
+		return
+	}
+	profiles, _ := s.St.ListLLMProfiles()
+	if len(profiles) == 0 {
+		writeDetail(w, 503, "No LLM profile configured")
+		return
+	}
+	prof := profiles[0]
+	if body.ProfileID != nil {
+		if p, err := s.St.GetLLMProfile(*body.ProfileID); err == nil {
+			prof = *p
+		}
+	}
+	client := agent.NewClient(prof.BaseURL, prof.APIKey, prof.Model, prof.Temperature)
+	// NOTE: detached context — the handler returns immediately (202) and the
+	// loop must outlive the request; a request-scoped ctx would cancel it.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Minute)
+		defer cancel()
+		res, err := agent.RunAutopilot(ctx, s.St, s.Runner, client, body.Goal, body.MaxSteps)
+		if err != nil {
+			log.Printf("[autopilot] finished with error: %v", err)
+			_ = res
+		}
+	}()
+	writeJSON(w, 202, map[string]any{"status": "started", "goal": body.Goal})
 }
 
 func captureAddr() string {

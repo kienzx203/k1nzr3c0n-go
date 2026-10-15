@@ -94,6 +94,20 @@ export default function Agent() {
     setBusy(false)
   }
 
+  async function startAutopilot() {
+    const goal = input.trim() || prompt('Mục tiêu engagement, vd: Full recon acme.com và triage findings');
+    if (!goal) return
+    setBusy(true)
+    setErr('')
+    try {
+      await api.autopilot({ goal })
+      setMessages(m => [...m, { role: 'user', content: `🚀 Autopilot: ${goal}` },
+        { role: 'assistant', content: 'Autopilot đã khởi động — theo dõi trong danh sách Conversations (tự cập nhật). Các bước plan→execute→analyze được ghi vào hội thoại "autopilot: …".' }])
+      setInput('')
+      loadConvs()
+    } catch (e2) { setErr(e2.message) } finally { setBusy(false) }
+  }
+
   async function createProfile(e) {
     e.preventDefault()
     setFormErr('')
@@ -179,6 +193,9 @@ export default function Agent() {
           </div>
           <button className="btn flex items-center justify-center gap-1.5" onClick={() => { setShowConfig(v => !v); setFormErr('') }}>
             <Icon d={I.gear} /> LLM profile
+          </button>
+          <button className="btn btn-accent flex items-center justify-center gap-1.5" onClick={startAutopilot} disabled={busy || !profiles.length}>
+            <Icon d={I.spark} /> Autopilot
           </button>
 
           {showConfig && (
