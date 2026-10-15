@@ -34,6 +34,8 @@ export default function Agent() {
   const [profileId, setProfileId] = useState(null)
   const [showConfig, setShowConfig] = useState(false)
   const [err, setErr] = useState('')
+  const [formErr, setFormErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: 'GLM', base_url: 'https://api.z.ai/api/paas/v4', api_key: '', model: 'glm-4.7' })
   const bottomRef = useRef(null)
 
@@ -92,12 +94,24 @@ export default function Agent() {
 
   async function createProfile(e) {
     e.preventDefault()
-    setErr('')
+    setFormErr('')
+    setSaving(true)
     try {
       await api.createLLM(form)
+      setForm({ ...form, api_key: '' })
       setShowConfig(false)
       loadProfiles()
-    } catch (e2) { setErr(e2.message) }
+    } catch (e2) { setFormErr(e2.message) } finally { setSaving(false) }
+  }
+
+  async function removeProfile() {
+    if (!profileId) return
+    if (!confirm('Xóa LLM profile này?')) return
+    try {
+      await api.deleteLLM(profileId)
+      setProfileId(null)
+      loadProfiles()
+    } catch (e) { setFormErr(e.message) }
   }
 
   const noProfile = profiles.length === 0
@@ -151,10 +165,17 @@ export default function Agent() {
           </div>
 
           {/* profile picker */}
-          <select className="input text-[11px]" value={profileId || ''} onChange={e => setProfileId(+e.target.value)}>
-            {profiles.map(p => <option key={p.id} value={p.id}>{p.name} · {p.model}</option>)}
-          </select>
-          <button className="btn flex items-center justify-center gap-1.5" onClick={() => setShowConfig(v => !v)}>
+          <div className="flex gap-1.5">
+            <select className="input text-[11px] flex-1" value={profileId || ''} onChange={e => setProfileId(+e.target.value)}>
+              {profiles.map(p => <option key={p.id} value={p.id}>{p.name} · {p.model}</option>)}
+            </select>
+            {profiles.length > 0 && (
+              <button className="btn px-2" onClick={removeProfile} title="Delete profile">
+                <Icon d={I.trash} size={12} />
+              </button>
+            )}
+          </div>
+          <button className="btn flex items-center justify-center gap-1.5" onClick={() => { setShowConfig(v => !v); setFormErr('') }}>
             <Icon d={I.gear} /> LLM profile
           </button>
 
@@ -177,7 +198,12 @@ export default function Agent() {
                 <label className="label">Model</label>
                 <input className="input font-mono text-[10.5px]" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} />
               </div>
-              <button className="btn btn-primary" type="submit">Save profile</button>
+              {formErr && (
+                <p className="text-[10.5px]" style={{ color: 'var(--red)' }}>⚠ {formErr}</p>
+              )}
+              <button className="btn btn-primary" type="submit" disabled={saving}>
+                {saving ? 'Saving…' : 'Save profile'}
+              </button>
             </form>
           )}
         </div>

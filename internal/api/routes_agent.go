@@ -63,7 +63,7 @@ func (s *Server) handleLLMCreate(w http.ResponseWriter, r *http.Request) {
 		writeDetail(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 201, map[string]any{"id": p.ID, "name": p.Name})
+	writeJSON(w, 201, map[string]any{"id": p.ID, "name": p.Name, "upserted": p.ID > 0})
 }
 
 func (s *Server) handleLLMDelete(w http.ResponseWriter, r *http.Request) {
