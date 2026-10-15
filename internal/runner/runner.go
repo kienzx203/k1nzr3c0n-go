@@ -82,6 +82,10 @@ type Runner struct {
 	Bus   *bus.Bus
 	Limit time.Duration
 
+	// ProxyEnv returns the recording-proxy env overlay for a run when
+	// capture is enabled (set by main; nil = capture off).
+	ProxyEnv func(runID string) map[string]string
+
 	queue   chan string
 	engines map[string]*engineHandle
 	mu      sync.Mutex
@@ -545,13 +549,19 @@ func (r *Runner) ExecuteRun(runID string) {
 		defer limiter.Stop()
 	}
 
+	envOverlay := keyEnv // per-run env (no process-global mutation)
+	if r.ProxyEnv != nil {
+		for k, v := range r.ProxyEnv(runID) {
+			envOverlay[k] = v // capture proxy wins over keys (no overlap anyway)
+		}
+	}
 	opts := workflow.Options{
 		Target:          run.Target,
 		Workspace:       run.Workspace,
 		Vars:            vars,
 		ContinueOnError: run.ContinueOnError,
 		Resume:          run.Resume,
-		EnvOverlay:      keyEnv, // per-run env (no process-global mutation)
+		EnvOverlay:      envOverlay,
 	}
 	_ = os.Remove(filepath.Join(run.Workspace, "pause.flag"))
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"k1nzr3c0n/internal/bus"
+	"k1nzr3c0n/internal/capture"
 	"k1nzr3c0n/internal/config"
 	"k1nzr3c0n/internal/runner"
 	"k1nzr3c0n/internal/store"
@@ -19,6 +20,7 @@ type Server struct {
 	Bus    *bus.Bus
 	Runner *runner.Runner
 	Mux    *http.ServeMux
+	Cap    *capture.Proxy // recording proxy (nil = unavailable)
 
 	lastBeatTick string // health "beat" liveness
 }
@@ -238,6 +240,26 @@ func (s *Server) routes() {
 	// websockets
 	m.HandleFunc("GET /ws/runs/{run_id}", s.handleRunWS)
 	m.HandleFunc("GET /ws/terminal/{session_id}", s.handleTerminalWS)
+
+	// AI agent layer (ScopeWeaver integration)
+	m.HandleFunc("GET /api/v1/llm", s.handleLLMList)
+	m.HandleFunc("POST /api/v1/llm", s.handleLLMCreate)
+	m.HandleFunc("DELETE /api/v1/llm/{id}", s.handleLLMDelete)
+	m.HandleFunc("GET /api/v1/agent/conversations", s.handleConvList)
+	m.HandleFunc("GET /api/v1/agent/conversations/{id}/messages", s.handleConvMessages)
+	m.HandleFunc("DELETE /api/v1/agent/conversations/{id}", s.handleConvDelete)
+	m.HandleFunc("POST /api/v1/agent/chat", s.handleAgentChat)
+	m.HandleFunc("GET /api/v1/companies", s.handleCompanyList)
+	m.HandleFunc("POST /api/v1/companies", s.handleCompanyCreate)
+	m.HandleFunc("GET /api/v1/graph/assets", s.handleGraphAssets)
+	m.HandleFunc("POST /api/v1/graph/assets", s.handleGraphAssetCreate)
+	m.HandleFunc("DELETE /api/v1/graph/assets/{id}", s.handleGraphAssetDelete)
+	m.HandleFunc("GET /api/v1/traffic", s.handleTrafficList)
+	m.HandleFunc("GET /api/v1/traffic/{id}", s.handleTrafficGet)
+	m.HandleFunc("POST /api/v1/traffic/bind", s.handleTrafficBind)
+	m.HandleFunc("GET /api/v1/capture/status", s.handleCaptureStatus)
+	m.HandleFunc("POST /api/v1/capture/toggle", s.handleCaptureToggle)
+	m.HandleFunc("GET /api/v1/report/engagement", s.handleEngagementReport)
 
 	// static SPA
 	s.mountStatic(m)

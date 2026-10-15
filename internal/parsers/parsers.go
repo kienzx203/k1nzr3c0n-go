@@ -45,9 +45,57 @@ func ParseWorkspace(st *store.Store, run *store.Run, b *bus.Bus) error {
 	scanSubdomains(st, run, ws)
 	scanKatana(st, run, ws)
 	scanGAU(st, run, ws)
+	ingestAssetGraph(st, run)
 	DetectNewAssets(st, run)
 	alertCritical(st, run, b)
 	return nil
+}
+
+// ingestAssetGraph feeds confirmed findings into the company asset graph
+// (ScopeWeaver concept: findings enrich the graph the agent explores).
+func ingestAssetGraph(st *store.Store, run *store.Run) {
+	company, _ := st.UpsertCompany(run.Target, nil)
+	fl, _, _ := st.ListFindings(store.FindingFilter{RunID: run.ID, Limit: 1000})
+	for _, f := range fl {
+		a := store.Asset{CompanyID: &company.ID, Value: f.Host, Source: "run:" + run.ID}
+		switch f.Kind {
+		case "subdomain":
+			a.Type = "subdomain"
+		case "http":
+			a.Type = "site"
+			meta := map[string]any{}
+			if f.Title != nil {
+				meta["title"] = *f.Title
+			}
+			if f.StatusCode != nil {
+				meta["status_code"] = *f.StatusCode
+			}
+			if f.Port != nil {
+				meta["port"] = *f.Port
+			}
+			var tech []string
+			_ = json.Unmarshal([]byte(f.Tech), &tech)
+			if len(tech) > 0 {
+				meta["tech"] = tech
+			}
+			mb, _ := json.Marshal(meta)
+			a.Meta = string(mb)
+		case "port":
+			a.Type = "port"
+			meta := map[string]any{}
+			if f.Port != nil {
+				meta["port"] = *f.Port
+			}
+			if f.Protocol != nil {
+				meta["protocol"] = *f.Protocol
+			}
+			mb, _ := json.Marshal(meta)
+			a.Meta = string(mb)
+		default:
+			continue
+		}
+		_ = st.UpsertAsset(&a)
+	}
 }
 
 var (
