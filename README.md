@@ -108,3 +108,46 @@ scripts/           helper scripts invoked by workflow steps
 internal/toolsmeta/gen_catalog.py + catalog_gen.go — regenerate the catalog
                    after editing the Python TOOLS list
 ```
+1. Build & Deploy lên Kali
+# Trên máy Kali (hoặc copy cả thư mục k1nzr3c0n-go sang):
+cd k1nzr3c0n-go
+bash build.sh                    # build frontend (nếu chưa có) + binary
+sudo mkdir -p /opt/k1nzr3c0n
+sudo cp -r k1nzr3c0n workflows wordlists static scripts deploy /opt/k1nzr3c0n/
+
+# Chạy như service:
+sudo cp deploy/k1nzr3c0n-go.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now k1nzr3c0n-go
+2. Chạy trực tiếp (test nhanh)
+K1NZR3C0N_BASE=/opt/k1nzr3c0n ./k1nzr3c0n serve     # mở http://:8000
+Env quan trọng:
+Biến	Mặc định	Ý nghĩa
+K1NZR3C0N_BASE	.	Gốc chứa workflows/ wordlists/ static/ runs/
+K1NZR3C0N_ADDR	:8000	Port server
+K1NZR3C0N_WORKERS	2	Số run chạy song song
+K1NZR3C0N_API_TOKEN	(rỗng)	Bật auth: /api/* cần Authorization: Bearer <token>, WS cần ?token=
+K1NZR3C0N_WEBHOOK_URL	(rỗng)	Discord/Slack nhận alert run + vuln critical
+GITHUB_TOKEN	(rỗng)	Nâng rate-limit check version tool 60→5000 req/h
+3. Luồng sử dụng Web UI (http://localhost:8000)
+1. Targets → Add target: example.com, scope *.example.com, mode bounty — đây là cổng deny-wins, target nào mode oos sẽ bị chặn 403 khi chạy
+2. Keys → dán API key (Shodan, SecurityTrails, Chaos, GitHub…) — tự inject vào subfinder/uncover config + env khi run
+3. Runs → New run: chọn workflow (01-full-recon-pipeline = full 95 steps) + target + override vars → Launch
+4. Vào run detail xem live logs (WebSocket), step progress, findings đổ về giữa chừng
+5. Findings → triage (open/fp/resolved, notes, tags), nút Resolve duplicates
+6. Inventory → host:port sống qua các run, kèm screenshot
+7. Schedules → cron recon định kỳ (0 3 * * *), bật alert new-assets
+8. Tools → Check versions → Update all (tải binary thật từ GitHub về /usr/local/bin, cần chạy quyền ghi — hoặc set K1NZR3C0N_BIN_DIR)
+9. Terminal → bash ngay trong browser
+Tự động mỗi ngày: dọn workspace >30 ngày (giữ kết quả + screenshots), check tool version 04:00, nuclei -ut 04:30.
+4. CLI (không cần UI)
+./k1nzr3c0n validate workflows/01-full-recon-pipeline.yaml   # kiểm tra + xem levels
+./k1nzr3c0n plan -w workflows/02-js-secrets-recon.yaml -t example.com
+./k1nzr3c0n run -w workflows/02-js-secrets-recon.yaml -t example.com \
+    --vars nuclei_rl=50 --continue-on-error -o runs/manual1
+# Resume sau khi pause (exit 75) hoặc crash:
+./k1nzr3c0n run ... -o runs/manual1 --resume
+5. Lưu ý vận hành
+- Pause chỉ có hiệu lực giữa các level — step đang chạy (vd. port scan dài) sẽ chạy xong mới pause
+- Cancel giết process group ngay (SIGTERM→SIGKILL) — findings đã thu vẫn được parse
+- Tool rebuild_only (42/105) không update in-place được — đó là giới hạn của chính bản gốc (cài qua install.sh lúc build máy)
+- DB tương thích drop-in với bản Python: trỏ K1NZR3C0N_BASE vào thư mục cũ là dùng được luôn lịch sử runs/findings
