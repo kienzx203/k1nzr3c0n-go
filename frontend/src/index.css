@@ -1,0 +1,228 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   k1nzr3c0n design system
+   Dark operations-console theme. All shared component classes live here so
+   every page upgrades together. Colors are exposed as CSS variables so the
+   light theme (data-theme="light") overrides them in one place.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: dark;
+
+  --bg:         #0a0d12;   /* app background — deepest layer            */
+  --bg-soft:    #0d1117;   /* content background                        */
+  --surface:    #12171f;   /* cards                                     */
+  --surface-2:  #181f29;   /* hover / raised                            */
+  --surface-3:  #1f2836;   /* active / selected                         */
+  --border:     #232c3a;   /* default borders                           */
+  --border-2:   #2e3a4d;   /* emphasized borders                        */
+
+  --text:       #e6edf3;
+  --text-2:     #9aa7b8;   /* secondary text                            */
+  --text-3:     #5c6773;   /* muted / meta                              */
+
+  --accent:     #58a6ff;   /* links, focus, primary interactive         */
+  --green:      #3fb950;
+  --red:        #f85149;
+  --orange:     #f0883e;
+  --amber:      #f0b429;
+
+  --ring:       0 0 0 2px rgba(88, 166, 255, .35);
+  --shadow-1:   0 1px 2px rgba(0, 0, 0, .35);
+  --shadow-2:   0 4px 16px rgba(0, 0, 0, .35);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:         #f2f4f8;
+  --bg-soft:    #f7f8fb;
+  --surface:    #ffffff;
+  --surface-2:  #f1f3f7;
+  --surface-3:  #e8ecf2;
+  --border:     #d9dee7;
+  --border-2:   #c3cbd8;
+
+  --text:       #1c2430;
+  --text-2:     #4d5a6b;
+  --text-3:     #8a95a5;
+
+  --accent:     #0969da;
+  --green:      #1a7f37;
+  --red:        #cf222e;
+  --orange:     #bc4c00;
+  --amber:      #9a6700;
+
+  --ring:       0 0 0 2px rgba(9, 105, 218, .30);
+  --shadow-1:   0 1px 2px rgba(27, 39, 55, .08);
+  --shadow-2:   0 4px 16px rgba(27, 39, 55, .10);
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection { background: rgba(88, 166, 255, .28); }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+  :focus-visible { outline: none; box-shadow: var(--ring); border-radius: 4px; }
+}
+
+@layer components {
+  /* ── Status & severity badges ─────────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap;
+  }
+  .badge::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 9999px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .badge-queued     { background: rgba(154,167,184,.12); color: var(--text-2); }
+  .badge-running    { background: rgba(63,185,80,.14);  color: var(--green); }
+  .badge-running::before { animation: pulse-dot 1.4s ease-in-out infinite; }
+  .badge-completed  { background: rgba(63,185,80,.14);  color: var(--green); }
+  .badge-failed     { background: rgba(248,81,73,.14);  color: var(--red); }
+  .badge-cancelled  { background: rgba(154,167,184,.12); color: var(--text-2); }
+  .badge-paused     { background: rgba(240,180,41,.14); color: var(--amber); }
+
+  /* ── Cards ────────────────────────────────────────────────────────────── */
+  .card {
+    background: linear-gradient(180deg, var(--surface), var(--bg-soft));
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-1);
+  }
+  .card-hover {
+    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+  }
+  .card-hover:hover {
+    border-color: var(--border-2);
+    box-shadow: var(--shadow-2);
+    transform: translateY(-1px);
+  }
+  .card-header {
+    @apply px-4 py-3 flex items-center justify-between gap-3;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── Buttons ──────────────────────────────────────────────────────────── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 cursor-pointer border outline-none select-none;
+    border-color: transparent;
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary {
+    background: linear-gradient(180deg, #2ea043, #238636);
+    color: #fff;
+    border-color: rgba(46, 160, 67, .6);
+    box-shadow: 0 1px 2px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.08);
+  }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.12); }
+  .btn-accent {
+    background: linear-gradient(180deg, rgba(88,166,255,.22), rgba(88,166,255,.14));
+    color: var(--accent);
+    border-color: rgba(88,166,255,.35);
+  }
+  .btn-accent:hover:not(:disabled) { background: rgba(88,166,255,.26); }
+  .btn-danger {
+    background: rgba(248,81,73,.12);
+    color: var(--red);
+    border-color: rgba(248,81,73,.35);
+  }
+  .btn-danger:hover:not(:disabled) { background: rgba(248,81,73,.22); }
+  .btn-success {
+    background: rgba(63,185,80,.12);
+    color: var(--green);
+    border-color: rgba(63,185,80,.35);
+  }
+  .btn-success:hover:not(:disabled) { background: rgba(63,185,80,.22); }
+  .btn-warning {
+    background: rgba(240,180,41,.12);
+    color: var(--amber);
+    border-color: rgba(240,180,41,.35);
+  }
+  .btn-warning:hover:not(:disabled) { background: rgba(240,180,41,.22); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-2);
+  }
+  .btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+
+  /* ── Form controls ───────────────────────────────────────────────────── */
+  .input {
+    @apply w-full rounded-md px-3 py-2 text-xs transition-colors;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .input::placeholder { color: var(--text-3); }
+  .input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+  .label { @apply block text-[10px] uppercase tracking-wider mb-1.5; color: var(--text-2); }
+
+  /* ── Tables ──────────────────────────────────────────────────────────── */
+  .table-base { @apply w-full text-xs; border-collapse: collapse; }
+  .table-base thead th {
+    @apply px-4 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold whitespace-nowrap;
+    color: var(--text-2);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-soft);
+  }
+  .table-base tbody tr { border-bottom: 1px solid var(--border); transition: background .1s ease; }
+  .table-base tbody tr:last-child { border-bottom: none; }
+  .table-base tbody tr:hover { background: var(--surface-2); }
+
+  /* ── Sidebar nav items ───────────────────────────────────────────────── */
+  .nav-idle { color: var(--text-2); }
+  .nav-idle:hover { color: var(--text); background: var(--surface-2); }
+  .nav-active { color: var(--accent); background: rgba(88, 166, 255, .10); }
+
+  /* ── Page scaffolding ────────────────────────────────────────────────── */
+  .page-header { @apply flex items-start justify-between gap-4 mb-6; }
+  .page-title  { @apply text-lg font-bold tracking-tight; color: var(--text); }
+  .page-sub    { @apply text-xs mt-0.5; color: var(--text-2); }
+  .section-title {
+    @apply text-[11px] font-semibold uppercase tracking-widest;
+    color: var(--text-2);
+  }
+
+  /* ── Log line colors (terminal / log viewer) ─────────────────────────── */
+  .log-ok    { color: var(--green); }
+  .log-info  { color: var(--accent); }
+  .log-warn  { color: var(--amber); }
+  .log-error { color: var(--red); }
+  .log-plain { color: var(--text-2); }
+  .log-dim   { color: var(--text-3); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .35; transform: scale(.75); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: none; }
+}
+.fade-in { animation: fade-in .25s ease both; }

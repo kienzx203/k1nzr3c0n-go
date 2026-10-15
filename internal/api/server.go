@@ -1,0 +1,244 @@
+// Package api implements the HTTP server: REST endpoints under /api/v1
+// (plus legacy /api aliases), WebSocket endpoints under /ws, static SPA
+// serving, and bearer-token auth. Paths and payloads match the Python API.
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+
+	"k1nzr3c0n/internal/bus"
+	"k1nzr3c0n/internal/config"
+	"k1nzr3c0n/internal/runner"
+	"k1nzr3c0n/internal/store"
+)
+
+type Server struct {
+	St     *store.Store
+	Bus    *bus.Bus
+	Runner *runner.Runner
+	Mux    *http.ServeMux
+
+	lastBeatTick string // health "beat" liveness
+}
+
+func New(st *store.Store, b *bus.Bus, r *runner.Runner) *Server {
+	s := &Server{St: st, Bus: b, Runner: r, Mux: http.NewServeMux()}
+	s.routes()
+	return s
+}
+
+func (s *Server) Handler() http.Handler {
+	return s.auth(s.cors(s.Mux))
+}
+
+// ── middleware ───────────────────────────────────────────────────────────────
+
+// auth replicates Python's TokenAuthMiddleware: /api/* needs a bearer token,
+// /ws/* needs ?token=, health/auth-status paths are exempt.
+func (s *Server) auth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := config.APIToken()
+		if token == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		path := r.URL.Path
+		if strings.HasPrefix(path, "/api/") {
+			if strings.HasPrefix(path, "/api/v1/health") || strings.HasPrefix(path, "/api/v1/auth/status") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if r.Header.Get("Authorization") != "Bearer "+token {
+				writeDetail(w, 401, "Unauthorized")
+				return
+			}
+		}
+		if strings.HasPrefix(path, "/ws/") {
+			// websocket auth happens at upgrade time (needs close code 4001)
+			if r.URL.Query().Get("token") != token {
+				writeDetail(w, 401, "Unauthorized")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+type detail struct {
+	Detail string `json:"detail"`
+}
+
+func writeDetail(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(detail{Detail: msg})
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+func readJSON(r *http.Request, dst any) error {
+	return json.NewDecoder(r.Body).Decode(dst)
+}
+
+// ordered helpers for maps that must serialize with stable key order
+type orderedMap struct {
+	keys []string
+	m    map[string]any
+}
+
+func newOrdered() *orderedMap { return &orderedMap{m: map[string]any{}} }
+
+func (o *orderedMap) set(k string, v any) *orderedMap {
+	if _, has := o.m[k]; !has {
+		o.keys = append(o.keys, k)
+	}
+	o.m[k] = v
+	return o
+}
+
+func (o *orderedMap) MarshalJSON() ([]byte, error) {
+	var b strings.Builder
+	b.WriteByte('{')
+	for i, k := range o.keys {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		kb, _ := json.Marshal(k)
+		vb, err := json.Marshal(o.m[k])
+		if err != nil {
+			return nil, err
+		}
+		b.Write(kb)
+		b.WriteByte(':')
+		b.Write(vb)
+	}
+	b.WriteByte('}')
+	return []byte(b.String()), nil
+}
+
+// ── routing ──────────────────────────────────────────────────────────────────
+
+func (s *Server) routes() {
+	m := s.Mux
+
+	// auth + health
+	m.HandleFunc("GET /api/v1/auth/status", s.handleAuthStatus)
+	m.HandleFunc("GET /api/v1/health", s.handleHealth)
+
+	// runs (+ legacy /api aliases)
+	for _, prefix := range []string{"/api/v1", "/api"} {
+		m.HandleFunc("POST "+prefix+"/runs", s.handleCreateRun)
+		m.HandleFunc("GET "+prefix+"/runs", s.handleListRuns)
+		m.HandleFunc("GET "+prefix+"/runs/stats", s.handleRunStats)
+		m.HandleFunc("GET "+prefix+"/runs/{run_id}", s.handleGetRun)
+		m.HandleFunc("DELETE "+prefix+"/runs/{run_id}", s.handleDeleteRun)
+		m.HandleFunc("GET "+prefix+"/runs/{run_id}/logs", s.handleRunLogs)
+		m.HandleFunc("GET "+prefix+"/runs/{run_id}/new-assets", s.handleRunNewAssets)
+		m.HandleFunc("POST "+prefix+"/runs/{run_id}/cancel", s.handleRunCancel)
+		m.HandleFunc("POST "+prefix+"/runs/{run_id}/pause", s.handleRunPause)
+		m.HandleFunc("DELETE "+prefix+"/runs/{run_id}/pause", s.handleRunPauseCancel)
+		m.HandleFunc("POST "+prefix+"/runs/{run_id}/resume", s.handleRunResume)
+		m.HandleFunc("GET "+prefix+"/runs/{run_id}/findings", s.handleRunFindings)
+		m.HandleFunc("POST "+prefix+"/runs/{run_id}/findings/reparse", s.handleRunReparse)
+		m.HandleFunc("GET "+prefix+"/runs/{run_id}/screenshots", s.handleScreenshots)
+		m.HandleFunc("GET "+prefix+"/runs/{run_id}/files", s.handleListFiles)
+		m.HandleFunc("GET "+prefix+"/runs/{run_id}/files/{path...}", s.handleGetFile)
+		m.HandleFunc("GET "+prefix+"/runs/{run_id}/report", s.handleReport)
+		m.HandleFunc("GET "+prefix+"/runs/{run_id}/report-draft", s.handleReportDraft)
+	}
+
+	// workflows (+ aliases)
+	for _, prefix := range []string{"/api/v1", "/api"} {
+		m.HandleFunc("GET "+prefix+"/workflows", s.handleListWorkflows)
+		m.HandleFunc("POST "+prefix+"/workflows/import", s.handleImportWorkflow)
+		m.HandleFunc("GET "+prefix+"/workflows/{name}/download", s.handleWorkflowDownload)
+		m.HandleFunc("GET "+prefix+"/workflows/{name}/history", s.handleWorkflowHistory)
+		m.HandleFunc("GET "+prefix+"/workflows/{name}/history/{snapshot}", s.handleWorkflowSnapshot)
+		m.HandleFunc("GET "+prefix+"/workflows/{name}", s.handleGetWorkflow)
+		m.HandleFunc("PUT "+prefix+"/workflows/{name}", s.handlePutWorkflow)
+		m.HandleFunc("DELETE "+prefix+"/workflows/{name}", s.handleDeleteWorkflow)
+	}
+
+	// findings
+	m.HandleFunc("GET /api/v1/findings/stats", s.handleFindingStats)
+	m.HandleFunc("GET /api/v1/findings/duplicates", s.handleDuplicates)
+	m.HandleFunc("POST /api/v1/findings/duplicates/resolve", s.handleResolveDuplicates)
+	m.HandleFunc("GET /api/v1/findings/{finding_id}", s.handleGetFinding)
+	m.HandleFunc("PATCH /api/v1/findings/{finding_id}", s.handlePatchFinding)
+	m.HandleFunc("GET /api/v1/findings", s.handleListFindings)
+
+	// assets
+	m.HandleFunc("GET /api/v1/assets/stats", s.handleAssetStats)
+	m.HandleFunc("GET /api/v1/assets", s.handleListAssets)
+	m.HandleFunc("DELETE /api/v1/assets", s.handleDeleteAsset)
+
+	// schedules
+	m.HandleFunc("GET /api/v1/schedules", s.handleListSchedules)
+	m.HandleFunc("POST /api/v1/schedules", s.handleCreateSchedule)
+	m.HandleFunc("GET /api/v1/schedules/{id}", s.handleGetSchedule)
+	m.HandleFunc("PATCH /api/v1/schedules/{id}", s.handlePatchSchedule)
+	m.HandleFunc("DELETE /api/v1/schedules/{id}", s.handleDeleteSchedule)
+	m.HandleFunc("POST /api/v1/schedules/{id}/trigger", s.handleTriggerSchedule)
+
+	// targets + scope
+	m.HandleFunc("GET /api/v1/scope/check", s.handleScopeCheck)
+	m.HandleFunc("GET /api/v1/targets", s.handleListTargets)
+	m.HandleFunc("POST /api/v1/targets", s.handleCreateTarget)
+	m.HandleFunc("GET /api/v1/targets/{name}/audit", s.handleTargetAudit)
+	m.HandleFunc("GET /api/v1/targets/{name}/new-assets", s.handleTargetNewAssets)
+	m.HandleFunc("GET /api/v1/targets/{name}", s.handleGetTarget)
+	m.HandleFunc("PATCH /api/v1/targets/{name}", s.handlePatchTarget)
+	m.HandleFunc("DELETE /api/v1/targets/{name}", s.handleDeleteTarget)
+
+	// keys
+	m.HandleFunc("GET /api/v1/keys/providers", s.handleKeyProviders)
+	m.HandleFunc("GET /api/v1/keys/stats", s.handleKeyStats)
+	m.HandleFunc("GET /api/v1/keys/export/subfinder", s.handleKeyExportSubfinder)
+	m.HandleFunc("GET /api/v1/keys/env-status", s.handleKeyEnvStatus)
+	m.HandleFunc("PUT /api/v1/keys/{provider}", s.handlePutKey)
+	m.HandleFunc("DELETE /api/v1/keys/{provider}", s.handleDeleteKey)
+	m.HandleFunc("GET /api/v1/keys", s.handleListKeys)
+
+	// tools + upload
+	m.HandleFunc("GET /api/v1/tools", s.handleListTools)
+	m.HandleFunc("POST /api/v1/tools/check", s.handleToolsCheck)
+	m.HandleFunc("POST /api/v1/tools/update", s.handleToolsUpdate)
+	m.HandleFunc("GET /api/v1/wordlists", s.handleListWordlists)
+	m.HandleFunc("POST /api/v1/wordlists", s.handleUploadWordlist)
+	m.HandleFunc("DELETE /api/v1/wordlists/{name}", s.handleDeleteWordlist)
+	m.HandleFunc("POST /api/v1/upload/workflow", s.handleUploadWorkflow)
+
+	// network + system
+	m.HandleFunc("GET /api/v1/network/check", s.handleNetworkCheck)
+	m.HandleFunc("POST /api/v1/network/fix", s.handleNetworkFix)
+	m.HandleFunc("GET /api/v1/system/usage", s.handleSystemUsage)
+	m.HandleFunc("POST /api/v1/system/reset", s.handleSystemReset)
+
+	// websockets
+	m.HandleFunc("GET /ws/runs/{run_id}", s.handleRunWS)
+	m.HandleFunc("GET /ws/terminal/{session_id}", s.handleTerminalWS)
+
+	// static SPA
+	s.mountStatic(m)
+}

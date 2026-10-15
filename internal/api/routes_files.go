@@ -1,0 +1,277 @@
+package api
+
+import (
+	"fmt"
+	"io/fs"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"k1nzr3c0n/internal/config"
+)
+
+// ── run workspace files ──────────────────────────────────────────────────────
+
+var imageExts = []string{".png", ".jpg", ".jpeg", ".webp", ".gif"}
+var textExts = []string{".txt", ".log", ".md", ".yaml", ".json", ".jsonl", ".csv", ".xml"}
+
+func isImage(name string) bool {
+	for _, e := range imageExts {
+		if strings.HasSuffix(strings.ToLower(name), e) {
+			return true
+		}
+	}
+	return false
+}
+
+func isText(name string) bool {
+	for _, e := range textExts {
+		if strings.HasSuffix(strings.ToLower(name), e) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) runWorkspace(w http.ResponseWriter, runID string) (string, bool) {
+	run := s.getRunOr404(w, runID)
+	if run == nil {
+		return "", false
+	}
+	if run.Workspace == "" {
+		writeDetail(w, 404, "Workspace not set")
+		return "", false
+	}
+	return run.Workspace, true
+}
+
+func (s *Server) handleScreenshots(w http.ResponseWriter, r *http.Request) {
+	ws, ok := s.runWorkspace(w, r.PathValue("run_id"))
+	if !ok {
+		return
+	}
+	shotDir := filepath.Join(ws, "screenshots")
+	entries, err := os.ReadDir(shotDir)
+	if err != nil {
+		writeJSON(w, 200, []any{})
+		return
+	}
+	type shot struct {
+		File   string `json:"file"`
+		Name   string `json:"name"`
+		URL    any    `json:"url"`
+		Title  any    `json:"title"`
+		Status any    `json:"status"`
+		Size   int64  `json:"size"`
+	}
+	var out []shot
+	for _, e := range entries {
+		if e.IsDir() || !isImage(e.Name()) {
+			continue
+		}
+		fi, _ := e.Info()
+		out = append(out, shot{
+			File: "screenshots/" + e.Name(), Name: e.Name(),
+			Status: nil, Size: fi.Size(),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].File < out[j].File })
+	if out == nil {
+		out = []shot{}
+	}
+	writeJSON(w, 200, out)
+}
+
+type fileNode struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+	Ext  string `json:"ext"`
+}
+
+func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
+	ws, ok := s.runWorkspace(w, r.PathValue("run_id"))
+	if !ok {
+		return
+	}
+	var nodes []fileNode
+	filepath.WalkDir(ws, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(ws, path)
+		rel = filepath.ToSlash(rel)
+		if rel == "resume.json" {
+			return nil
+		}
+		fi, _ := d.Info()
+		nodes = append(nodes, fileNode{
+			Path: rel, Name: d.Name(), Size: fi.Size(),
+			Ext: strings.ToLower(filepath.Ext(d.Name())),
+		})
+		return nil
+	})
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Path < nodes[j].Path })
+	if nodes == nil {
+		nodes = []fileNode{}
+	}
+	writeJSON(w, 200, nodes)
+}
+
+const maxPreview = 10 * 1024 * 1024
+
+func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request) {
+	ws, ok := s.runWorkspace(w, r.PathValue("run_id"))
+	if !ok {
+		return
+	}
+	rel := r.PathValue("path")
+	full := filepath.Clean(filepath.Join(ws, rel))
+	// strict containment: equal or nested under the workspace (separator
+	// boundary — plain prefix checks are bypassable with sibling dirs)
+	if full != filepath.Clean(ws) && !strings.HasPrefix(full, filepath.Clean(ws)+string(os.PathSeparator)) {
+		writeDetail(w, 403, "Path traversal not allowed")
+		return
+	}
+	fi, err := os.Stat(full)
+	if err != nil || fi.IsDir() {
+		writeDetail(w, 404, "File not found")
+		return
+	}
+	ext := strings.ToLower(filepath.Ext(full))
+	if ext == ".json" || ext == ".jsonl" {
+		data, _ := os.ReadFile(full)
+		w.Header().Set("Content-Type", "application/json")
+		if len(data) > maxPreview {
+			suffix := fmt.Sprintf("\n\n[... truncated: file is %d bytes, showing first %d ...]", len(data), maxPreview)
+			w.Write(data[:maxPreview])
+			w.Write([]byte(suffix))
+			return
+		}
+		w.Write(data)
+		return
+	}
+	if isText(full) {
+		data, _ := os.ReadFile(full)
+		contentType := "text/plain; charset=utf-8"
+		w.Header().Set("Content-Type", contentType)
+		if len(data) > maxPreview {
+			suffix := fmt.Sprintf("\n\n[... truncated: file is %d bytes, showing first %d ...]", len(data), maxPreview)
+			w.Write(data[:maxPreview])
+			w.Write([]byte(suffix))
+			return
+		}
+		w.Write(data)
+		return
+	}
+	http.ServeFile(w, r, full) // binary with guessed content type
+}
+
+// ── wordlists ────────────────────────────────────────────────────────────────
+
+func (s *Server) handleListWordlists(w http.ResponseWriter, r *http.Request) {
+	entries, err := os.ReadDir(config.WordlistsDir())
+	if err != nil {
+		writeJSON(w, 200, []any{})
+		return
+	}
+	type wl struct {
+		Name string `json:"name"`
+		Size int64  `json:"size"`
+	}
+	var out []wl
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		fi, _ := e.Info()
+		out = append(out, wl{Name: e.Name(), Size: fi.Size()})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	if out == nil {
+		out = []wl{}
+	}
+	writeJSON(w, 200, out)
+}
+
+func (s *Server) handleUploadWordlist(w http.ResponseWriter, r *http.Request) {
+	if r.ContentLength > 100<<20 {
+		writeDetail(w, 413, "File too large (max 100 MB)")
+		return
+	}
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeDetail(w, 422, "multipart form with 'file' field is required")
+		return
+	}
+	file, hdr, err := r.FormFile("file")
+	if err != nil {
+		writeDetail(w, 422, "file field is required")
+		return
+	}
+	defer file.Close()
+	name := sanitizeUploadName(hdr.Filename)
+	if !strings.HasSuffix(strings.ToLower(name), ".txt") {
+		writeDetail(w, 400, "Only .txt files are allowed")
+		return
+	}
+	os.MkdirAll(config.WordlistsDir(), 0o755)
+	dst, err := os.Create(filepath.Join(config.WordlistsDir(), name))
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	defer dst.Close()
+	data := make([]byte, 0)
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := file.Read(buf)
+		if n > 0 {
+			data = append(data, buf[:n]...)
+		}
+		if err != nil {
+			break
+		}
+	}
+	dst.Write(data)
+	lines := int64(0)
+	for _, b := range data {
+		if b == '\n' {
+			lines++
+		}
+	}
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		lines++
+	}
+	writeJSON(w, 200, map[string]any{"name": name, "size": len(data), "lines": lines})
+}
+
+func (s *Server) handleDeleteWordlist(w http.ResponseWriter, r *http.Request) {
+	name := sanitizeUploadName(r.PathValue("name"))
+	path := filepath.Join(config.WordlistsDir(), name)
+	if _, err := os.Stat(path); err != nil {
+		writeDetail(w, 404, "File not found")
+		return
+	}
+	os.Remove(path)
+	writeJSON(w, 200, map[string]any{"deleted": name})
+}
+
+// ── static SPA ───────────────────────────────────────────────────────────────
+
+func (s *Server) mountStatic(m *http.ServeMux) {
+	fsHandler := http.StripPrefix("/assets/", http.FileServer(http.Dir(filepath.Join(config.StaticDir(), "assets"))))
+	m.Handle("GET /assets/", fsHandler)
+	m.HandleFunc("GET /{path...}", func(w http.ResponseWriter, r *http.Request) {
+		index := filepath.Join(config.StaticDir(), "index.html")
+		if _, err := os.Stat(index); err != nil {
+			writeDetail(w, 404, "static frontend not built")
+			return
+		}
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		http.ServeFile(w, r, index)
+	})
+}
