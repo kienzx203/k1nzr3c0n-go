@@ -250,18 +250,20 @@ func Exec(st *store.Store, r *runner.Runner, call FunctionCall) string {
 		if limit > 200 {
 			limit = 200
 		}
-		items, total, err := st.ListLogs(arg("run_id"), 0, 2000)
+		// fetch the LAST `limit` lines: probe total with an empty page first
+		_, total, err := st.ListLogs(arg("run_id"), 0, 1)
 		if err != nil {
 			return fail(err)
 		}
-		start := total - limit
-		if start < 0 {
-			start = 0
+		offset := total - limit
+		if offset < 0 {
+			offset = 0
 		}
-		if start > len(items) {
-			start = len(items)
+		items, _, err := st.ListLogs(arg("run_id"), offset, limit)
+		if err != nil {
+			return fail(err)
 		}
-		return okJSON(map[string]any{"total": total, "lines": items[start:]})
+		return okJSON(map[string]any{"total": total, "lines": items})
 
 	case "cancel_run":
 		run, err := st.GetRun(arg("run_id"))

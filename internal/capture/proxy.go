@@ -6,11 +6,14 @@
 package capture
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -33,15 +36,15 @@ const (
 
 // Proxy is the recording proxy server.
 type Proxy struct {
-	Addr       string // listen address, default 127.0.0.1:8083
-	st         *store.Store
-	caCert     *x509.Certificate
-	caKey      *rsa.PrivateKey
-	mu         sync.Mutex
-	certCache  map[string]tls.Certificate
-	enabled    bool
-	runIDMu    sync.RWMutex
-	currentRun string
+	Addr      string // listen address, default 127.0.0.1:8083
+	st        *store.Store
+	caCert    *x509.Certificate
+	caKey     *rsa.PrivateKey
+	mu        sync.Mutex
+	certCache map[string]tls.Certificate
+	enabled   bool
+	runIDMu   sync.Mutex
+	runStack  []string
 }
 
 // New creates (or loads) the CA and returns a proxy bound to the store.
@@ -104,21 +107,105 @@ func (p *Proxy) SetEnabled(on bool) error {
 	return nil
 }
 
-// SetRun binds subsequent captures to a run id ("" clears).
-func (p *Proxy) SetRun(runID string) {
+// serveTunnel reads HTTP/1.1 requests off one TLS connection until the peer
+// closes or idles, dispatching each through the MITM handler.
+func (p *Proxy) serveTunnel(conn *tls.Conn, host, runID string) {
+	handler := &mitmHandler{p: p, tlsPeer: host, runID: runID}
+	br := bufio.NewReader(conn)
+	for {
+		_ = conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+		req, err := http.ReadRequest(br)
+		if err != nil {
+			return
+		}
+		_ = conn.SetReadDeadline(time.Time{})
+		req.URL.Scheme = "https"
+		req.URL.Host = req.Host
+		if req.URL.Host == "" {
+			req.URL.Host = host
+		}
+		rec := &tunnelRecorder{hdr: make(http.Header), buf: &bytes.Buffer{}}
+		handler.ServeHTTP(rec, req)
+		resp := rec.build()
+		_ = conn.SetWriteDeadline(time.Now().Add(60 * time.Second))
+		if err := resp.Write(conn); err != nil {
+			return
+		}
+		if req.Close {
+			return
+		}
+	}
+}
+
+// tunnelRecorder is a minimal ResponseWriter capturing one response.
+type tunnelRecorder struct {
+	hdr    http.Header
+	buf    *bytes.Buffer
+	status int
+}
+
+func (t *tunnelRecorder) Header() http.Header         { return t.hdr }
+func (t *tunnelRecorder) Write(b []byte) (int, error) { return t.buf.Write(b) }
+func (t *tunnelRecorder) WriteHeader(code int)        { t.status = code }
+
+func (t *tunnelRecorder) build() *http.Response {
+	code := t.status
+	if code == 0 {
+		code = 200
+	}
+	return &http.Response{
+		StatusCode: code,
+		Status:     http.StatusText(code),
+		Proto:      "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
+		Header:        t.hdr,
+		Body:          io.NopCloser(bytes.NewReader(t.buf.Bytes())),
+		ContentLength: int64(t.buf.Len()),
+	}
+}
+
+// pushRun/popRun maintain a per-goroutine run binding. HTTP handler
+// goroutines push on entry; nested pushes (CONNECT → tunneled request) keep
+// the outermost binding authoritative via the explicit runID field.
+func (p *Proxy) pushRun(id string) {
 	p.runIDMu.Lock()
-	p.currentRun = runID
+	p.runStack = append(p.runStack, id)
+	p.runIDMu.Unlock()
+}
+
+func (p *Proxy) popRun() {
+	p.runIDMu.Lock()
+	if n := len(p.runStack); n > 0 {
+		p.runStack = p.runStack[:n-1]
+	}
 	p.runIDMu.Unlock()
 }
 
 func (p *Proxy) currentRunID() *string {
-	p.runIDMu.RLock()
-	defer p.runIDMu.RUnlock()
-	if p.currentRun == "" {
+	p.runIDMu.Lock()
+	defer p.runIDMu.Unlock()
+	n := len(p.runStack)
+	if n == 0 || p.runStack[n-1] == "" {
 		return nil
 	}
-	id := p.currentRun
+	id := p.runStack[n-1]
 	return &id
+}
+
+// runIDFromAuth decodes "Basic base64(runid:)" proxy auth into the run id.
+func runIDFromAuth(header string) string {
+	if header == "" {
+		return ""
+	}
+	const prefix = "Basic "
+	if !strings.HasPrefix(header, prefix) {
+		return ""
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(header, prefix))
+	if err != nil {
+		return ""
+	}
+	user, _, _ := strings.Cut(string(raw), ":")
+	return user
 }
 
 func (p *Proxy) start() error {
@@ -146,12 +233,20 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleConnect(w, r)
 		return
 	}
-	// plain HTTP proxy request
+	// plain HTTP proxy request; run id rides in Proxy-Authorization basic user
+	rid := runIDFromAuth(r.Header.Get("Proxy-Authorization"))
+	h.p.pushRun(rid)
+	defer h.p.popRun()
 	h.p.mitmRoundTrip(w, r, r.Host, false)
 }
 
 func (h *proxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
+	runID := runIDFromAuth(r.Header.Get("Proxy-Authorization"))
+	// keep the binding visible for the tunneled requests too
+	h.p.pushRun(runID)
+	defer h.p.popRun()
+
 	hij, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, "hijack unsupported", http.StatusInternalServerError)
@@ -169,28 +264,25 @@ func (h *proxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
-	// SNI from the CONNECT host
-	rawHost, rawPort, _ := net.SplitHostPort(host)
-	if rawHost == "" {
-		rawHost = host
-	}
-	if rawPort == "443" || rawPort == "" {
+	if rawHost, _, err := net.SplitHostPort(host); err == nil && rawHost != "" {
 		tlsCfg.ServerName = rawHost
 	} else {
-		tlsCfg.ServerName = rawHost
+		tlsCfg.ServerName = host
 	}
 	tlsConn := tls.Server(clientConn, tlsCfg)
 	if err := tlsConn.Handshake(); err != nil {
 		return
 	}
-	// serve HTTP over the TLS tunnel
-	srv := &http.Server{Handler: &mitmHandler{p: h.p, tlsPeer: host}}
-	_ = srv.Serve(singleConnListener{tlsConn})
+	// Serve HTTP/1.1 over the TLS tunnel with a hand-rolled loop. Using
+	// http.Server+listener here either busy-spins (always-return Accept) or
+	// returns early on second Accept (EOF) and closes the conn mid-request.
+	h.p.serveTunnel(tlsConn, host, runID)
 }
 
 type mitmHandler struct {
 	p       *Proxy
 	tlsPeer string
+	runID   string // captured from the CONNECT's proxy auth
 }
 
 func (m *mitmHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -237,20 +329,19 @@ func (p *Proxy) mitmRoundTrip(w http.ResponseWriter, r *http.Request, peer strin
 		return
 	}
 	defer resp.Body.Close()
-	respDump := dumpResponse(resp)
+	respDump, body := dumpResponse(resp)
 
-	// relay response
+	// relay response from the SAME buffer the dump read (binary-safe,
+	// no size truncation between dump and relay)
 	for k, vv := range resp.Header {
 		for _, v := range vv {
 			w.Header().Add(k, v)
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	w.Write(body)
 
 	p.record(peer, r, reqDump, respDump, nil)
-	_ = body
 }
 
 func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, _ []byte) {
@@ -327,6 +418,9 @@ func (p *Proxy) certFor(host string) (tls.Certificate, error) {
 	}
 	cert := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 	p.mu.Lock()
+	if len(p.certCache) > 512 { // bounded memory: certs are cheap to re-forge
+		p.certCache = map[string]tls.Certificate{}
+	}
 	p.certCache[host] = cert
 	p.mu.Unlock()
 	return cert, nil
@@ -360,11 +454,23 @@ func genCA(certPath, keyPath string) error {
 
 // ── single-conn listener (serves HTTP over one hijacked TLS conn) ───────────
 
-type singleConnListener struct{ c net.Conn }
+// singleConnListener serves exactly ONE connection, then reports EOF so
+// http.Server stops (a naive always-return listener busy-spins on the closed
+// conn forever).
+type singleConnListener struct {
+	c    net.Conn
+	done bool
+}
 
-func (l singleConnListener) Accept() (net.Conn, error) { return l.c, nil }
-func (l singleConnListener) Close() error              { return nil }
-func (l singleConnListener) Addr() net.Addr            { return l.c.LocalAddr() }
+func (l *singleConnListener) Accept() (net.Conn, error) {
+	if l.done {
+		return nil, io.EOF
+	}
+	l.done = true
+	return l.c, nil
+}
+func (l *singleConnListener) Close() error   { return nil }
+func (l *singleConnListener) Addr() net.Addr { return l.c.LocalAddr() }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
