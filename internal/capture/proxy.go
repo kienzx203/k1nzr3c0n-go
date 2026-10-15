@@ -163,6 +163,37 @@ func (t *tunnelRecorder) build() *http.Response {
 	}
 }
 
+// holdRequest parks a plain-HTTP request pending manual approval, then
+// forwards (approve) or refuses (deny/timeout).
+func (p *Proxy) holdRequest(w http.ResponseWriter, r *http.Request, pattern string) {
+	dump := dumpRequest(r)
+	decision := p.awaitApproval(r.Method, r.Host, r.URL.Path, dump)
+	if decision != "approve" {
+		http.Error(w, "held request denied (rule: "+pattern+")", http.StatusForbidden)
+		return
+	}
+	p.mitmRoundTrip(w, r, r.Host, false)
+}
+
+// awaitApproval creates a pending row and polls for the decision for up to
+// 10 minutes (approve | deny | timeout→deny).
+func (p *Proxy) awaitApproval(method, host, path, dump string) string {
+	id, err := p.st.InsertPendingApproval(method, host, path, dump)
+	if err != nil {
+		return "deny"
+	}
+	deadline := time.Now().Add(10 * time.Minute)
+	for time.Now().Before(deadline) {
+		time.Sleep(2 * time.Second)
+		a, err := p.st.GetApproval(id)
+		if err != nil || a.Decision == nil {
+			continue
+		}
+		return *a.Decision
+	}
+	return "deny"
+}
+
 // pushRun/popRun maintain a per-goroutine run binding. HTTP handler
 // goroutines push on entry; nested pushes (CONNECT → tunneled request) keep
 // the outermost binding authoritative via the explicit runID field.
@@ -233,10 +264,16 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleConnect(w, r)
 		return
 	}
-	// traffic rules: block/flag before anything else
-	if rule, hit := h.p.st.MatchTrafficRule(hostOnly(r.Host)); hit && rule.Action == "block" {
-		http.Error(w, "blocked by traffic rule: "+rule.Pattern, http.StatusForbidden)
-		return
+	// traffic rules: block/flag/hold before anything else
+	if rule, hit := h.p.st.MatchTrafficRule(hostOnly(r.Host)); hit {
+		switch rule.Action {
+		case "block":
+			http.Error(w, "blocked by traffic rule: "+rule.Pattern, http.StatusForbidden)
+			return
+		case "hold":
+			h.p.holdRequest(w, r, rule.Pattern)
+			return
+		}
 	}
 	// plain HTTP proxy request; run id rides in Proxy-Authorization basic user
 	rid := runIDFromAuth(r.Header.Get("Proxy-Authorization"))
@@ -247,9 +284,19 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *proxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
-	if rule, hit := h.p.st.MatchTrafficRule(hostOnly(host)); hit && rule.Action == "block" {
-		_, _ = w.Write([]byte("HTTP/1.1 403 Blocked by traffic rule\r\nContent-Length: 0\r\n\r\n"))
-		return
+	if rule, hit := h.p.st.MatchTrafficRule(hostOnly(host)); hit {
+		switch rule.Action {
+		case "block":
+			_, _ = w.Write([]byte("HTTP/1.1 403 Blocked by traffic rule\r\nContent-Length: 0\r\n\r\n"))
+			return
+		case "hold":
+			// park the CONNECT: respond 403-with-retry after decision window
+			decision := h.p.awaitApproval("CONNECT", host, "/", "")
+			if decision != "approve" {
+				_, _ = w.Write([]byte("HTTP/1.1 403 Held request denied\r\nContent-Length: 0\r\n\r\n"))
+				return
+			}
+		}
 	}
 	runID := runIDFromAuth(r.Header.Get("Proxy-Authorization"))
 	// keep the binding visible for the tunneled requests too

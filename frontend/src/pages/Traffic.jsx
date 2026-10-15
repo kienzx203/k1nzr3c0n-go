@@ -28,6 +28,16 @@ export default function Traffic() {
   const [capture, setCapture] = useState(null)
   const [loading, setLoading] = useState(false)
   const [rules, setRules] = useState([])
+  const [approvals, setApprovals] = useState([])
+
+  const loadApprovals = useCallback(async () => {
+    try { setApprovals(await api.listApprovals(true)) } catch {}
+  }, [])
+  useEffect(() => { loadApprovals(); const t = setInterval(loadApprovals, 3000); return () => clearInterval(t) }, [loadApprovals])
+
+  async function decide(id, decision) {
+    try { await api.decideApproval(id, decision); loadApprovals() } catch {}
+  }
 
   const loadRules = useCallback(async () => {
     try { setRules(await api.listRules()) } catch {}
@@ -117,6 +127,27 @@ export default function Traffic() {
         </div>
       </div>
 
+      {/* pending approvals */}
+      {approvals.length > 0 && (
+        <div className="card p-3 mb-4 fade-in" style={{ borderColor: 'var(--amber)' }}>
+          <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--amber)' }}>
+            ⏸ Pending approvals — request đang bị GIỮ chờ quyết định
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {approvals.map(a => (
+              <div key={a.id} className="flex items-center gap-2 text-[11px]">
+                <span className="font-mono" style={{ color: 'var(--text-2)' }}>{a.method}</span>
+                <span className="font-mono truncate max-w-[380px]">{a.host}{a.path}</span>
+                <span className="ml-auto flex gap-1.5">
+                  <button className="btn btn-primary text-[10px] px-2 py-1" onClick={() => decide(a.id, 'approve')}>✓ Approve</button>
+                  <button className="btn btn-danger text-[10px] px-2 py-1" onClick={() => decide(a.id, 'deny')}>✕ Deny</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* rules */}
       <div className="card p-3 mb-4">
         <div className="flex items-center gap-3 mb-2">
@@ -128,6 +159,7 @@ export default function Traffic() {
             <select name="action" className="input w-20 text-[11px]">
               <option value="block">block</option>
               <option value="flag">flag</option>
+              <option value="hold">hold</option>
             </select>
             <button className="btn btn-accent text-[11px]" type="submit">Add</button>
           </form>

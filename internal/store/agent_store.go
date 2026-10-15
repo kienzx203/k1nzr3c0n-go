@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -140,6 +141,24 @@ CREATE TABLE IF NOT EXISTS traffic_rules (
 	action VARCHAR(10) NOT NULL DEFAULT 'block',
 	enabled BOOLEAN DEFAULT 1,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS mcp_servers (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	name VARCHAR(128) NOT NULL UNIQUE,
+	command VARCHAR(512) NOT NULL,
+	args TEXT NOT NULL DEFAULT '[]',
+	enabled BOOLEAN DEFAULT 1,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS pending_approvals (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	method VARCHAR(10) NOT NULL,
+	host VARCHAR(512) NOT NULL,
+	path TEXT NOT NULL DEFAULT '/',
+	dump TEXT NOT NULL DEFAULT '',
+	decision VARCHAR(10),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	decided_at DATETIME
 );
 CREATE TABLE IF NOT EXISTS llm_usage (
 	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -563,7 +582,9 @@ func (s *Store) ListTrafficRules() ([]TrafficRule, error) {
 }
 
 func (s *Store) CreateTrafficRule(pattern, action string) error {
-	if action != "flag" {
+	switch action {
+	case "flag", "hold", "block":
+	default:
 		action = "block"
 	}
 	_, err := s.db.Exec(`INSERT INTO traffic_rules (pattern, action, enabled, created_at) VALUES (?,?,1,?)`,
@@ -588,4 +609,127 @@ func (s *Store) MatchTrafficRule(host string) (TrafficRule, bool) {
 		}
 	}
 	return TrafficRule{}, false
+}
+
+// MCPServer is one configured stdio MCP server.
+type MCPServer struct {
+	ID      int64    `json:"id"`
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+	Enabled bool     `json:"enabled"`
+}
+
+func (s *Store) CreateMCP(m MCPServer) (int64, error) {
+	args, _ := json.Marshal(m.Args)
+	res, err := s.db.Exec(`INSERT INTO mcp_servers (name, command, args, enabled, created_at)
+		VALUES (?,?,?,?,?)
+		ON CONFLICT(name) DO UPDATE SET command=excluded.command, args=excluded.args, enabled=excluded.enabled`,
+		m.Name, m.Command, string(args), m.Enabled, SqlNow())
+	if err != nil {
+		return 0, err
+	}
+	if id, err := res.LastInsertId(); err == nil && id > 0 {
+		return id, nil
+	}
+	var id int64
+	_ = s.db.QueryRow(`SELECT id FROM mcp_servers WHERE name=?`, m.Name).Scan(&id)
+	return id, nil
+}
+
+func (s *Store) ListMCP() ([]MCPServer, error) {
+	rows, err := s.db.Query(`SELECT id, name, command, args, enabled FROM mcp_servers ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MCPServer
+	for rows.Next() {
+		var m MCPServer
+		var argsJSON string
+		if err := rows.Scan(&m.ID, &m.Name, &m.Command, &argsJSON, &m.Enabled); err == nil {
+			_ = json.Unmarshal([]byte(argsJSON), &m.Args)
+			out = append(out, m)
+		}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteMCP(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM mcp_servers WHERE id=?`, id)
+	return err
+}
+
+// PendingApproval is one held request awaiting an approve/deny decision.
+type PendingApproval struct {
+	ID        int64     `json:"id"`
+	Method    string    `json:"method"`
+	Host      string    `json:"host"`
+	Path      string    `json:"path"`
+	Dump      string    `json:"dump"`
+	Decision  *string   `json:"decision"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (s *Store) InsertPendingApproval(method, host, path, dump string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO pending_approvals (method, host, path, dump, created_at) VALUES (?,?,?,?,?)`,
+		method, host, path, dump, SqlNow())
+	if err != nil {
+		return 0, err
+	}
+	id, _ := res.LastInsertId()
+	return id, nil
+}
+
+func (s *Store) SetApprovalDecision(id int64, decision string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`UPDATE pending_approvals SET decision=?, decided_at=? WHERE id=?`, decision, SqlNow(), id)
+	return err
+}
+
+// GetApproval fetches one approval row (poll for decision).
+func (s *Store) GetApproval(id int64) (*PendingApproval, error) {
+	row := s.db.QueryRow(`SELECT id, method, host, path, dump, decision, created_at FROM pending_approvals WHERE id=?`, id)
+	var a PendingApproval
+	var dec sql.NullString
+	var ct any
+	if err := row.Scan(&a.ID, &a.Method, &a.Host, &a.Path, &a.Dump, &dec, &ct); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if dec.Valid {
+		a.Decision = &dec.String
+	}
+	a.CreatedAt = parseDBTime(ct)
+	return &a, nil
+}
+
+func (s *Store) ListPendingApprovals(onlyPending bool) ([]PendingApproval, error) {
+	q := `SELECT id, method, host, path, dump, decision, created_at FROM pending_approvals`
+	if onlyPending {
+		q += ` WHERE decision IS NULL`
+	}
+	q += ` ORDER BY id DESC LIMIT 200`
+	rows, err := s.db.Query(q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PendingApproval
+	for rows.Next() {
+		var a PendingApproval
+		var dec sql.NullString
+		var ct any
+		if err := rows.Scan(&a.ID, &a.Method, &a.Host, &a.Path, &a.Dump, &dec, &ct); err == nil {
+			if dec.Valid {
+				a.Decision = &dec.String
+			}
+			a.CreatedAt = parseDBTime(ct)
+			out = append(out, a)
+		}
+	}
+	return out, rows.Err()
 }

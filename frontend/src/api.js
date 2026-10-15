@@ -44,6 +44,13 @@ export const api = {
   deleteConv:     (id) => req('DELETE', `/agent/conversations/${id}`),
   agentChat:      (body) => req('POST', '/agent/chat', body),
   llmUsage:       () => req('GET', '/llm/usage'),
+  autopilot:      (body) => req('POST', '/agent/autopilot', body),
+  listMCP:        () => req('GET', '/mcp'),
+  createMCP:      (body) => req('POST', '/mcp', body),
+  deleteMCP:      (id) => req('DELETE', `/mcp/${id}`),
+  listApprovals:  (pending) => req('GET', `/approvals${pending ? '?pending=1' : ''}`),
+  decideApproval: (id, decision) => req('POST', `/approvals/${id}/decide`, { decision }),
+  sideAsk:        (runId, question) => req('POST', `/runs/${runId}/ask`, { run_id: runId, question }),
 
   // Asset graph + companies
   listCompanies:  () => req('GET', '/companies'),
