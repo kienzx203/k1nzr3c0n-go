@@ -170,6 +170,8 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 		writeDetail(w, 502, "agent error: "+err.Error())
 		return
 	}
+	_ = s.St.InsertLLMUsage(prof.ID, convID,
+		res.UsageTotals.PromptTokens, res.UsageTotals.CompletionTokens, res.UsageTotals.TotalTokens)
 	writeJSON(w, 200, map[string]any{
 		"conversation_id": convID,
 		"reply":           res.Reply,
@@ -177,6 +179,15 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 		"rounds":          res.Rounds,
 		"tokens":          res.UsageTotals,
 	})
+}
+
+func (s *Server) handleLLMUsage(w http.ResponseWriter, r *http.Request) {
+	u, err := s.St.LLMUsageTotals()
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, u)
 }
 
 // ── companies + asset graph ──────────────────────────────────────────────────
@@ -351,6 +362,37 @@ func (s *Server) handleCaptureToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"enabled": body.Enabled, "addr": captureAddr()})
+}
+
+func (s *Server) handleRulesList(w http.ResponseWriter, r *http.Request) {
+	rules, err := s.St.ListTrafficRules()
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, rules)
+}
+
+func (s *Server) handleRulesCreate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Pattern string `json:"pattern"`
+		Action  string `json:"action"`
+	}
+	if err := readJSON(r, &body); err != nil || strings.TrimSpace(body.Pattern) == "" {
+		writeDetail(w, 422, "pattern is required")
+		return
+	}
+	if err := s.St.CreateTrafficRule(strings.TrimSpace(body.Pattern), body.Action); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 201, map[string]any{"ok": true})
+}
+
+func (s *Server) handleRulesDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := parseID(r.PathValue("id"))
+	_ = s.St.DeleteTrafficRule(id)
+	w.WriteHeader(204)
 }
 
 func captureAddr() string {

@@ -233,6 +233,11 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleConnect(w, r)
 		return
 	}
+	// traffic rules: block/flag before anything else
+	if rule, hit := h.p.st.MatchTrafficRule(hostOnly(r.Host)); hit && rule.Action == "block" {
+		http.Error(w, "blocked by traffic rule: "+rule.Pattern, http.StatusForbidden)
+		return
+	}
 	// plain HTTP proxy request; run id rides in Proxy-Authorization basic user
 	rid := runIDFromAuth(r.Header.Get("Proxy-Authorization"))
 	h.p.pushRun(rid)
@@ -242,6 +247,10 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *proxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
+	if rule, hit := h.p.st.MatchTrafficRule(hostOnly(host)); hit && rule.Action == "block" {
+		_, _ = w.Write([]byte("HTTP/1.1 403 Blocked by traffic rule\r\nContent-Length: 0\r\n\r\n"))
+		return
+	}
 	runID := runIDFromAuth(r.Header.Get("Proxy-Authorization"))
 	// keep the binding visible for the tunneled requests too
 	h.p.pushRun(runID)

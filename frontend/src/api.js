@@ -43,6 +43,7 @@ export const api = {
   convMessages:   (id) => req('GET', `/agent/conversations/${id}/messages`),
   deleteConv:     (id) => req('DELETE', `/agent/conversations/${id}`),
   agentChat:      (body) => req('POST', '/agent/chat', body),
+  llmUsage:       () => req('GET', '/llm/usage'),
 
   // Asset graph + companies
   listCompanies:  () => req('GET', '/companies'),
@@ -57,6 +58,9 @@ export const api = {
   bindTraffic:    (body) => req('POST', '/traffic/bind', body),
   captureStatus:  () => req('GET', '/capture/status'),
   captureToggle:  (enabled) => req('POST', '/capture/toggle', { enabled }),
+  listRules:      () => req('GET', '/traffic/rules'),
+  createRule:     (body) => req('POST', '/traffic/rules', body),
+  deleteRule:     (id) => req('DELETE', `/traffic/rules/${id}`),
 
   // Network & DNS diagnostics + one-click fix
   networkCheck: () => req('GET', '/network/check'),

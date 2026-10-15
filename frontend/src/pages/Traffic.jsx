@@ -27,6 +27,28 @@ export default function Traffic() {
   const [detail, setDetail] = useState(null)
   const [capture, setCapture] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [rules, setRules] = useState([])
+
+  const loadRules = useCallback(async () => {
+    try { setRules(await api.listRules()) } catch {}
+  }, [])
+  useEffect(() => { loadRules() }, [loadRules])
+
+  async function addRule(e) {
+    e.preventDefault()
+    const pattern = e.target.elements.pattern.value.trim()
+    const action = e.target.elements.action.value
+    if (!pattern) return
+    try {
+      await api.createRule({ pattern, action })
+      e.target.reset()
+      loadRules()
+    } catch {}
+  }
+
+  async function removeRule(id) {
+    try { await api.deleteRule(id); loadRules() } catch {}
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -93,6 +115,35 @@ export default function Traffic() {
             ? <button className="btn btn-danger flex items-center gap-1.5" onClick={toggle}><Icon d={I.stop} /> Stop</button>
             : <button className="btn btn-primary flex items-center gap-1.5" onClick={toggle}><Icon d={I.play} /> Start capture</button>}
         </div>
+      </div>
+
+      {/* rules */}
+      <div className="card p-3 mb-4">
+        <div className="flex items-center gap-3 mb-2">
+          <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>
+            Traffic rules — chặn (block) host khớp pattern
+          </p>
+          <form onSubmit={addRule} className="flex gap-1.5 ml-auto">
+            <input name="pattern" className="input w-52 text-[11px]" placeholder="pattern, vd: .gov.vn" />
+            <select name="action" className="input w-20 text-[11px]">
+              <option value="block">block</option>
+              <option value="flag">flag</option>
+            </select>
+            <button className="btn btn-accent text-[11px]" type="submit">Add</button>
+          </form>
+        </div>
+        {rules.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {rules.map(r => (
+              <span key={r.id} className="badge text-[10px] font-mono cursor-pointer group"
+                    style={{ background: r.action === 'block' ? 'rgba(248,81,73,.12)' : 'rgba(240,180,41,.12)',
+                             color: r.action === 'block' ? 'var(--red)' : 'var(--amber)' }}
+                    title="click để xóa" onClick={() => removeRule(r.id)}>
+                {r.action === 'block' ? '⛔' : '⚑'} {r.pattern} <span className="opacity-0 group-hover:opacity-100">✕</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
