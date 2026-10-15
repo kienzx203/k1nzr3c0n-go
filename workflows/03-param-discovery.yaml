@@ -1,0 +1,157 @@
+name: 03-param-discovery
+description: 'Authenticated parameter discovery: collect URLs (fallparams/gau/katana) → extract existing params → brute-force (arjun/x8/ffuf) with session/token headers → report'
+vars:
+  session_cookie: ''
+  auth_header: ''
+  custom_header: ''
+  method: GET
+  run_gau: 'true'
+  run_fallparams: 'true'
+  run_katana: 'true'
+  run_arjun: 'true'
+  run_x8: 'true'
+  run_ffuf_params: 'true'
+  run_nuclei_params: 'true'
+  katana_depth: '3'
+  katana_concurrency: '20'
+  arjun_rate: '10'
+  arjun_threads: '5'
+  ffuf_threads: '40'
+  ffuf_filter_size: ''
+  param_wordlist: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/params-medium.txt
+  httpx_threads: '50'
+  nuclei_rl: '100'
+  nuclei_timeout: '10'
+steps:
+- id: httpx_probe
+  name: '[probe] httpx — fingerprint target với auth headers'
+  shell: true
+  skip_if_exists: true
+  timeout: 3m
+  run: '_H=''''; test -n ''{vars.session_cookie}'' && _H="$_H -H ''Cookie: {vars.session_cookie}''"; test -n ''{vars.auth_header}''    && _H="$_H -H ''Authorization: {vars.auth_header}''"; test -n ''{vars.custom_header}''  && _H="$_H -H ''{vars.custom_header}''"; eval "echo ''{target}'' | httpx -silent -json -title -tech-detect -status-code -content-length -follow-redirects -threads {vars.httpx_threads} $_H -o {workspace}/httpx_probe.jsonl 2>/dev/null" || true; touch {workspace}/httpx_probe.jsonl; TECH=$(jq -r ''.tech[]?'' {workspace}/httpx_probe.jsonl 2>/dev/null | sort -u | tr ''\n'' '','' | sed ''s/,$//''); printf ''Target  : {target}\nMethod  : {vars.method}\nAuth    : cookie=%s auth=%s\nTech    : %s\n'' "$(test -n ''{vars.session_cookie}'' && echo yes || echo no)" "$(test -n ''{vars.auth_header}'' && echo yes || echo no)" "${TECH:-unknown}" > {workspace}/stats.txt'
+  outputs:
+    probe: '{workspace}/httpx_probe.jsonl'
+  _phase: scan
+- id: collect_urls
+  name: '[crawl] gau + fallparams + katana — collect URLs for param analysis'
+  optional: true
+  fanout_concurrency: 3
+  fanout_timeout_default: 20m
+  fanout:
+  - id: gau_run
+    shell: true
+    skip_if_exists: true
+    optional: true
+    when: '{vars.run_gau}'
+    run: 'DOMAIN=$(echo ''{target}'' | sed ''s|https\?://||'' | cut -d/ -f1 | cut -d: -f1); gau "$DOMAIN" --subs --threads 5 --timeout 30 --providers otx,urlscan 2>/dev/null | sort -u > {workspace}/gau_urls.txt || true; touch {workspace}/gau_urls.txt; printf ''gau          : %s URLs\n'' "$(wc -l < {workspace}/gau_urls.txt)" >> {workspace}/stats.txt'
+    outputs:
+      urls: '{workspace}/gau_urls.txt'
+  - id: fallparams_run
+    shell: true
+    skip_if_exists: true
+    optional: true
+    when: '{vars.run_fallparams}'
+    run: 'DOMAIN=$(echo ''{target}'' | sed ''s|https\?://||'' | cut -d/ -f1 | cut -d: -f1); URL=$(echo ''{target}'' | grep -oP ''https?://[^/]+'' || echo "https://$DOMAIN"); fallparams -u "$URL" -c -d 2 -o {workspace}/paramspider_urls.txt 2>/dev/null || true; touch {workspace}/paramspider_urls.txt; printf ''fallparams   : %s URLs\n'' "$(wc -l < {workspace}/paramspider_urls.txt)" >> {workspace}/stats.txt'
+    outputs:
+      urls: '{workspace}/paramspider_urls.txt'
+  - id: katana_run
+    shell: true
+    skip_if_exists: true
+    optional: true
+    when: '{vars.run_katana}'
+    run: '_H=''''; test -n ''{vars.session_cookie}'' && _H="$_H -H ''Cookie: {vars.session_cookie}''"; test -n ''{vars.auth_header}''    && _H="$_H -H ''Authorization: {vars.auth_header}''"; test -n ''{vars.custom_header}''  && _H="$_H -H ''{vars.custom_header}''"; eval "katana -u {target} -d {vars.katana_depth} -c {vars.katana_concurrency} -jc -kf all -silent $_H -o {workspace}/katana_urls.txt 2>/dev/null" || true; touch {workspace}/katana_urls.txt; printf ''katana       : %s URLs\n'' "$(wc -l < {workspace}/katana_urls.txt)" >> {workspace}/stats.txt'
+    outputs:
+      urls: '{workspace}/katana_urls.txt'
+  _phase: crawl
+- id: merge_collected
+  name: merge collected URLs — filter URLs containing parameters
+  depends_on:
+  - collect_urls
+  # If all collection flags (run_gau/run_fallparams/run_katana) are off,
+  # collect_urls ends up 'skipped' and the engine would skip this merge step
+  # and everything downstream. The cat fallbacks tolerate missing files.
+  run_on_failed_deps: true
+  shell: true
+  run: '(cat {workspace}/gau_urls.txt 2>/dev/null; cat {workspace}/paramspider_urls.txt 2>/dev/null; cat {workspace}/katana_urls.txt 2>/dev/null) | sort -u > {workspace}/all_urls.txt || true; touch {workspace}/all_urls.txt; grep ''[?&][a-zA-Z0-9_%-]\+='' {workspace}/all_urls.txt 2>/dev/null | sort -u > {workspace}/urls_with_params.txt || true; touch {workspace}/urls_with_params.txt; printf ''Total URLs   : %s\nURLs w/ params: %s\n'' "$(wc -l < {workspace}/all_urls.txt)" "$(wc -l < {workspace}/urls_with_params.txt)" >> {workspace}/stats.txt'
+  outputs:
+    all_urls: '{workspace}/all_urls.txt'
+    param_urls: '{workspace}/urls_with_params.txt'
+  _phase: process
+- id: extract_param_names
+  name: '[process] extract existing param names → augment brute-force wordlist'
+  depends_on:
+  - merge_collected
+  shell: true
+  run: 'grep -oP ''[?&][a-zA-Z0-9_%-]+='' {workspace}/urls_with_params.txt 2>/dev/null | tr -d ''?&='' | sort -u > {workspace}/found_params.txt || true; touch {workspace}/found_params.txt; (cat {vars.param_wordlist} 2>/dev/null; cat {workspace}/found_params.txt) | sort -u > {workspace}/combined_wordlist.txt || true; touch {workspace}/combined_wordlist.txt; printf ''Known params : %s (wordlist: %s + found: %s)\n'' "$(wc -l < {workspace}/combined_wordlist.txt)" "$(wc -l < {vars.param_wordlist} 2>/dev/null || echo 0)" "$(wc -l < {workspace}/found_params.txt)" >> {workspace}/stats.txt'
+  outputs:
+    found_params: '{workspace}/found_params.txt'
+    combined_wordlist: '{workspace}/combined_wordlist.txt'
+  _phase: process
+- id: brute_params
+  name: '[brute] arjun + x8 + ffuf — parameter brute-force với auth headers'
+  depends_on:
+  - extract_param_names
+  optional: true
+  fanout_concurrency: 3
+  fanout_timeout_default: 40m
+  fanout:
+  - id: arjun_scan
+    shell: true
+    skip_if_exists: true
+    optional: true
+    when: '{vars.run_arjun}'
+    run: '_H=''''; test -n ''{vars.session_cookie}'' && _H="$_H -H ''Cookie: {vars.session_cookie}''"; test -n ''{vars.auth_header}''    && _H="$_H -H ''Authorization: {vars.auth_header}''"; test -n ''{vars.custom_header}''  && _H="$_H -H ''{vars.custom_header}''"; WLIST=''''; test -s {workspace}/combined_wordlist.txt && WLIST=''-w {workspace}/combined_wordlist.txt''; eval "arjun -u {target} -m {vars.method} --rate-limit {vars.arjun_rate} -t {vars.arjun_threads} $WLIST $_H -oJ {workspace}/arjun.json 2>/dev/null" || true; touch {workspace}/arjun.json; PARAMS=$(jq -r ''.[] | .params[]?'' {workspace}/arjun.json 2>/dev/null | wc -l || echo 0); printf ''arjun params : %s found\n'' "$PARAMS" >> {workspace}/stats.txt'
+    outputs:
+      results: '{workspace}/arjun.json'
+  - id: x8_scan
+    shell: true
+    skip_if_exists: true
+    optional: true
+    when: '{vars.run_x8}'
+    run: '_H=''''; test -n ''{vars.session_cookie}'' && _H="$_H -H ''Cookie: {vars.session_cookie}''"; test -n ''{vars.auth_header}''    && _H="$_H -H ''Authorization: {vars.auth_header}''"; test -n ''{vars.custom_header}''  && _H="$_H -H ''{vars.custom_header}''"; WLIST=''''; test -s {workspace}/combined_wordlist.txt && WLIST="-w {workspace}/combined_wordlist.txt"; eval "x8 -u ''{target}/?FUZZ=1'' -X {vars.method} --output-format json $WLIST $_H -o {workspace}/x8_params.json 2>/dev/null" || true; touch {workspace}/x8_params.json; FOUND=$(jq -r ''.[] | .name'' {workspace}/x8_params.json 2>/dev/null | wc -l || echo 0); printf ''x8 params    : %s found\n'' "$FOUND" >> {workspace}/stats.txt'
+    outputs:
+      results: '{workspace}/x8_params.json'
+  - id: ffuf_scan
+    shell: true
+    skip_if_exists: true
+    optional: true
+    when: '{vars.run_ffuf_params}'
+    run: '_H=''''; test -n ''{vars.session_cookie}'' && _H="$_H -H ''Cookie: {vars.session_cookie}''"; test -n ''{vars.auth_header}''    && _H="$_H -H ''Authorization: {vars.auth_header}''"; test -n ''{vars.custom_header}''  && _H="$_H -H ''{vars.custom_header}''"; WLIST={workspace}/combined_wordlist.txt; test -s "$WLIST" || WLIST={vars.param_wordlist}; FSIZE=''''; test -n ''{vars.ffuf_filter_size}'' && FSIZE="-fs {vars.ffuf_filter_size}"; eval "ffuf -u ''{target}?FUZZ=k1probe'' -w $WLIST -X {vars.method} -t {vars.ffuf_threads} -ac -json $FSIZE $_H -o {workspace}/ffuf_params.json 2>/dev/null" || true; touch {workspace}/ffuf_params.json; FOUND=$(jq -r ''.results[]?.input.FUZZ'' {workspace}/ffuf_params.json 2>/dev/null | wc -l || echo 0); printf ''ffuf params  : %s found\n'' "$FOUND" >> {workspace}/stats.txt'
+    outputs:
+      results: '{workspace}/ffuf_params.json'
+  _phase: brute
+- id: merge_results
+  name: merge all discovered parameters
+  depends_on:
+  - brute_params
+  shell: true
+  run: '(jq -r ''.[] | .params[]?'' {workspace}/arjun.json 2>/dev/null || true; jq -r ''.[] | .name'' {workspace}/x8_params.json 2>/dev/null || true; jq -r ''.results[]?.input.FUZZ'' {workspace}/ffuf_params.json 2>/dev/null || true; cat {workspace}/found_params.txt 2>/dev/null || true) | grep -v ''^null$'' | grep -v ''^\s*$'' | sort -u > {workspace}/all_params.txt || true; touch {workspace}/all_params.txt; printf ''All params   : %s unique\n'' "$(wc -l < {workspace}/all_params.txt)" >> {workspace}/stats.txt'
+  outputs:
+    all_params: '{workspace}/all_params.txt'
+  _phase: process
+- id: nuclei_params
+  name: '[nuclei] scan discovered param endpoints for vulns'
+  depends_on:
+  - merge_results
+  when: '{vars.run_nuclei_params}'
+  optional: true
+  skip_if_exists: true
+  timeout: 20m
+  shell: true
+  run: "_H=''; test -n '{vars.session_cookie}' && _H=\"$_H -H 'Cookie: {vars.session_cookie}'\"; test -n '{vars.auth_header}'    && _H=\"$_H -H 'Authorization: {vars.auth_header}'\"; test -n '{vars.custom_header}'  && _H=\"$_H -H '{vars.custom_header}'\"; test -s {workspace}/all_params.txt || { touch {workspace}/nuclei_params.jsonl; exit 0; }; head -200 {workspace}/all_params.txt | while IFS= read -r param; do\n  echo \"{target}?$param=k1test\";\ndone > {workspace}/param_probe_urls.txt; eval \"nuclei -l {workspace}/param_probe_urls.txt -t /root/nuclei-templates/http/exposures/ -rl {vars.nuclei_rl} -timeout {vars.nuclei_timeout} -silent -jsonl $_H -o {workspace}/nuclei_params.jsonl 2>/dev/null\" || true; touch {workspace}/nuclei_params.jsonl; printf 'nuclei params: %s findings\\n' \"$(wc -l < {workspace}/nuclei_params.jsonl)\" >> {workspace}/stats.txt"
+  outputs:
+    results: '{workspace}/nuclei_params.jsonl'
+  _phase: vuln
+- id: final_report
+  name: final report — consolidate all parameter discovery findings
+  run_on_failed_deps: true
+  depends_on:
+  - httpx_probe
+  - merge_collected
+  - extract_param_names
+  - brute_params
+  - merge_results
+  - nuclei_params
+  shell: true
+  run: 'TOTAL_URL=$(wc -l < {workspace}/all_urls.txt 2>/dev/null || echo 0); PARAM_URL=$(wc -l < {workspace}/urls_with_params.txt 2>/dev/null || echo 0); FOUND_P=$(wc -l < {workspace}/found_params.txt 2>/dev/null || echo 0); WORDLIST=$(wc -l < {workspace}/combined_wordlist.txt 2>/dev/null || echo 0); ARJUN=$(jq -r ''.[] | .params[]?'' {workspace}/arjun.json 2>/dev/null | wc -l || echo 0); X8=$(jq -r ''.[] | .name'' {workspace}/x8_params.json 2>/dev/null | wc -l || echo 0); FFUF=$(jq -r ''.results[]?.input.FUZZ'' {workspace}/ffuf_params.json 2>/dev/null | wc -l || echo 0); ALL=$(wc -l < {workspace}/all_params.txt 2>/dev/null || echo 0); NP=$(wc -l < {workspace}/nuclei_params.jsonl 2>/dev/null || echo 0); TECH=$(jq -r ''.tech[]?'' {workspace}/httpx_probe.jsonl 2>/dev/null | sort -u | tr ''\n'' '','' | sed ''s/,$//'' || echo ''?''); AUTH_INFO="cookie=$(test -n ''{vars.session_cookie}'' && echo yes || echo no) / auth=$(test -n ''{vars.auth_header}'' && echo yes || echo no)"; printf ''# Parameter Discovery — {target}\n\nTech    : %s\nAuth    : %s\nMethod  : {vars.method}\n\n## URL Collection\n- Total URLs collected : %s\n- URLs with parameters : %s\n- Existing param names : %s\n- Combined wordlist    : %s entries\n\n## Brute-force Results\n- arjun  : **%s** parameters\n- x8     : **%s** parameters\n- ffuf   : **%s** parameters\n\n## Summary\n- **Total unique parameters: %s**\n- nuclei findings : %s\n\n## Output Files\n- all_urls.txt, urls_with_params.txt\n- found_params.txt, combined_wordlist.txt, all_params.txt\n- arjun.json, x8_params.json, ffuf_params.json\n- nuclei_params.jsonl, report.md\n'' "$TECH" "$AUTH_INFO" "$TOTAL_URL" "$PARAM_URL" "$FOUND_P" "$WORDLIST" "$ARJUN" "$X8" "$FFUF" "$ALL" "$NP" > {workspace}/report.md 2>/dev/null || true; echo '''' >> {workspace}/report.md; echo ''## Stats'' >> {workspace}/report.md; cat {workspace}/stats.txt >> {workspace}/report.md 2>/dev/null || true; echo '''' >> {workspace}/report.md; echo ''## All Parameters Found'' >> {workspace}/report.md; cat {workspace}/all_params.txt >> {workspace}/report.md 2>/dev/null || true; cat {workspace}/report.md'
+  _phase: report

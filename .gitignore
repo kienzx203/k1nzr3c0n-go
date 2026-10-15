@@ -1,0 +1,22 @@
+# build artifacts
+k1nzr3c0n
+*.exe
+frontend/node_modules/
+frontend/dist/
+
+# runtime state
+runs/
+*.db
+*.db-wal
+*.db-shm
+wordlists/*.txt
+!wordlists/.gitkeep
+
+# python
+__pycache__/
+*.pyc
+
+# editor/OS
+.vscode/
+.idea/
+.DS_Store
