@@ -1,9 +1,31 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { api } from '../api.js'
+import { timeAgo } from '../utils.js'
 
-const API = '/api/v1'
+const SUGGESTIONS = [
+  'Recon example.com — register the target and run the full pipeline',
+  'Tóm tắt findings mới nhất theo severity',
+  'Check scope cho sub.example.com rồi launch 02-js-secrets',
+]
+
+function Icon({ d, size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+         strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {d}
+    </svg>
+  )
+}
+const I = {
+  spark: <path d="M8 1.5 9.5 6.5 14.5 8 9.5 9.5 8 14.5 6.5 9.5 1.5 8 6.5 6.5z" />,
+  plus: <path d="M8 3v10M3 8h10" />,
+  gear: <><circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" /></>,
+  send: <path d="M2 8 14 2.5 9.5 14 7.8 9.2z" />,
+  trash: <path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9h6.6L12 4M6.7 7v3.5M9.3 7v3.5" />,
+}
 
 export default function Agent() {
-  const [messages, setMessages] = useState([]) // {role, content, tool_calls}
+  const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [convId, setConvId] = useState(null)
@@ -11,151 +33,222 @@ export default function Agent() {
   const [profiles, setProfiles] = useState([])
   const [profileId, setProfileId] = useState(null)
   const [showConfig, setShowConfig] = useState(false)
-  const [form, setForm] = useState({ name: '', base_url: 'https://api.z.ai/api/paas/v4', api_key: '', model: 'glm-4.7' })
+  const [err, setErr] = useState('')
+  const [form, setForm] = useState({ name: 'GLM', base_url: 'https://api.z.ai/api/paas/v4', api_key: '', model: 'glm-4.7' })
   const bottomRef = useRef(null)
 
-  useEffect(() => { loadConvs(); loadProfiles() }, [])
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, busy])
-
-  async function loadConvs() {
+  const loadConvs = useCallback(async () => {
+    try { setConvs(await api.listConvs()) } catch {}
+  }, [])
+  const loadProfiles = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/agent/conversations`)
-      setConvs(await r.json())
-    } catch {}
-  }
-  async function loadProfiles() {
-    try {
-      const r = await fetch(`${API}/llm`)
-      const p = await r.json()
+      const p = await api.listLLM()
       setProfiles(p)
-      if (p.length) setProfileId(p[0].id)
+      if (p.length && !profileId) setProfileId(p[0].id)
     } catch {}
-  }
+  }, [profileId])
+
+  useEffect(() => { loadConvs(); loadProfiles() }, []) // eslint-disable-line
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, busy])
 
   async function openConv(id) {
     setConvId(id)
-    const r = await fetch(`${API}/agent/conversations/${id}/messages`)
-    const msgs = await r.json()
-    setMessages(msgs)
+    setErr('')
+    try { setMessages(await api.convMessages(id)) } catch (e) { setErr(e.message) }
   }
 
-  async function send() {
-    const text = input.trim()
+  function newChat() { setConvId(null); setMessages([]); setErr('') }
+
+  async function removeConv(id, e) {
+    e.stopPropagation()
+    try {
+      await api.deleteConv(id)
+      if (convId === id) newChat()
+      loadConvs()
+    } catch {}
+  }
+
+  async function send(preset) {
+    const text = (preset || input).trim()
     if (!text || busy) return
     setInput('')
     setMessages(m => [...m, { role: 'user', content: text }])
     setBusy(true)
+    setErr('')
     try {
       const body = { message: text }
       if (convId) body.conversation_id = convId
       if (profileId) body.profile_id = profileId
-      const r = await fetch(`${API}/agent/chat`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await r.json()
-      if (!r.ok) {
-        setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${data.detail || r.statusText}` }])
-      } else {
-        setConvId(data.conversation_id)
-        setMessages(m => [...m, { role: 'assistant', content: data.reply, tool_calls: data.tool_calls }])
-        loadConvs()
-      }
+      const data = await api.agentChat(body)
+      setConvId(data.conversation_id)
+      setMessages(m => [...m, { role: 'assistant', content: data.reply, tool_calls: data.tool_calls }])
+      loadConvs()
     } catch (e) {
-      setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${e.message}` }])
+      setErr(e.message)
+      setMessages(m => [...m, { role: 'assistant', content: '', error: e.message }])
     }
     setBusy(false)
   }
 
   async function createProfile(e) {
     e.preventDefault()
-    const r = await fetch(`${API}/llm`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    })
-    if (r.ok) { setShowConfig(false); loadProfiles() }
+    setErr('')
+    try {
+      await api.createLLM(form)
+      setShowConfig(false)
+      loadProfiles()
+    } catch (e2) { setErr(e2.message) }
   }
-
-  function newChat() { setConvId(null); setMessages([]) }
 
   const noProfile = profiles.length === 0
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16, height: 'calc(100vh - 130px)' }}>
-      {/* sidebar: conversations + profile */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-        <button className="btn" onClick={newChat}>+ New chat</button>
-        <div style={{ overflowY: 'auto', flex: 1, border: '1px solid #232a3a', borderRadius: 8 }}>
-          {convs.map(c => (
-            <div key={c.id} onClick={() => openConv(c.id)}
-                 style={{ padding: '8px 10px', cursor: 'pointer', borderBottom: '1px solid #1b2230',
-                          background: convId === c.id ? '#16281e' : 'transparent', fontSize: 12 }}>
-              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
-              <div style={{ color: '#6e7681', fontSize: 10 }}>{(c.updated_at || '').replace('T', ' ').slice(0, 16)}</div>
-            </div>
-          ))}
-          {!convs.length && <div style={{ padding: 10, color: '#6e7681', fontSize: 12 }}>No conversations yet</div>}
+    <div className="fade-in">
+      {/* page header */}
+      <div className="flex items-center gap-2.5 mb-4">
+        <span className="p-2 rounded-lg" style={{ background: 'var(--surface-3)', color: 'var(--accent)' }}>
+          <Icon d={I.spark} size={17} />
+        </span>
+        <div>
+          <h2 className="text-[15px] font-bold leading-tight">AI Agent</h2>
+          <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+            GLM-driven operator — launches scans, triages findings, maintains the graph
+          </p>
         </div>
-        <select value={profileId || ''} onChange={e => setProfileId(+e.target.value)}
-                style={{ background: '#0d1117', border: '1px solid #232a3a', color: '#e6edf3', borderRadius: 6, padding: 6 }}>
-          {profiles.map(p => <option key={p.id} value={p.id}>{p.name} · {p.model}</option>)}
-        </select>
-        <button className="btn" onClick={() => setShowConfig(v => !v)}>⚙ LLM profile</button>
-        {showConfig && (
-          <form onSubmit={createProfile} style={{ display: 'flex', flexDirection: 'column', gap: 6,
-            border: '1px solid #232a3a', borderRadius: 8, padding: 10 }}>
-            <input placeholder="name" value={form.name} required
-                   onChange={e => setForm({ ...form, name: e.target.value })} />
-            <input placeholder="base_url" value={form.base_url}
-                   onChange={e => setForm({ ...form, base_url: e.target.value })} />
-            <input placeholder="api_key" type="password" value={form.api_key} required
-                   onChange={e => setForm({ ...form, api_key: e.target.value })} />
-            <input placeholder="model" value={form.model}
-                   onChange={e => setForm({ ...form, model: e.target.value })} />
-            <button className="btn" type="submit">Save</button>
-          </form>
-        )}
       </div>
 
-      {/* chat panel */}
-      <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #232a3a', borderRadius: 8, minWidth: 0 }}>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {noProfile && (
-            <div style={{ border: '1px dashed #2ea043', borderRadius: 8, padding: 14, fontSize: 13 }}>
-              ⚙ Chưa cấu hình LLM. Tạo profile GLM/Z.ai ở sidebar (base_url
-              <code> https://api.z.ai/api/paas/v4</code>, model <code>glm-4.7</code>) rồi chat.
-            </div>
-          )}
-          {messages.map((m, i) => (
-            <div key={i} style={{
-              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-              maxWidth: '78%', padding: '10px 12px', borderRadius: 10, fontSize: 13,
-              whiteSpace: 'pre-wrap',
-              background: m.role === 'user' ? '#1f6feb33' : '#161b22',
-              border: '1px solid ' + (m.role === 'user' ? '#1f6feb66' : '#232a3a'),
-            }}>
-              {m.content}
-              {m.tool_calls && m.tool_calls.length > 0 && (
-                <div style={{ marginTop: 6, fontSize: 10, color: '#7ee2a8' }}>
-                  ⚙ tools: {m.tool_calls.join(', ')}
+      <div className="grid gap-4" style={{ gridTemplateColumns: '240px 1fr', minHeight: 'calc(100vh - 170px)' }}>
+        {/* ── sidebar ── */}
+        <div className="flex flex-col gap-2.5 min-w-0">
+          <button className="btn btn-primary flex items-center justify-center gap-1.5" onClick={newChat}>
+            <Icon d={I.plus} /> New chat
+          </button>
+
+          <div className="card flex-1 overflow-y-auto" style={{ padding: 0 }}>
+            <div className="card-header text-[10px]" style={{ padding: '10px 12px' }}>Conversations</div>
+            {convs.map(c => (
+              <div key={c.id} onClick={() => openConv(c.id)}
+                   className="group flex items-center gap-2 px-3 py-2 cursor-pointer border-b transition-colors"
+                   style={{
+                     borderColor: 'var(--border)',
+                     background: convId === c.id ? 'var(--surface-3)' : 'transparent',
+                   }}
+                   onMouseEnter={e => { if (convId !== c.id) e.currentTarget.style.background = 'var(--surface-2)' }}
+                   onMouseLeave={e => { if (convId !== c.id) e.currentTarget.style.background = 'transparent' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11.5px] font-medium truncate" style={{ color: 'var(--text)' }}>{c.title}</div>
+                  <div className="text-[9.5px]" style={{ color: 'var(--text-3)' }}>{timeAgo(c.updated_at)}</div>
                 </div>
-              )}
-            </div>
-          ))}
-          {busy && <div style={{ color: '#6e7681', fontSize: 12, alignSelf: 'flex-start' }}>agent thinking…</div>}
-          <div ref={bottomRef} />
+                <button className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded"
+                        style={{ color: 'var(--text-3)' }} onClick={e => removeConv(c.id, e)} title="Delete">
+                  <Icon d={I.trash} size={12} />
+                </button>
+              </div>
+            ))}
+            {!convs.length && (
+              <div className="px-3 py-4 text-[11px]" style={{ color: 'var(--text-3)' }}>No conversations yet</div>
+            )}
+          </div>
+
+          {/* profile picker */}
+          <select className="input text-[11px]" value={profileId || ''} onChange={e => setProfileId(+e.target.value)}>
+            {profiles.map(p => <option key={p.id} value={p.id}>{p.name} · {p.model}</option>)}
+          </select>
+          <button className="btn flex items-center justify-center gap-1.5" onClick={() => setShowConfig(v => !v)}>
+            <Icon d={I.gear} /> LLM profile
+          </button>
+
+          {showConfig && (
+            <form onSubmit={createProfile} className="card flex flex-col gap-2 p-3 fade-in">
+              <div>
+                <label className="label">Name</label>
+                <input className="input" value={form.name} required onChange={e => setForm({ ...form, name: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Base URL</label>
+                <input className="input font-mono text-[10.5px]" value={form.base_url} onChange={e => setForm({ ...form, base_url: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">API key</label>
+                <input className="input font-mono text-[10.5px]" type="password" required value={form.api_key}
+                       onChange={e => setForm({ ...form, api_key: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Model</label>
+                <input className="input font-mono text-[10.5px]" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} />
+              </div>
+              <button className="btn btn-primary" type="submit">Save profile</button>
+            </form>
+          )}
         </div>
-        <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid #232a3a' }}>
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder="ví dụ: Recon example.com — register target và chạy full pipeline"
-            rows={2}
-            style={{ flex: 1, resize: 'none', background: '#0d1117', color: '#e6edf3',
-                     border: '1px solid #232a3a', borderRadius: 8, padding: 10 }}
-          />
-          <button className="btn" onClick={send} disabled={busy || !input.trim()}>Send</button>
+
+        {/* ── chat ── */}
+        <div className="card flex flex-col min-w-0" style={{ padding: 0 }}>
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+            {noProfile && (
+              <div className="card p-4 text-[12px] leading-relaxed" style={{ borderColor: 'var(--accent)' }}>
+                <p className="font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>⚙ Chưa cấu hình LLM</p>
+                <p style={{ color: 'var(--text-2)' }}>
+                  Tạo profile ở sidebar trái: Base URL <code className="font-mono">https://api.z.ai/api/paas/v4</code>,
+                  model <code className="font-mono">glm-4.7</code>, API key từ Z.ai — rồi bắt đầu chat.
+                </p>
+              </div>
+            )}
+            {!messages.length && !noProfile && (
+              <div className="flex flex-col gap-2 items-start py-6 px-2">
+                <p className="text-[12px] mb-1" style={{ color: 'var(--text-3)' }}>Thử một trong các lệnh nhanh:</p>
+                {SUGGESTIONS.map(s => (
+                  <button key={s} className="btn text-left text-[11.5px]" style={{ maxWidth: 480 }}
+                          onClick={() => send(s)}>{s}</button>
+                ))}
+              </div>
+            )}
+            {messages.map((m, i) => m.role === 'user' ? (
+              <div key={i} className="self-end max-w-[76%] rounded-xl px-3.5 py-2.5 text-[12.5px] whitespace-pre-wrap"
+                   style={{ background: 'rgba(88,166,255,.12)', border: '1px solid rgba(88,166,255,.35)' }}>
+                {m.content}
+              </div>
+            ) : (
+              <div key={i} className="self-start max-w-[80%] rounded-xl px-3.5 py-2.5 text-[12.5px] whitespace-pre-wrap"
+                   style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                {m.content || (m.error && <span style={{ color: 'var(--red)' }}>⚠ {m.error}</span>)}
+                {m.tool_calls?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {m.tool_calls.map((t, j) => (
+                      <span key={j} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-mono"
+                            style={{ background: 'rgba(63,185,80,.12)', color: 'var(--green)' }}>
+                        ⚙ {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {busy && (
+              <div className="self-start flex items-center gap-1.5 text-[11px] px-3 py-2 rounded-xl"
+                   style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
+                <span className="badge badge-running" style={{ padding: '2px 8px' }}>thinking</span>
+                agent đang gọi tools / soạn câu trả lời…
+              </div>
+            )}
+            {err && !busy && !messages.some(m => m.error) && (
+              <div className="self-start text-[11px] px-3 py-2 rounded-lg" style={{ color: 'var(--red)', background: 'rgba(248,81,73,.08)' }}>
+                ⚠ {err}
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          <div className="flex gap-2 p-3 border-t" style={{ borderColor: 'var(--border)' }}>
+            <textarea className="input flex-1 resize-none font-[13px]" rows={2} value={input}
+                      onChange={e => setInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+                      placeholder="ví dụ: Recon example.com — register target rồi chạy full pipeline…" />
+            <button className="btn btn-primary flex items-center gap-1.5 self-stretch px-4" onClick={() => send()}
+                    disabled={busy || !input.trim()}>
+              <Icon d={I.send} /> Send
+            </button>
+          </div>
         </div>
       </div>
     </div>
