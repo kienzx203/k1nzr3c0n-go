@@ -564,6 +564,14 @@ func (r *Runner) ExecuteRun(runID string) {
 	if eng.timedOut.Load() && err != nil {
 		statusErr = &workflow.WorkflowError{Msg: "Run exceeded the task time limit (" + r.Limit.String() + ") and was terminated"}
 	}
+	// The cancel API flips the DB row to "cancelled" before the engine even
+	// unwinds; any terminal error under that condition is a cancellation
+	// (mirrors tasks.py re-fetching the run after kill).
+	if statusErr != nil {
+		if fresh, ferr := r.St.GetRun(runID); ferr == nil && fresh.Status == "cancelled" {
+			statusErr = workflow.ErrCancelled
+		}
+	}
 
 	switch {
 	case statusErr == workflow.ErrPaused:
