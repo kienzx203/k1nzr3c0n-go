@@ -2,6 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── global polish ─────────────────────────────────────────────────────────── */
+* { scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+*::-webkit-scrollbar-track { background: transparent; }
+body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+::selection { background: rgba(88, 166, 255, .30); }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+.fade-in { animation: fade-up .22s ease-out both; }
+
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    k1nzr3c0n design system
    Dark operations-console theme. All shared component classes live here so

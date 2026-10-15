@@ -79,6 +79,21 @@ export default function Dashboard() {
   const [assets, setAssets] = useState(null)
   const [targetsTotal, setTargetsTotal] = useState(null)
   const [showModal, setShowModal] = useState(false)
+  const [ai, setAi] = useState(null)
+
+  useEffect(() => {
+    const loadAI = () => Promise.all([
+      api.listConvs().then(c => c.length).catch(() => 0),
+      api.llmUsage().catch(() => null),
+      api.graphAssets({}).then(r => r.total).catch(() => 0),
+      api.listTraffic({}).then(r => r.total).catch(() => 0),
+      api.listLLM().then(p => p.length).catch(() => 0),
+    ]).then(([convs, usage, graphAssets, traffic, profiles]) =>
+      setAi({ convs, usage, graphAssets, traffic, profiles })).catch(() => {})
+    loadAI()
+    const tAI = setInterval(loadAI, 20000)
+    return () => clearInterval(tAI)
+  }, [])
 
   useEffect(() => {
     const load = () => api.getStats().then(setStats).catch(() => {})
@@ -281,6 +296,36 @@ export default function Dashboard() {
           </table>
         )}
       </div>
+
+      {/* ── AI & Intel ─────────────────────────────────────────────── */}
+      {ai && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+          <div className="card card-hover p-4 cursor-pointer fade-in" onClick={() => navigate('/agent')}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>AI Agent</p>
+            <p className="text-[24px] leading-none font-bold font-mono mt-2" style={{ color: 'var(--accent)' }}>
+              {ai.profiles > 0 ? ai.convs : '—'}
+            </p>
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>
+              {ai.profiles > 0 ? `${ai.profiles} LLM profile · ${ai.usage?.turns || 0} turns` : 'chưa cấu hình LLM'}
+            </p>
+          </div>
+          <div className="card card-hover p-4 cursor-pointer fade-in" onClick={() => navigate('/graph')}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>Asset Graph</p>
+            <p className="text-[24px] leading-none font-bold font-mono mt-2" style={{ color: 'var(--green)' }}>{ai.graphAssets}</p>
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>assets across companies</p>
+          </div>
+          <div className="card card-hover p-4 cursor-pointer fade-in" onClick={() => navigate('/traffic')}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>Traffic Evidence</p>
+            <p className="text-[24px] leading-none font-bold font-mono mt-2" style={{ color: 'var(--orange)' }}>{ai.traffic}</p>
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>captured pairs</p>
+          </div>
+          <div className="card card-hover p-4 cursor-pointer fade-in" onClick={() => window.open('/api/v1/report/engagement', '_blank')}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>Engagement Report</p>
+            <p className="text-[24px] leading-none font-bold font-mono mt-2" style={{ color: 'var(--amber)' }}>⬇</p>
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>markdown · all open vulns</p>
+          </div>
+        </div>
+      )}
 
       {showModal && <NewRunModal onClose={() => setShowModal(false)} onCreated={() => setShowModal(false)} />}
     </div>

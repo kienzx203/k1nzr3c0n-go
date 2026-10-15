@@ -38,6 +38,18 @@ func Tools() []ToolDef {
 	}
 	return []ToolDef{
 		{Type: "function", Function: FunctionSpec{
+			Name:        "list_skills",
+			Description: "List available skill playbooks (procedural guidance packages).",
+			Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		}},
+		{Type: "function", Function: FunctionSpec{
+			Name:        "load_skill",
+			Description: "Load one skill playbook and follow its instructions for the rest of this task.",
+			Parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"name": str("skill name from list_skills"),
+			}, "required": []any{"name"}},
+		}},
+		{Type: "function", Function: FunctionSpec{
 			Name:        "list_workflows",
 			Description: "List available workflow YAML files with step counts.",
 			Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
@@ -164,6 +176,22 @@ func Exec(st *store.Store, r *runner.Runner, call FunctionCall) string {
 	okJSON := func(v any) string { b, _ := json.Marshal(v); return string(b) }
 
 	switch call.Name {
+	case "list_skills":
+		var out []map[string]any
+		for _, sk := range LoadSkillsDir() {
+			out = append(out, map[string]any{"name": sk.Name, "description": sk.Description})
+		}
+		return okJSON(out)
+
+	case "load_skill":
+		want := arg("name")
+		for _, sk := range LoadSkillsDir() {
+			if sk.Name == want || strings.EqualFold(sk.Name, want) {
+				return okJSON(map[string]any{"name": sk.Name, "instructions": sk.Instructions})
+			}
+		}
+		return `{"error": "unknown skill ` + want + `"}`
+
 	case "list_workflows":
 		entries, err := os.ReadDir(workflowsDir())
 		if err != nil {

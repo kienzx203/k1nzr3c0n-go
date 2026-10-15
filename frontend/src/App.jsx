@@ -17,6 +17,7 @@ import Agent from './pages/Agent.jsx'
 import AssetGraph from './pages/AssetGraph.jsx'
 import Traffic from './pages/Traffic.jsx'
 import CommandPalette from './components/CommandPalette.jsx'
+import StatusFooter from './components/StatusFooter.jsx'
 import { getTheme, applyTheme } from './theme.js'
 
 /* ── Inline icon set (16px, stroke) ───────────────────────────────────────── */
@@ -208,7 +209,8 @@ export default function App() {
         </Routes>
       </main>
 
-      <CommandPalette />
+      <StatusFooter />
+        <CommandPalette />
     </div>
   )
 }

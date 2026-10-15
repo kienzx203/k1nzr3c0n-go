@@ -134,6 +134,23 @@ CREATE TABLE IF NOT EXISTS traffic (
 );
 CREATE INDEX IF NOT EXISTS ix_traffic_host ON traffic (host);
 CREATE INDEX IF NOT EXISTS ix_traffic_finding ON traffic (finding_id);
+CREATE TABLE IF NOT EXISTS traffic_rules (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	pattern VARCHAR(512) NOT NULL,
+	action VARCHAR(10) NOT NULL DEFAULT 'block',
+	enabled BOOLEAN DEFAULT 1,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS llm_usage (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	profile_id INTEGER,
+	conversation_id INTEGER,
+	prompt_tokens INTEGER NOT NULL DEFAULT 0,
+	completion_tokens INTEGER NOT NULL DEFAULT 0,
+	total_tokens INTEGER NOT NULL DEFAULT 0,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_llm_usage_conv ON llm_usage (conversation_id);
 `
 
 // ── llm profiles ─────────────────────────────────────────────────────────────
@@ -497,3 +514,78 @@ func (s *Store) BindTrafficEvidence(trafficID, findingID int64) error {
 }
 
 var _ = strings.TrimSpace
+
+// InsertLLMUsage records one turn's token usage.
+func (s *Store) InsertLLMUsage(profileID, conversationID int64, prompt, completion, total int) error {
+	_, err := s.db.Exec(`INSERT INTO llm_usage (profile_id, conversation_id, prompt_tokens, completion_tokens, total_tokens, created_at)
+		VALUES (?,?,?,?,?,?)`, profileID, conversationID, prompt, completion, total, SqlNow())
+	return err
+}
+
+// LLMUsageSummary aggregates usage over all turns.
+type LLMUsageSummary struct {
+	Turns            int64 `json:"turns"`
+	PromptTokens     int64 `json:"prompt_tokens"`
+	CompletionTokens int64 `json:"completion_tokens"`
+	TotalTokens      int64 `json:"total_tokens"`
+}
+
+func (s *Store) LLMUsageTotals() (LLMUsageSummary, error) {
+	var u LLMUsageSummary
+	err := s.db.QueryRow(`SELECT count(*), COALESCE(SUM(prompt_tokens),0),
+		COALESCE(SUM(completion_tokens),0), COALESCE(SUM(total_tokens),0) FROM llm_usage`).
+		Scan(&u.Turns, &u.PromptTokens, &u.CompletionTokens, &u.TotalTokens)
+	return u, err
+}
+
+// TrafficRule blocks or flags hosts matching a substring pattern.
+type TrafficRule struct {
+	ID      int64  `json:"id"`
+	Pattern string `json:"pattern"`
+	Action  string `json:"action"` // block | flag
+	Enabled bool   `json:"enabled"`
+}
+
+func (s *Store) ListTrafficRules() ([]TrafficRule, error) {
+	rows, err := s.db.Query(`SELECT id, pattern, action, enabled FROM traffic_rules ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TrafficRule
+	for rows.Next() {
+		var r TrafficRule
+		if err := rows.Scan(&r.ID, &r.Pattern, &r.Action, &r.Enabled); err == nil {
+			out = append(out, r)
+		}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateTrafficRule(pattern, action string) error {
+	if action != "flag" {
+		action = "block"
+	}
+	_, err := s.db.Exec(`INSERT INTO traffic_rules (pattern, action, enabled, created_at) VALUES (?,?,1,?)`,
+		pattern, action, SqlNow())
+	return err
+}
+
+func (s *Store) DeleteTrafficRule(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM traffic_rules WHERE id=?`, id)
+	return err
+}
+
+// MatchTrafficRule returns (matched rule, true) for a host — first enabled hit wins.
+func (s *Store) MatchTrafficRule(host string) (TrafficRule, bool) {
+	rules, err := s.ListTrafficRules()
+	if err != nil {
+		return TrafficRule{}, false
+	}
+	for _, r := range rules {
+		if r.Enabled && strings.Contains(strings.ToLower(host), strings.ToLower(r.Pattern)) {
+			return r, true
+		}
+	}
+	return TrafficRule{}, false
+}

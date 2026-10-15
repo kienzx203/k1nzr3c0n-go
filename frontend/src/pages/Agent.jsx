@@ -36,7 +36,8 @@ export default function Agent() {
   const [err, setErr] = useState('')
   const [formErr, setFormErr] = useState('')
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ name: 'GLM', base_url: 'https://api.z.ai/api/paas/v4', api_key: '', model: 'glm-4.7' })
+  const [form, setForm] = useState({ name: 'GLM', base_url: 'https://api.z.ai/api/coding/paas/v4', api_key: '', model: 'glm-4.7' })
+  const [lastTokens, setLastTokens] = useState(null)
   const bottomRef = useRef(null)
 
   const loadConvs = useCallback(async () => {
@@ -83,6 +84,7 @@ export default function Agent() {
       if (profileId) body.profile_id = profileId
       const data = await api.agentChat(body)
       setConvId(data.conversation_id)
+      setLastTokens(data.tokens)
       setMessages(m => [...m, { role: 'assistant', content: data.reply, tool_calls: data.tool_calls }])
       loadConvs()
     } catch (e) {
@@ -186,6 +188,17 @@ export default function Agent() {
                 <input className="input" value={form.name} required onChange={e => setForm({ ...form, name: e.target.value })} />
               </div>
               <div>
+                <label className="label">Preset</label>
+                <select className="input text-[11px]" value={form.base_url}
+                        onChange={e => setForm({ ...form, base_url: e.target.value, model: e.target.selectedOptions[0].dataset.model || form.model })}>
+                  <option value="https://api.z.ai/api/coding/paas/v4" data-model="glm-4.7">Z.ai Coding Plan (OpenAI) — glm-4.7</option>
+                  <option value="https://api.z.ai/api/paas/v4" data-model="glm-4.7">Z.ai General API (balance) — glm-4.7</option>
+                  <option value="https://api.z.ai/api/paas/v4" data-model="glm-4.5-flash">Z.ai Free — glm-4.5-flash</option>
+                  <option value="https://open.bigmodel.cn/api/paas/v4" data-model="glm-4.6">BigModel (CN) — glm-4.6</option>
+                  <option value="">Custom…</option>
+                </select>
+              </div>
+              <div>
                 <label className="label">Base URL</label>
                 <input className="input font-mono text-[10.5px]" value={form.base_url} onChange={e => setForm({ ...form, base_url: e.target.value })} />
               </div>
@@ -266,6 +279,12 @@ export default function Agent() {
           </div>
 
           <div className="flex gap-2 p-3 border-t" style={{ borderColor: 'var(--border)' }}>
+            {lastTokens && (
+              <span className="self-center text-[9.5px] font-mono whitespace-nowrap mr-1" style={{ color: 'var(--text-3)' }}
+                    title="token usage lượt chat cuối">
+                {lastTokens.total_tokens} tok
+              </span>
+            )}
             <textarea className="input flex-1 resize-none font-[13px]" rows={2} value={input}
                       onChange={e => setInput(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
