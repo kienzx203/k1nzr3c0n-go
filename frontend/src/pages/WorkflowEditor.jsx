@@ -3169,7 +3169,7 @@ function YamlModal({ wf, wfName, nodes, edges, onClose, onSave, saving }) {
               Workflow YAML
             </div>
             <div style={{ fontSize: 9.5, color: 'var(--text-2)' }}>
-              {tab === 'live' ? 'State hiện tại trên canvas (có thể chưa lưu)' : `File trên disk: ${wfName}`}
+              {tab === 'live' ? 'Current canvas state (may be unsaved)' : `File on disk: ${wfName}`}
             </div>
           </div>
           {/* Tab switcher */}
@@ -3279,7 +3279,7 @@ function HelpModal({ onClose }) {
           <span style={{ fontSize: 16 }}>◈</span>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>
-              Hướng dẫn sử dụng — Workflow Editor
+              User Guide — Workflow Editor
             </div>
             <div style={{ fontSize: 9.5, color: 'var(--text-2)' }}>
               k1nzr3c0n · Visual Security Workflow Builder
@@ -3294,7 +3294,7 @@ function HelpModal({ onClose }) {
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid #30363d', flexShrink: 0 }}>
-          {[['guide', 'Hướng dẫn'], ['shortcuts', 'Shortcuts'], ['vars', 'Template Vars'], ['tips', 'Tips']].map(([t, label]) => (
+          {[['guide', 'Guide'], ['shortcuts', 'Shortcuts'], ['vars', 'Template Vars'], ['tips', 'Tips']].map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)}
               style={{
                 padding: '8px 18px', fontSize: 10.5, fontWeight: 700,
@@ -3311,23 +3311,23 @@ function HelpModal({ onClose }) {
         {/* Content */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
 
-          {/* ── Hướng dẫn ── */}
+          {/* ── Guide ── */}
           {tab === 'guide' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <Step n={1} title="Tạo workflow mới"
-                desc="Từ trang Workflows, nhấn '+ New Workflow', đặt tên file (vd: api_recon), rồi bấm 'Create & Open'. Một canvas trống sẽ mở ra." />
-              <Step n={2} title="Kéo tool từ Library"
-                desc="Mở tab 'Library' ở panel trái. Các công cụ được nhóm theo phase (Discovery, Scan, Vuln...). Kéo bất kỳ tool nào vào canvas để tạo node mới." />
-              <Step n={3} title="Kết nối các bước"
-                desc="Hover vào node — sẽ thấy handle hình tròn ở hai bên. Kéo từ handle phải (source) sang handle trái (target) của node tiếp theo để tạo dependency." />
-              <Step n={4} title="Cấu hình từng bước"
-                desc="Click vào node bất kỳ để mở Config Panel bên phải. Chỉnh sửa: tên, phase, lệnh run, when condition, timeout, retries, optional flag." />
-              <Step n={5} title="Thiết lập biến (Variables)"
-                desc="Tab 'Vars' hiển thị tất cả biến của workflow. Các biến boolean có toggle bật/tắt ngay. Thêm biến mới bằng ô 'Add Variable' ở cuối." />
-              <Step n={6} title="Lưu và chạy"
-                desc="Nhấn 💾 Save (hoặc Ctrl+S) để ghi YAML xuống disk. Sau đó nhấn ▶ Run, nhập target domain, và workflow sẽ được đẩy vào Celery queue." />
-              <Step n={7} title="Theo dõi live"
-                desc="Khi run đang chạy, WebSocket tự động overlay trạng thái (running ●, ok ✓, failed ✗) lên từng node trên canvas theo thời gian thực." />
+              <Step n={1} title="Create a new workflow"
+                desc="From the Workflows page, click '+ New Workflow', give it a file name (e.g. api_recon), then click 'Create & Open'. An empty canvas opens." />
+              <Step n={2} title="Drag tools from the Library"
+                desc="Open the 'Library' tab in the left panel. Tools are grouped by phase (Discovery, Scan, Vuln…). Drag any tool onto the canvas to create a new node." />
+              <Step n={3} title="Connect the steps"
+                desc="Hover over a node — round handles appear on both sides. Drag from the right (source) handle to the left (target) handle of the next node to create a dependency." />
+              <Step n={4} title="Configure each step"
+                desc="Click any node to open the Config Panel on the right. Edit: name, phase, run command, when condition, timeout, retries, optional flag." />
+              <Step n={5} title="Set up variables"
+                desc="The 'Vars' tab lists every workflow variable. Boolean variables have an inline on/off toggle. Add new variables with the 'Add Variable' box at the bottom." />
+              <Step n={6} title="Save and run"
+                desc="Click 💾 Save (or Ctrl+S) to write the YAML to disk. Then click ▶ Run, enter the target domain, and the workflow is pushed to the Celery queue." />
+              <Step n={7} title="Monitor live"
+                desc="While a run is in progress, WebSocket automatically overlays status (running ●, ok ✓, failed ✗) onto each node on the canvas in real time." />
 
               <div style={{
                 background: '#0a1929', border: '1px solid #0d2d4a',
@@ -3335,15 +3335,15 @@ function HelpModal({ onClose }) {
               }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: '#58a6ff',
                   letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-                  Quy tắc thực thi
+                  Execution rules
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {[
-                    ['Edge A→B', 'B chỉ chạy sau khi A hoàn thành (ok hoặc skipped)'],
-                    ['when: {vars.X}', 'Bước bị bỏ qua nếu var X = false'],
-                    ['optional: true', 'Nếu bước fail, workflow vẫn tiếp tục'],
-                    ['skip_if_exists', 'Bước bị skip nếu output file đã tồn tại (resume mode)'],
-                    ['fanout', 'Danh sách sub-steps chạy song song bên trong một bước'],
+                    ['Edge A→B', 'B runs only after A completes (ok or skipped)'],
+                    ['when: {vars.X}', 'Step is skipped if var X = false'],
+                    ['optional: true', 'If the step fails, the workflow continues'],
+                    ['skip_if_exists', 'Step is skipped if the output file already exists (resume mode)'],
+                    ['fanout', 'List of sub-steps that run in parallel inside one step'],
                   ].map(([rule, desc]) => (
                     <div key={rule} style={{ display: 'flex', gap: 12, fontSize: 10.5 }}>
                       <span style={{ color: '#58a6ff', fontFamily: 'monospace',
@@ -3360,7 +3360,7 @@ function HelpModal({ onClose }) {
           {tab === 'shortcuts' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 10 }}>
-                Keyboard shortcuts trong Workflow Editor:
+                Keyboard shortcuts in the Workflow Editor:
               </div>
               {SHORTCUTS.map(({ key, desc }) => (
                 <div key={key} style={{
@@ -3385,7 +3385,7 @@ function HelpModal({ onClose }) {
           {tab === 'vars' && (
             <div>
               <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 14 }}>
-                Sử dụng các placeholder này trong trường "Run command" của mỗi step:
+                Use these placeholders in each step's "Run command" field:
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {VARS.map(({ v, desc }) => (
@@ -3410,7 +3410,7 @@ function HelpModal({ onClose }) {
               }}>
                 <div style={{ fontSize: 9.5, color: '#a371f7', fontWeight: 700,
                   letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-                  Ví dụ Run command
+                  Run command example
                 </div>
                 <pre style={{ margin: 0, fontSize: 10.5, color: 'var(--text-2)',
                   fontFamily: 'monospace', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
@@ -3419,7 +3419,7 @@ function HelpModal({ onClose }) {
   -o {workspace}/subdomains.txt 2>/dev/null; true`}
                 </pre>
                 <div style={{ marginTop: 8, fontSize: 9.5, color: 'var(--text-3)' }}>
-                  Luôn thêm <code style={{ color: '#a371f7' }}>; true</code> ở cuối để tool không làm fail bước khi không tìm thấy kết quả.
+                  Always append <code style={{ color: '#a371f7' }}>; true</code> so the tool doesn't fail the step when it finds no results.
                 </div>
               </div>
             </div>

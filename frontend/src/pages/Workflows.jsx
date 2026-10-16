@@ -543,7 +543,7 @@ const WORKFLOW_META = {
     steps: 19, tags: ['js', 'secrets', 'crawl', 'nuclei', 'gf', 'trufflehog', 'gitleaks', 'ffuf'],
   },
   '03-param-discovery.yaml': {
-    desc: 'Authenticated parameter discovery — 8 steps: probe với auth headers → fallparams/gau/katana crawl → extract existing params → arjun/x8/ffuf brute-force → merge → report. Hỗ trợ Cookie, Authorization, custom headers',
+    desc: 'Authenticated parameter discovery — 8 steps: probe with auth headers → fallparams/gau/katana crawl → extract existing params → arjun/x8/ffuf brute-force → merge → report. Supports Cookie, Authorization, custom headers',
     steps: 8, tags: ['params', 'auth', 'arjun', 'x8', 'ffuf', 'session'],
   },
 }
