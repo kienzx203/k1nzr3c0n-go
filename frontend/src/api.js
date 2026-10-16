@@ -52,7 +52,11 @@ export const api = {
   agentPrompt:    () => req('GET', '/agent/prompt'),
   llmUsageList:   (limit) => req('GET', `/llm/usage/list?limit=${limit || 100}`),
   workspaceList:  () => req('GET', '/workspace'),
-  workspaceUpload:(fd) => fetch('/api/v1/workspace', { method: 'POST', body: fd }).then(r => r.json()),
+  workspaceUpload: async (fd) => {
+    const res = await fetch(BASE + '/workspace', { method: 'POST', headers: headers(), body: fd })
+    if (!res.ok) throw new Error('upload failed: ' + res.status)
+    return res.json()
+  },
   workspaceDelete:(name) => req('DELETE', `/workspace/${encodeURIComponent(name)}`),
   notifyGet:      () => req('GET', '/notify/settings'),
   notifyPut:      (body) => req('PUT', '/notify/settings', body),
