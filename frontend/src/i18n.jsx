@@ -76,7 +76,7 @@ const DICT = {
 const I18nCtx = createContext({ lang: 'vi', t: k => k })
 
 export function I18nProvider({ children }) {
-  const [lang, setLang] = useState(() => localStorage.getItem('k1z-lang') || 'vi')
+  const [lang, setLang] = useState(() => localStorage.getItem('k1z-lang') || 'en')
   useEffect(() => { localStorage.setItem('k1z-lang', lang) }, [lang])
   const t = key => (DICT[lang] && DICT[lang][key]) || (DICT.en[key] || key)
   return <I18nCtx.Provider value={{ lang, setLang, t }}>{children}</I18nCtx.Provider>

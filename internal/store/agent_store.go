@@ -177,6 +177,12 @@ CREATE TABLE IF NOT EXISTS agent_audit (
 	blocked INTEGER NOT NULL DEFAULT 0,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS notify_settings (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT CHECK (id = 1),
+	webhook_url TEXT NOT NULL DEFAULT '',
+	username TEXT NOT NULL DEFAULT 'k1nzr3c0n'
+);
+INSERT OR IGNORE INTO notify_settings (id, webhook_url, username) VALUES (1, '', 'k1nzr3c0n');
 CREATE TABLE IF NOT EXISTS llm_usage (
 	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 	profile_id INTEGER,
@@ -886,6 +892,58 @@ func (s *Store) UntestedAssets(limit int) ([]Asset, error) {
 		if err := rows.Scan(&a.ID, &a.CompanyID, &a.Type, &a.Value, &a.Meta, &a.Source, &ct); err == nil {
 			a.CreatedAt = parseDBTime(ct)
 			out = append(out, a)
+		}
+	}
+	return out, rows.Err()
+}
+
+// NotifySettings is the single-row webhook configuration.
+type NotifySettings struct {
+	WebhookURL string `json:"webhook_url"`
+	Username   string `json:"username"`
+}
+
+func (s *Store) GetNotifySettings() NotifySettings {
+	var n NotifySettings
+	_ = s.db.QueryRow(`SELECT webhook_url, username FROM notify_settings WHERE id=1`).Scan(&n.WebhookURL, &n.Username)
+	return n
+}
+
+func (s *Store) SetNotifySettings(n NotifySettings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`UPDATE notify_settings SET webhook_url=?, username=? WHERE id=1`, n.WebhookURL, n.Username)
+	return err
+}
+
+// ListLLMUsageRows returns recent usage turns (newest first).
+type LLMUsageRow struct {
+	ID               int64     `json:"id"`
+	ProfileID        int64     `json:"profile_id"`
+	ConversationID   int64     `json:"conversation_id"`
+	PromptTokens     int64     `json:"prompt_tokens"`
+	CompletionTokens int64     `json:"completion_tokens"`
+	TotalTokens      int64     `json:"total_tokens"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+func (s *Store) ListLLMUsageRows(limit int) ([]LLMUsageRow, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.Query(`SELECT id, profile_id, conversation_id, prompt_tokens, completion_tokens, total_tokens, created_at
+		FROM llm_usage ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []LLMUsageRow{}
+	for rows.Next() {
+		var u LLMUsageRow
+		var ct any
+		if err := rows.Scan(&u.ID, &u.ProfileID, &u.ConversationID, &u.PromptTokens, &u.CompletionTokens, &u.TotalTokens, &ct); err == nil {
+			u.CreatedAt = parseDBTime(ct)
+			out = append(out, u)
 		}
 	}
 	return out, rows.Err()

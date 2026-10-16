@@ -20,8 +20,16 @@ type field struct {
 	Short bool   `json:"short"`
 }
 
+// Settings override: set by the server wiring (DB-backed); falls back to env.
+var DBWebhookURL func() string
+
 func send(payload map[string]any) {
 	url := config.WebhookURL()
+	if DBWebhookURL != nil {
+		if u := DBWebhookURL(); u != "" {
+			url = u
+		}
+	}
 	if url == "" {
 		return
 	}
