@@ -1,0 +1,11 @@
+{
+  "name": "scopeweaver-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "node smoke.mjs && node dashboard-token-chart.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.64.0"
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "vectors": [
+    {
+      "input": "en",
+      "expected": "en"
+    },
+    {
+      "input": "EN",
+      "expected": "en"
+    },
+    {
+      "input": " en-US ",
+      "expected": "en"
+    },
+    {
+      "input": "en_GB",
+      "expected": "en"
+    },
+    {
+      "input": "en-invalid",
+      "expected": "en"
+    },
+    {
+      "input": "ko",
+      "expected": "ko"
+    },
+    {
+      "input": "KO_KR",
+      "expected": "ko"
+    },
+    {
+      "input": "ko-invalid",
+      "expected": "ko"
+    },
+    {
+      "input": "zh",
+      "expected": "zh-Hans"
+    },
+    {
+      "input": "ZH",
+      "expected": "zh-Hans"
+    },
+    {
+      "input": "zh-CN",
+      "expected": "zh-Hans"
+    },
+    {
+      "input": "zh_SG",
+      "expected": "zh-Hans"
+    },
+    {
+      "input": " zh-Hans ",
+      "expected": "zh-Hans"
+    },
+    {
+      "input": "zh-Hans-CN",
+      "expected": "zh-Hans"
+    },
+    {
+      "input": "zh-Hans-SG",
+      "expected": "zh-Hans"
+    },
+    {
+      "input": "zh-Hans-TW",
+      "expected": "zh-Hans"
+    },
+    {
+      "input": "zh-Hans-HK",
+      "expected": "zh-Hans"
+    },
+    {
+      "input": "zh-Hant",
+      "expected": ""
+    },
+    {
+      "input": "zh-TW",
+      "expected": ""
+    },
+    {
+      "input": "zh-HK",
+      "expected": ""
+    },
+    {
+      "input": "zh-MO",
+      "expected": ""
+    },
+    {
+      "input": "zh-Hant-CN",
+      "expected": ""
+    },
+    {
+      "input": "zh-Hant-Hans",
+      "expected": ""
+    },
+    {
+      "input": "zh-Hans-Hant",
+      "expected": ""
+    },
+    {
+      "input": "zh-JP",
+      "expected": ""
+    },
+    {
+      "input": "zh-",
+      "expected": ""
+    },
+    {
+      "input": "zh-foo",
+      "expected": ""
+    },
+    {
+      "input": "zh;foo",
+      "expected": ""
+    },
+    {
+      "input": "",
+      "expected": ""
+    },
+    {
+      "input": "fr",
+      "expected": ""
+    }
+  ]
+}
