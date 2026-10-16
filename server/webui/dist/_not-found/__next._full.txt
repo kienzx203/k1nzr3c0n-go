@@ -4,10 +4,10 @@ b:"/_next/static/chunks/165pg9vjshyx1.js"
 c:"/_next/static/chunks/2x1xen_9sot64.js"
 d:"/_next/static/chunks/3x96rbl281zvc.js"
 e:"/_next/static/chunks/33b6yl3cnnkgz.js"
-f:"/_next/static/chunks/1o755b381jri-.js"
+f:"/_next/static/chunks/37voxk1r7fjmf.js"
 10:I[552576,["$a","$b","$c","$d","$e","$f"],"default",1]
 :HL["/_next/static/chunks/3ij6fl1kqv7_b.css","style"]
-:HL["/_next/static/chunks/1k24_i588u_em.css","style"]
+:HL["/_next/static/chunks/24d_9ujz0dtc6.css","style"]
 2:Td56,
     (function () {
       try {
@@ -88,7 +88,7 @@ f:"/_next/static/chunks/1o755b381jri-.js"
   6:X
 7:[["children",{"s":"__PAGE__","h":512,"d":{"r":"$L8","p":false,"v":null}}]]
 4:[["children",{"s":"/_not-found","h":512,"d":{"r":"$L5","p":false,"v":"$6"},"c":"$Q7"}]]
-0:{"P":null,"c":["","_not-found",""],"q":"","i":false,"t":{"t":{"s":"","h":528,"d":{"r":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/3ij6fl1kqv7_b.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}],["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/1k24_i588u_em.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}],["$","script","script-0",{"src":"/_next/static/chunks/3w7s8kbtumcpg.js","async":true,"nonce":"$undefined"}],["$","script","script-1",{"src":"/_next/static/chunks/165pg9vjshyx1.js","async":true,"nonce":"$undefined"}],["$","script","script-2",{"src":"/_next/static/chunks/2x1xen_9sot64.js","async":true,"nonce":"$undefined"}],["$","script","script-3",{"src":"/_next/static/chunks/3x96rbl281zvc.js","async":true,"nonce":"$undefined"}],["$","script","script-4",{"src":"/_next/static/chunks/33b6yl3cnnkgz.js","async":true,"nonce":"$undefined"}],["$","script","script-5",{"src":"/_next/static/chunks/1o755b381jri-.js","async":true,"nonce":"$undefined"}]],["$","html",null,{"lang":"en","data-theme-mode":"light","data-theme-preset":"default","data-content-layout":"full-width","data-navbar-style":"sticky","data-sidebar-variant":"floating","data-sidebar-collapsible":"icon","data-font":"geist","suppressHydrationWarning":true,"children":[["$","head",null,{"children":["$","script",null,{"dangerouslySetInnerHTML":{"__html":"$2"}}]}],"$L3"]}]]}],"p":false,"v":null},"c":"$Q4"},"h":{"r":"$L9","p":false,"v":null}},"m":"$undefined","G":["$10",["$L11","$L12"]],"S":true,"r":"$undefined","s":"$undefined","a":"$undefined","l":"$undefined","p":"$undefined","d":"$undefined","b":"CpPGkW3GBXITO3jDJbIAb"}
+0:{"P":null,"c":["","_not-found",""],"q":"","i":false,"t":{"t":{"s":"","h":528,"d":{"r":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/3ij6fl1kqv7_b.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}],["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/24d_9ujz0dtc6.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}],["$","script","script-0",{"src":"/_next/static/chunks/3w7s8kbtumcpg.js","async":true,"nonce":"$undefined"}],["$","script","script-1",{"src":"/_next/static/chunks/165pg9vjshyx1.js","async":true,"nonce":"$undefined"}],["$","script","script-2",{"src":"/_next/static/chunks/2x1xen_9sot64.js","async":true,"nonce":"$undefined"}],["$","script","script-3",{"src":"/_next/static/chunks/3x96rbl281zvc.js","async":true,"nonce":"$undefined"}],["$","script","script-4",{"src":"/_next/static/chunks/33b6yl3cnnkgz.js","async":true,"nonce":"$undefined"}],["$","script","script-5",{"src":"/_next/static/chunks/37voxk1r7fjmf.js","async":true,"nonce":"$undefined"}]],["$","html",null,{"lang":"en","data-theme-mode":"light","data-theme-preset":"default","data-content-layout":"full-width","data-navbar-style":"sticky","data-sidebar-variant":"floating","data-sidebar-collapsible":"icon","data-font":"geist","suppressHydrationWarning":true,"children":[["$","head",null,{"children":["$","script",null,{"dangerouslySetInnerHTML":{"__html":"$2"}}]}],"$L3"]}]]}],"p":false,"v":null},"c":"$Q4"},"h":{"r":"$L9","p":false,"v":null}},"m":"$undefined","G":["$10",["$L11","$L12"]],"S":true,"r":"$undefined","s":"$undefined","a":"$undefined","l":"$undefined","p":"$undefined","d":"$undefined","b":"_-uVIgGn_oH_NBQmDOJ0n"}
 13:I[80377,["$a","$b","$c","$d","$e","$f"],"LocaleProvider"]
 14:I[87614,["$a","$b","$c","$d","$e","$f"],"TooltipProvider"]
 15:"PreferencesStoreProvider"
@@ -110,11 +110,11 @@ f:"/_next/static/chunks/1o755b381jri-.js"
 8:["$","$1","c",{"children":[["$","$L1c",null,{"Component":"$1a","serverProvidedParams":{"searchParams":{},"params":{},"promises":["$@1d","$@1e"]}}],[["$","script","script-0",{"src":"/_next/static/chunks/3b68_ns8m1v57.js","async":true,"nonce":"$undefined"}]],["$","$L1f",null,{"children":["$","$20",null,{"name":"Next.MetadataOutlet","children":"$@21"}]}]]}]
 9:["$","$1","h",{"children":[["$","meta",null,{"name":"robots","content":"noindex"}],["$","$L23",null,{"children":"$L24"}],["$","$L26",null,{"children":[["$","div",null,{"hidden":true,"children":["$","$20",null,{"name":"Next.Metadata","children":"$L27"}]}],null]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}]
 11:["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/3ij6fl1kqv7_b.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}]
-12:["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/1k24_i588u_em.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}]
+12:["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/24d_9ujz0dtc6.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}]
 6:C
 1d:{}
 1e:"$8:props:children:0:props:serverProvidedParams:params"
 24:[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]
 28:I[349310,["$a","$b","$c","$d","$e","$f"],"IconMark"]
 21:null
-27:[["$","title","0",{"children":"ScopeWeaver — Autonomous Penetration Testing Console"}],["$","meta","1",{"name":"description","content":"Console for an LLM-driven autonomous penetration testing system"}],["$","link","2",{"rel":"icon","href":"/favicon.ico?favicon.1uboyqwm7-s27.ico","sizes":"48x48","type":"image/x-icon"}],["$","link","3",{"rel":"icon","href":"/icon.svg?icon.0uz8ud2z16c8f.svg","sizes":"any","type":"image/svg+xml"}],["$","$L28","4",{}]]
+27:[["$","title","0",{"children":"K1nzr3c0n — Autonomous Penetration Testing Console"}],["$","meta","1",{"name":"description","content":"Console for an LLM-driven autonomous penetration testing system"}],["$","link","2",{"rel":"icon","href":"/favicon.ico?favicon.1uboyqwm7-s27.ico","sizes":"48x48","type":"image/x-icon"}],["$","link","3",{"rel":"icon","href":"/icon.svg?icon.0uz8ud2z16c8f.svg","sizes":"any","type":"image/svg+xml"}],["$","$L28","4",{}]]

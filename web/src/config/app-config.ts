@@ -4,9 +4,9 @@ import packageJson from "../../package.json";
 const currentYear = new Date().getFullYear();
 
 export const APP_CONFIG = {
-  name: "ScopeWeaver",
+  name: "K1nzr3c0n",
   version: packageJson.version,
-  copyright: `© ${currentYear}, ScopeWeaver. Based on ARTEX by Autumn-27.`,
+  copyright: `© ${currentYear}, K1nzr3c0n. Based on ARTEX by Autumn-27.`,
   meta: {
     get title() { return swt("interface.m2410"); },
     get description() { return swt("interface.m2411"); },

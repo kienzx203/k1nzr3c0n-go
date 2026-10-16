@@ -34,5 +34,6 @@ export const k1z = {
   get: (path: string) => call("GET", path),
   post: (path: string, body?: unknown) => call("POST", path, body),
   patch: (path: string, body?: unknown) => call("PATCH", path, body),
+  put: (path: string, body?: unknown) => call("PUT", path, body),
   del: (path: string) => call("DELETE", path),
 };

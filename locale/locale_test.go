@@ -74,7 +74,7 @@ func TestAcceptLanguageQWeights(t *testing.T) {
 	}
 }
 
-func TestFromEnvPrefersScopeWeaver(t *testing.T) {
+func TestFromEnvPrefersK1nzr3c0n(t *testing.T) {
 	env := map[string]string{"SCOPEWEAVER_LANGUAGE": "ko", "ARTEX_LANGUAGE": "en"}
 	if l, ok := FromEnv(func(k string) string { return env[k] }); !ok || l != Ko {
 		t.Errorf("SCOPEWEAVER_LANGUAGE should win: got %q,%v", l, ok)

@@ -450,7 +450,7 @@ func notifyTestMessage(baseURL string, langs ...locale.Lang) notify.Message {
 			Name:      locale.Text(locale.First(langs), "Test message · Channel configured successfully"),
 			VulnClass: locale.Text(locale.First(langs), "Connectivity test"),
 			Severity:  "low",
-			Summary:   locale.Text(locale.First(langs), "This is a ScopeWeaver notification-channel test. Receiving it confirms the channel configuration works."),
+			Summary:   locale.Text(locale.First(langs), "This is a K1nzr3c0n notification-channel test. Receiving it confirms the channel configuration works."),
 			Assets:    []string{"scopeweaver.example.com"},
 			DetailURL: baseURL,
 		}},

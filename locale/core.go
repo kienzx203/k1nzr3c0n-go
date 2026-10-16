@@ -17,7 +17,7 @@ func init() {
 	Register("[config] Skill directory: %s", "[config] Skill directory: %s", "[config] 스킬 디렉터리: %s")
 	Register("Work was cancelled; platform security controls blocked execution", "Work was cancelled; platform security controls blocked execution", "작업이 취소되어 플랫폼 보안 제어가 실행을 차단했습니다")
 	Register("Human approval was not granted (denied or timed out)", "Human approval was not granted (denied or timed out)", "사용자 승인이 부여되지 않았습니다(거부 또는 시간 초과)")
-	Register("[ScopeWeaver platform control, not target defense] This call was blocked by the platform. ", "[ScopeWeaver platform control, not target defense] This call was blocked by the platform. ", "[ScopeWeaver 플랫폼 제어, 대상 방어 아님] 플랫폼이 이 호출을 차단했습니다. ")
+	Register("[K1nzr3c0n platform control, not target defense] This call was blocked by the platform. ", "[K1nzr3c0n platform control, not target defense] This call was blocked by the platform. ", "[K1nzr3c0n 플랫폼 제어, 대상 방어 아님] 플랫폼이 이 호출을 차단했습니다. ")
 	Register("Reason: ", "Reason: ", "사유: ")
 	Register(". This operation is prohibited.", ". This operation is prohibited.", ". 이 작업은 금지되었습니다.")
 	Register("[enrich] dnsx initialization failed; DNS resolution disabled: %v", "[enrich] dnsx initialization failed; DNS resolution disabled: %v", "[enrich] dnsx 초기화 실패로 DNS 확인이 비활성화되었습니다: %v")

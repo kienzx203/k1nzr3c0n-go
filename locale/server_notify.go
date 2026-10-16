@@ -33,7 +33,7 @@ func init() {
 	Register("Channel name cannot be empty", "Channel name cannot be empty", "채널 이름은 비워 둘 수 없습니다")
 	Register("Test message · Channel configured successfully", "Test message · Channel configured successfully", "테스트 메시지 · 채널 설정 정상")
 	Register("Connectivity test", "Connectivity test", "연결 테스트")
-	Register("This is a ScopeWeaver notification-channel test. Receiving it confirms the channel configuration works.", "This is a ScopeWeaver notification-channel test. Receiving it confirms the channel configuration works.", "ScopeWeaver 알림 채널 테스트입니다. 이 메시지를 받았다면 채널 설정이 정상입니다.")
+	Register("This is a K1nzr3c0n notification-channel test. Receiving it confirms the channel configuration works.", "This is a K1nzr3c0n notification-channel test. Receiving it confirms the channel configuration works.", "K1nzr3c0n 알림 채널 테스트입니다. 이 메시지를 받았다면 채널 설정이 정상입니다.")
 	Register("Invalid delivery ID", "Invalid delivery ID", "전송 ID가 잘못되었습니다")
 	Register("Notification channel not found", "Notification channel not found", "알림 채널을 찾을 수 없습니다")
 }
