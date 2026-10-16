@@ -195,6 +195,29 @@ export const api = {
   // System (danger zone: reset DB + wipe run workspaces)
   getSystemUsage: () => req('GET', '/system/usage'),
   resetSystem:    (scope, confirm) => req('POST', '/system/reset', { scope, confirm }),
+
+  // Autonomous Tasks (exploration engine)
+  listTasks:     (status) => req('GET', `/tasks${status ? `?status=${status}` : ''}`),
+  createTask:    (body) => req('POST', '/tasks', body),
+  getTask:       (id) => req('GET', `/tasks/${id}`),
+  deleteTask:    (id) => req('DELETE', `/tasks/${id}`),
+  startTask:     (id) => req('POST', `/tasks/${id}/start`),
+  pauseTask:     (id) => req('POST', `/tasks/${id}/pause`),
+  stopTask:      (id) => req('POST', `/tasks/${id}/stop`),
+  taskGraph:     (id) => req('GET', `/tasks/${id}/graph`),
+  taskActivity:  (id, limit = 200) => req('GET', `/tasks/${id}/activity?limit=${limit}`),
+  taskCoverage:  (id) => req('GET', `/tasks/${id}/coverage`),
+  listRetests:   (fid) => req('GET', `/findings/${fid}/retests`),
+  startRetest:   (fid, body = {}) => req('POST', `/findings/${fid}/retest`, body),
+  taskMessage:   (id, text) => req('POST', `/tasks/${id}/message`, { text }),
+  taskQuestions: (id) => req('GET', `/tasks/${id}/questions`),
+  pendingQuestions: () => req('GET', '/questions/pending'),
+  answerQuestion: (qid, answer) => req('POST', `/questions/${qid}/answer`, { answer }),
+  skipQuestion:   (qid) => req('POST', `/questions/${qid}/skip`),
+
+  // Agent role configs (goals/planner/worker/mainagent/retester)
+  agentConfigs:   () => req('GET', '/agent-configs'),
+  updateAgentConfig: (role, body) => req('PATCH', `/agent-configs/${role}`, body),
 }
 
 export function wsUrl(runId) {
@@ -202,4 +225,11 @@ export function wsUrl(runId) {
   const token = getToken()
   const qs = token ? `?token=${encodeURIComponent(token)}` : ''
   return `${proto}://${location.host}/ws/runs/${runId}${qs}`
+}
+
+export function wsTaskUrl(taskId) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+  const token = getToken()
+  const qs = token ? `?token=${encodeURIComponent(token)}` : ''
+  return `${proto}://${location.host}/ws/tasks/${taskId}${qs}`
 }
