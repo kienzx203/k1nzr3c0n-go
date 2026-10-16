@@ -16,6 +16,8 @@ import (
 	"k1nzr3c0n/internal/bus"
 	"k1nzr3c0n/internal/capture"
 	"k1nzr3c0n/internal/config"
+	"k1nzr3c0n/internal/enrich"
+	"k1nzr3c0n/internal/explore"
 	"k1nzr3c0n/internal/notify"
 	"k1nzr3c0n/internal/runner"
 	"k1nzr3c0n/internal/schedule"
@@ -80,14 +82,21 @@ func serve() {
 	}
 
 	agent.SeedAgentRules(st)
+	st.SeedAgentConfigs()
 	notify.DBWebhookURL = func() string { return st.GetNotifySettings().WebhookURL }
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	schedule.Start(ctx, st, r)
+	enrich.Start(ctx, st)
 
 	srv := api.New(st, b, r)
 	srv.Cap = cap
+	proxyAddr := ""
+	if cap != nil {
+		proxyAddr = cap.Addr
+	}
+	srv.Explore = explore.NewManager(st, b, proxyAddr)
 	addr := config.HTTPAddr()
 	fmt.Printf("[+] k1nzr3c0n-go listening on %s (base=%s workers=%d)\n",
 		addr, config.BaseDir(), config.WorkerConcurrency())

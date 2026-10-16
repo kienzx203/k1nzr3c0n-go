@@ -347,6 +347,12 @@ func (s *Store) init() error {
 	if _, err := s.db.Exec(agentSchema); err != nil {
 		return fmt.Errorf("agent schema: %w", err)
 	}
+	if _, err := s.db.Exec(exploreSchema); err != nil {
+		return fmt.Errorf("exploration schema: %w", err)
+	}
+	if _, err := s.db.Exec(swSchema); err != nil {
+		return fmt.Errorf("scopeweaver schema: %w", err)
+	}
 	return nil
 }
 

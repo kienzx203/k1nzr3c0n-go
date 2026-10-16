@@ -11,6 +11,7 @@ import (
 	"k1nzr3c0n/internal/bus"
 	"k1nzr3c0n/internal/capture"
 	"k1nzr3c0n/internal/config"
+	"k1nzr3c0n/internal/explore"
 	"k1nzr3c0n/internal/runner"
 	"k1nzr3c0n/internal/store"
 )
@@ -19,8 +20,9 @@ type Server struct {
 	St     *store.Store
 	Bus    *bus.Bus
 	Runner *runner.Runner
-	Mux    *http.ServeMux
-	Cap    *capture.Proxy // recording proxy (nil = unavailable)
+	Mux     *http.ServeMux
+	Cap     *capture.Proxy    // recording proxy (nil = unavailable)
+	Explore *explore.Manager  // autonomous exploration engine (nil = unavailable)
 
 	lastBeatTick string // health "beat" liveness
 }
@@ -292,6 +294,30 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/capture/status", s.handleCaptureStatus)
 	m.HandleFunc("POST /api/v1/capture/toggle", s.handleCaptureToggle)
 	m.HandleFunc("GET /api/v1/report/engagement", s.handleEngagementReport)
+
+	// ── autonomous tasks (exploration engine) ──
+	m.HandleFunc("GET /api/v1/tasks", s.handleTaskList)
+	m.HandleFunc("POST /api/v1/tasks", s.handleTaskCreate)
+	m.HandleFunc("GET /api/v1/tasks/{id}", s.handleTaskGet)
+	m.HandleFunc("DELETE /api/v1/tasks/{id}", s.handleTaskDelete)
+	m.HandleFunc("POST /api/v1/tasks/{id}/start", s.handleTaskStart)
+	m.HandleFunc("POST /api/v1/tasks/{id}/pause", s.handleTaskPause)
+	m.HandleFunc("POST /api/v1/tasks/{id}/stop", s.handleTaskStop)
+	m.HandleFunc("GET /api/v1/tasks/{id}/graph", s.handleTaskGraph)
+	m.HandleFunc("GET /api/v1/tasks/{id}/activity", s.handleTaskActivity)
+	m.HandleFunc("GET /api/v1/tasks/{id}/coverage", s.handleTaskCoverage)
+	m.HandleFunc("GET /api/v1/findings/{finding_id}/retests", s.handleRetestList)
+	m.HandleFunc("POST /api/v1/findings/{finding_id}/retest", s.handleRetestStart)
+	m.HandleFunc("POST /api/v1/tasks/{id}/message", s.handleTaskMessage)
+	m.HandleFunc("GET /api/v1/tasks/{id}/questions", s.handleTaskQuestions)
+	m.HandleFunc("GET /ws/tasks/{id}", s.handleTaskStream)
+	// agent role configs
+	m.HandleFunc("GET /api/v1/agent-configs", s.handleAgentConfigList)
+	m.HandleFunc("PATCH /api/v1/agent-configs/{role}", s.handleAgentConfigUpdate)
+	// side-questions (human-in-the-loop)
+	m.HandleFunc("GET /api/v1/questions/pending", s.handleQuestionsPending)
+	m.HandleFunc("POST /api/v1/questions/{qid}/answer", s.handleQuestionAnswer)
+	m.HandleFunc("POST /api/v1/questions/{qid}/skip", s.handleQuestionSkip)
 
 	// static SPA
 	s.mountStatic(m)
