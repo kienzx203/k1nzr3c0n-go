@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/locale"
 	acperm "github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -51,6 +52,7 @@ func compactIntents(ns []*db.Node, parentsOf, yieldsOf map[int64][]int64) []map[
 // ToolSet exposes the PG-backed dual graph (asset + exploration) to an LLM agent.
 // One ToolSet is created per planner/worker run; per-run signals live here.
 type ToolSet struct {
+	lang            locale.Lang
 	findingRecorder FindingRecorder
 	as              *db.AssetStore   // asset store (optional; nil = asset tools not available)
 	cs              *db.CompanyStore // company store (optional)
@@ -160,8 +162,12 @@ func (w WriteCounts) String() string {
 // honest breakdown instead of calling assets/findings "facts").
 func (t *ToolSet) Writes() WriteCounts { return t.writes }
 
-func NewToolSet(ts *db.ExplorationStore, worker string) *ToolSet {
-	return &ToolSet{ts: ts, worker: worker}
+func NewToolSet(ts *db.ExplorationStore, worker string, lang ...locale.Lang) *ToolSet {
+	w := &ToolSet{ts: ts, worker: worker}
+	if len(lang) > 0 && lang[0] != "" {
+		w.lang = lang[0]
+	}
+	return w
 }
 
 // SetTaskID sets the PG task id on this ToolSet so that report_finding can

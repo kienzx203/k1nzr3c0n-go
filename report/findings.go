@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"path"
 	"regexp"
 	"sort"
@@ -35,7 +36,7 @@ func findingTitle(f *db.DBFinding) string {
 
 // FindingsMarkdown 把一批 findings 整合成一份汇总报告(摘要 + 按严重等级分组,
 // 每条含类别/状态/所属任务/证据/详细报告)。
-func FindingsMarkdown(fs []*db.DBFinding, generatedAt time.Time) string {
+func FindingsMarkdown(fs []*db.DBFinding, generatedAt time.Time, lang ...locale.Lang) string {
 	items := append([]*db.DBFinding(nil), fs...)
 	sortFindingsForExport(items)
 
@@ -149,7 +150,7 @@ func FindingFilename(f *db.DBFinding) string {
 
 // FindingsCSV 把一批 findings 渲染成 CSV(带 UTF-8 BOM,便于 Excel 正确识别中文)。
 // 不含大段 report/evidence 全文,只放摘要类字段;需要全文用 Markdown/JSON 导出。
-func FindingsCSV(fs []*db.DBFinding) []byte {
+func FindingsCSV(fs []*db.DBFinding, lang ...locale.Lang) []byte {
 	items := append([]*db.DBFinding(nil), fs...)
 	sortFindingsForExport(items)
 

@@ -1,5 +1,7 @@
 package notify
 
+import "github.com/Autumn-27/artex/locale"
+
 // Snapshot 是 notification_events.snapshot 这一 JSONB 列的契约。写方是 db 层的
 // 漏洞落库事务，读方是 server 层的投递引擎与过滤匹配。定义放在本包是因为它是
 // 「通知领域」的载荷：db 只负责序列化，不理解字段含义。
@@ -56,6 +58,8 @@ func (i Item) Title() string {
 
 // Message 是一次渠道发送的完整内容。
 type Message struct {
+	// Language chọn ngôn ngữ render (locale.Lang); rỗng → default server.
+	Language locale.Lang
 	// 单条推送时长度为 1；汇总推送（digest）时为一整批。
 	// 空切片是非法的，调用方须保证至少一条。
 	Items []Item

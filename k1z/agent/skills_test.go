@@ -3,7 +3,7 @@ package agent
 import "testing"
 
 func TestLoadSkillsDir(t *testing.T) {
-	t.Setenv("K1NZR3C0N_BASE", "/mnt/c/Users/kin/Downloads/k1nzr3c0n-go")
+	t.Setenv("K1NZR3C0N_BASE", ".")
 	skills := LoadSkillsDir()
 	if len(skills) < 2 {
 		t.Fatalf("expected >=2 skills, got %d", len(skills))
@@ -15,7 +15,7 @@ func TestLoadSkillsDir(t *testing.T) {
 			t.Errorf("skill %s missing body/description", s.Name)
 		}
 	}
-	if !names["web-recon"] || !names["report-writing"] {
+	if !names["api-recon"] || !names["scopesentry"] {
 		t.Fatalf("missing expected skills: %v", names)
 	}
 }

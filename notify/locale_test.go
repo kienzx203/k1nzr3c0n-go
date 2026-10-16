@@ -148,7 +148,7 @@ func TestNotificationErrorsLocalizeOnlyBuiltins(t *testing.T) {
 		t.Fatalf("Destination error not localized: %s", got)
 	}
 	for _, reply := range []string{"550 rejected", "450 greylisted"} {
-		e := smtpEnvelopeError("Recipient %s was rejected: %w", "raw@example.test", errors.New(reply))
+		e := NewSMTPEnvelopeError("Recipient raw@example.test was rejected: "+reply, errors.New(reply))
 		if IsPermanent(e) != (reply[:1] == "5") {
 			t.Fatalf("SMTP classification changed: %v", e)
 		}

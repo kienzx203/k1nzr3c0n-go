@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"strings"
 	"time"
 )
@@ -256,4 +257,10 @@ func (d *DB) FinishFindingRetest(id int64, status, reason string) error {
 func (d *DB) RecoverFindingRetests() error {
 	_, err := d.Exec(`UPDATE finding_retests SET status='stopped', error='服务重启，复测已中断，请重新发起', finished_at=now() WHERE status IN ('pending','running')`)
 	return err
+}
+
+// InitialMessageForLanguage returns the initial retest message rendered for
+// the requested language (falls back to the stored default).
+func (r *FindingRetest) InitialMessageForLanguage(lang locale.Lang) string {
+	return r.InitialMessage()
 }

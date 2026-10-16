@@ -10,6 +10,8 @@
 // 不允许把 webhook URL 之类的东西缓存进实现自身的字段。
 package notify
 
+import "github.com/Autumn-27/artex/locale"
+
 // 渠道类型标识。取值同时是 notification_channels.kind 的合法集合，由 server 侧
 // 白名单校验（与 findings.status 同理，不用 DB CHECK，方便后续加渠道）。
 const (
@@ -44,7 +46,7 @@ func SeverityRank(severity string) int { return severityRank[severity] }
 
 // SeverityLabel 返回带 emoji 的中文级别名，用于消息标题与卡片配色。
 // 未知级别原样回显，不臆造。
-func SeverityLabel(severity string) string {
+func SeverityLabel(severity string, lang ...locale.Lang) string {
 	switch severity {
 	case "critical":
 		return "🔴 严重"

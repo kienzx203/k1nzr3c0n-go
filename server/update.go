@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"log"
 	"net/http"
 	"runtime"
@@ -114,9 +115,37 @@ func (c *releaseCache) get(ctx context.Context, client *http.Client, force bool)
 type updateProgress struct {
 	Phase   selfupdate.Phase `json:"phase"`
 	Percent int              `json:"percent"` // 仅下载阶段有意义；其余为 -1
+	Message locale.Message   `json:"-"`
+	Version string           `json:"version,omitempty"`
+	Error   error            `json:"-"`
+	cause   error            // legacy alias for Error (older tests construct with cause)
+}
+
+// rendered is the JSON-facing shape with the server-default language applied.
+func (p updateProgress) rendered() updateProgressJSON {
+	return p.inLanguage(locale.ServerDefault())
+}
+
+type updateProgressJSON struct {
+	Phase   selfupdate.Phase `json:"phase"`
+	Percent int              `json:"percent"`
 	Message string           `json:"message"`
 	Version string           `json:"version,omitempty"`
 	Error   string           `json:"error,omitempty"`
+}
+
+// inLanguage renders the progress for one subscriber language.
+func (p updateProgress) inLanguage(lang locale.Lang) updateProgressJSON {
+	errMsg := ""
+	cause := p.Error
+	if cause == nil {
+		cause = p.cause
+	}
+	if cause != nil {
+		errMsg = locale.ErrorMessage(lang, cause)
+	}
+	return updateProgressJSON{Phase: p.Phase, Percent: p.Percent,
+		Message: p.Message.In(lang), Version: p.Version, Error: errMsg}
 }
 
 // updateHub 持有一次升级的进度并广播给 SSE 订阅者。
@@ -143,7 +172,7 @@ func (h *updateHub) begin(version string) bool {
 		return false
 	}
 	h.running = true
-	h.cur = updateProgress{Phase: selfupdate.PhaseDownload, Percent: 0, Message: "准备中…", Version: version}
+	h.cur = updateProgress{Phase: selfupdate.PhaseDownload, Percent: 0, Message: locale.M("Preparing…"), Version: version}
 	h.fanout(h.cur)
 	return true
 }
@@ -154,17 +183,18 @@ func (h *updateHub) finish(err error) {
 	defer h.mu.Unlock()
 	h.running = false
 	if err != nil {
-		h.cur = updateProgress{Phase: selfupdate.PhaseFailed, Percent: -1, Message: "更新失败", Error: err.Error(), Version: h.cur.Version}
+		h.cur = updateProgress{Phase: selfupdate.PhaseFailed, Percent: -1, Message: locale.M("Update failed"), Error: err, Version: h.cur.Version}
 	} else {
-		h.cur = updateProgress{Phase: selfupdate.PhaseStaged, Percent: 100, Message: "新版本已就绪，正在重启…", Version: h.cur.Version}
+		h.cur = updateProgress{Phase: selfupdate.PhaseStaged, Percent: 100, Message: locale.M("New version staged, restarting…"), Version: h.cur.Version}
 	}
 	h.fanout(h.cur)
 }
 
 func (h *updateHub) publish(ph selfupdate.Phase, pct int, msg string) {
+	_ = msg
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.cur = updateProgress{Phase: ph, Percent: pct, Message: msg, Version: h.cur.Version}
+	h.cur = updateProgress{Phase: ph, Percent: pct, Message: locale.M(msg), Version: h.cur.Version}
 	h.fanout(h.cur)
 }
 

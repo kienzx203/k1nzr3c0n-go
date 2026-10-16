@@ -19,17 +19,17 @@ import (
 )
 
 type Server struct {
-	St     *store.Store
-	Bus    *bus.Bus
-	Runner *runner.Runner
+	St      *store.Store
+	Bus     *bus.Bus
+	Runner  *runner.Runner
 	Mux     *http.ServeMux
 	Cap     *capture.Proxy   // recording proxy (nil = unavailable)
 	Explore *explore.Manager // autonomous exploration engine (nil = unavailable)
 
 	lastBeatTick string // health "beat" liveness
 
-	chatMu      sync.Mutex                    // guards chatCancels
-	chatCancels map[int64]context.CancelFunc  // in-flight chat turns by conversation id
+	chatMu      sync.Mutex                   // guards chatCancels
+	chatCancels map[int64]context.CancelFunc // in-flight chat turns by conversation id
 }
 
 // registerChatCancel records the cancel func for a running chat turn so a Stop

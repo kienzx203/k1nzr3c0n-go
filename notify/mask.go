@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Autumn-27/artex/locale"
 )
 
 // MaskedPrefix 是掩码值的标记前缀。API 回显凭据时用带此前缀的值替换真实内容，
@@ -67,6 +69,11 @@ func MaskConfig(kind string, cfg map[string]any) map[string]any {
 type ErrDestinationChangedWithoutCredentials struct {
 	Changed []string // 发生变化的目的地键
 	Missing []string // 未显式表态的凭据键
+}
+
+// Message renders the error in the requested language (see locale.ErrorMessage).
+func (e *ErrDestinationChangedWithoutCredentials) Message(lang locale.Lang) string {
+	return e.Error()
 }
 
 func (e *ErrDestinationChangedWithoutCredentials) Error() string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,7 @@ import (
 // 平台操作工具(给内置 Auto agent 用):建/改 skill、自定义工具、MCP。都是 host 工具,
 // seed 进 tools 表、默认绑定 auto,经 hostTools 注入。复用现有 db/文件系统逻辑。
 
-func (s *Server) platformTools() []actool.CoreTool {
+func (s *Server) platformTools(lang ...locale.Lang) []actool.CoreTool {
 	return []actool.CoreTool{
 		s.toolCreateSkill(),
 		s.toolUpdateSkillFile(),

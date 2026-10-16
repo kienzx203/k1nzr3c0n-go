@@ -15,6 +15,22 @@ import (
 	"github.com/Autumn-27/artex/intercept"
 )
 
+// backportTestManager builds a Manager over the configured test database
+// (backport helper for the newer local-judge suite). Skips without a DB.
+func backportTestManager(t *testing.T) *Manager {
+	t.Helper()
+	dsn, _, err := db.DSN()
+	if err != nil {
+		t.Skip("no test database configured")
+	}
+	d, err := db.Open(dsn)
+	if err != nil {
+		t.Skipf("test db unavailable: %v", err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	return &Manager{pg: d, interceptor: intercept.New(d)}
+}
+
 func TestNativeJudgeDefaultsExplicitPolicyAndFailure(t *testing.T) {
 	m := backportTestManager(t)
 	// This suite owns an explicitly disposable database; restore settings after each case.

@@ -28,3 +28,13 @@ func isStockReporterTrigger(text string) bool {
 	}
 	return false
 }
+
+// isLegacyReporterTrigger matches pre-translation trigger payloads so old
+// persisted triggers still localize.
+func isLegacyReporterTrigger(text string) bool {
+	switch text {
+	case "Vulnerability reported. Write the report now.":
+		return true
+	}
+	return false
+}

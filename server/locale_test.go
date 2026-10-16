@@ -66,7 +66,7 @@ func TestDynamicErrorLocalizesBeforeInterpolation(t *testing.T) {
 }
 
 func TestUpdateProgressRendersPerSubscriber(t *testing.T) {
-	p := updateProgress{message: locale.M("Downloading %s (%s)…", "raw-한글.zip", "12 MB"), cause: locale.Errorf("Release package does not contain %s", "raw-한글.exe")}
+	p := updateProgress{Message: locale.M("Downloading %s (%s)…", "raw-한글.zip", "12 MB"), cause: locale.Errorf("Release package does not contain %s", "raw-한글.exe")}
 	ko, en := p.inLanguage(locale.Ko), p.inLanguage(locale.En)
 	if ko.Message != "raw-한글.zip(12 MB) 다운로드 중…" || en.Message != "Downloading raw-한글.zip (12 MB)…" {
 		t.Fatalf("progress locale mismatch: %q / %q", ko.Message, en.Message)
@@ -74,7 +74,7 @@ func TestUpdateProgressRendersPerSubscriber(t *testing.T) {
 	if !strings.Contains(ko.Error, "릴리스 패키지") || !strings.Contains(ko.Error, "raw-한글.exe") {
 		t.Fatalf("error locale/raw argument mismatch: %q", ko.Error)
 	}
-	if p.Message != "" || p.Error != "" {
+	if p.Message.Template != "" || (p.Error != nil && p.Error.Error() != "") {
 		t.Fatal("subscriber mutated shared event")
 	}
 }

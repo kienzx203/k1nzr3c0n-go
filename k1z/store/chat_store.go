@@ -19,7 +19,7 @@ func (s *Store) ChatAgentPrompt(key string) string {
 
 // Mention is one @-mention candidate (asset / finding / task) for the chat input.
 type Mention struct {
-	Kind  string `json:"kind"`  // asset | finding | task
+	Kind  string `json:"kind"` // asset | finding | task
 	ID    int64  `json:"id"`
 	Label string `json:"label"` // the token text
 	Sub   string `json:"sub"`   // secondary line

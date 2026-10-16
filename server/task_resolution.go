@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"net/http"
 
 	"github.com/Autumn-27/artex/db"
@@ -120,4 +121,10 @@ func (s *Server) taskLLMResolutionHandler(w http.ResponseWriter, r *http.Request
 		roles[responseKey] = resolved
 	}
 	writeJSON(w, http.StatusOK, roles)
+}
+
+// resolutionFromProfileForLanguage is the locale-explicit form of
+// resolutionFromProfile (display strings follow the request language).
+func (s *Server) resolutionFromProfileForLanguage(p *db.LLMProfile, source string, lang locale.Lang) taskLLMResolution {
+	return s.resolutionFromProfile(p, source)
 }

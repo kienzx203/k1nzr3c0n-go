@@ -1534,3 +1534,45 @@ func scanAssets(rows *sql.Rows) ([]*Asset, error) {
 	}
 	return out, rows.Err()
 }
+
+// AssetExportFilter selects rows for exports (no UI paging caps).
+type AssetExportFilter struct {
+	Type   string // "" = all types
+	TaskID int64  // 0 = all tasks
+	DSL    string // asset DSL filter (empty = none)
+}
+
+// ListAssetsForExport returns every matching asset uncapped (export path).
+// companyIDs nil = all companies.
+func (s *AssetStore) ListAssetsForExport(f AssetExportFilter, companyIDs []int64) ([]*Asset, error) {
+	base := `SELECT id, type, company_id, array_to_json(task_ids)::text,
+       COALESCE(domain,''), COALESCE(root_domain,''), COALESCE(ip,''),
+       COALESCE(c_segment::text,''), port,
+       COALESCE(icp,''), array_to_json(bound_domains)::text, array_to_json(open_ports)::text, COALESCE(record_type,''),
+       array_to_json(record_value)::text, COALESCE(bundle_id,''), COALESCE(app_name,''),
+       COALESCE(category,''), COALESCE(app_description,''), COALESCE(app_icp,''),
+       COALESCE(url,''), COALESCE(service_type,''), COALESCE(service_name,''),
+       COALESCE(favicon_mmh3,''), status_code, content_length,
+       COALESCE(page_title,''), array_to_json(technologies)::text, array_to_json(auth)::text,
+       COALESCE(method,''), array_to_json(params)::text, extra, last_seen::text
+FROM assets WHERE `
+	where, args := "1=1", []any{}
+	if f.Type != "" {
+		args = append(args, f.Type)
+		where += fmt.Sprintf(" AND type = $%d", len(args))
+	}
+	if f.TaskID != 0 {
+		args = append(args, f.TaskID)
+		where += fmt.Sprintf(" AND %s = ANY(task_ids)", fmt.Sprintf("$%d", len(args)))
+	}
+	if companyIDs != nil {
+		args = append(args, companyIDs)
+		where += fmt.Sprintf(" AND company_id = ANY($%d)", len(args))
+	}
+	rows, err := s.db.Query(base+where+` ORDER BY last_seen DESC, id DESC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanAssets(rows)
+}

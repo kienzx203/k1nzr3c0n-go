@@ -44,6 +44,8 @@ type WebSearchOpts struct {
 	BraveKey  string
 	TavilyKey string
 	Proxy     string
+	// PolicyResolver re-evaluates the local-only egress policy at request time.
+	PolicyResolver func() (bool, []string)
 	// DeepSeek* 来自当前激活的 LLM 配置(仅 anthropic 格式的 DeepSeek 官方端点)，
 	// 不单独配置，随 LLM 配置切换而变。
 	DeepSeekBaseURL string

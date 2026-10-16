@@ -430,7 +430,9 @@ func (s *Server) applyLLM(cfg agent.Config) error {
 	// A persisted active profile must use the same cached provider as task chains
 	// and Agent bindings, otherwise each path owns a separate rate limiter.
 	if active, _ := s.m.pg.ActiveProfile(); active != nil {
-		if activeCfg, ok := s.loadProfileConfig(active.ID); ok && activeCfg == cfg {
+		if activeCfg, ok := s.loadProfileConfig(active.ID); ok &&
+			activeCfg.BaseURL == cfg.BaseURL && activeCfg.Model == cfg.Model &&
+			activeCfg.APIKey == cfg.APIKey && activeCfg.Proxy == cfg.Proxy {
 			prov, _, _ = s.providerForProfile(active.ID)
 		}
 	}

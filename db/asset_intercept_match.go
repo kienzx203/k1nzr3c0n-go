@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"net"
 	"net/url"
 	"strings"
@@ -247,4 +248,10 @@ func (s *AssetStore) CheckAssetsIntercept(taskID int64, ids []int64) ([]AssetInt
 		}
 	}
 	return hits, nil
+}
+
+// EvaluateAssetGateForLanguage mirrors EvaluateAssetGate with a locale
+// parameter (messages localize upstream; decision semantics identical).
+func EvaluateAssetGateForLanguage(lang locale.Lang, blockRules, allowRules []AssetInterceptRule, domains, ips, urls []string) AssetGateDecision {
+	return EvaluateAssetGate(blockRules, allowRules, domains, ips, urls)
 }
