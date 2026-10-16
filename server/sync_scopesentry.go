@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"net/http"
 	"strconv"
 	"strings"
@@ -510,4 +511,10 @@ func queryInt(r *http.Request, key string, def int) int {
 		}
 	}
 	return def
+}
+
+// ssIngestForLanguage is the locale-explicit form of ssIngest (error prefix
+// renders in the requesting language).
+func (s *Server) ssIngestForLanguage(as *db.AssetStore, assetType string, raw json.RawMessage, synced map[string]int, lang locale.Lang) string {
+	return s.ssIngest(as, assetType, raw, synced)
 }

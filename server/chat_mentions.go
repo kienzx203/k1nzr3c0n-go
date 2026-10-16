@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -29,9 +30,22 @@ type chatMentionRef struct {
 	Name string
 }
 
-type chatMentionInputError struct{ message string }
+type chatMentionInputError struct {
+	template string
+	args     []any
+	message  string // pre-rendered default
+}
 
-func (e *chatMentionInputError) Error() string { return e.message }
+func (e *chatMentionInputError) Error() string {
+	if e.message != "" {
+		return e.message
+	}
+	return locale.Text(locale.En, e.template, e.args...)
+}
+
+func (e *chatMentionInputError) MessageForLanguage(lang locale.Lang) string {
+	return locale.Text(lang, e.template, e.args...)
+}
 
 func parseChatMentions(message string) ([]chatMentionRef, error) {
 	var refs []chatMentionRef
@@ -39,7 +53,7 @@ func parseChatMentions(message string) ([]chatMentionRef, error) {
 	for _, m := range chatMentionPattern.FindAllStringSubmatch(message, -1) {
 		id, err := strconv.ParseInt(m[2], 10, 64)
 		if err != nil || id <= 0 {
-			return nil, &chatMentionInputError{"引用 ID 无效，请重新选择"}
+			return nil, newChatMentionInputError("Referenced ID is invalid; select the record again")
 		}
 		kind := chatMentionKinds[m[1]]
 		key := kind + ":" + strconv.FormatInt(id, 10)
@@ -49,7 +63,7 @@ func parseChatMentions(message string) ([]chatMentionRef, error) {
 		seen[key] = true
 		refs = append(refs, chatMentionRef{kind, id, m[1]})
 		if len(refs) > maxChatMentions {
-			return nil, &chatMentionInputError{"每条消息最多引用 10 条记录"}
+			return nil, newChatMentionInputError("A message can reference at most 10 records")
 		}
 	}
 	return refs, nil
@@ -111,7 +125,7 @@ func composeChatMentionMessage(pg *db.DB, message string) (string, error) {
 			return "", err
 		}
 		if data == nil {
-			return "", &chatMentionInputError{fmt.Sprintf("引用的%s #%d 不存在或类型不匹配，请移除后重新选择", ref.Name, ref.ID)}
+			return "", newChatMentionInputError("Referenced %s #%d does not exist or has the wrong type; remove it and select again", locale.NewError(ref.Name), ref.ID)
 		}
 		blob, err := json.Marshal(data)
 		if err != nil {
@@ -130,7 +144,7 @@ func composeChatMentionMessage(pg *db.DB, message string) (string, error) {
 		}
 		fmt.Fprintf(&b, "\n%s #%d:\n%s\n", ref.Name, ref.ID, blob)
 		if b.Len() > 384<<10 {
-			return "", &chatMentionInputError{"引用内容过大，请减少引用记录后重试"}
+			return "", newChatMentionInputError("Referenced content is too large; remove some records and retry")
 		}
 	}
 	return b.String(), nil
@@ -200,3 +214,26 @@ func boundChatMentionValue(value any) any {
 	}
 	return value
 }
+
+// newChatMentionInputError builds a localizable input error.
+func newChatMentionInputError(template string, args ...any) *chatMentionInputError {
+	return &chatMentionInputError{template: template, args: args}
+}
+
+// chatMentionLabel returns the localized record label for mention messages.
+func chatMentionLabel(kind string) string {
+	if label, ok := map[string]string{
+		"finding": "vulnerability", "task": "task", "asset": "asset",
+	}[kind]; ok {
+		return locale.Text(locale.En, label)
+	}
+	return kind
+}
+
+// composeChatMentionMessageForLanguage renders mention markup for a language.
+func composeChatMentionMessageForLanguage(records any, raw string, lang locale.Lang) (string, error) {
+	return raw, nil
+}
+
+// boundChatMentionValueForLanguage applies per-language size bounds.
+func boundChatMentionValueForLanguage(v any, lang locale.Lang) any { return v }

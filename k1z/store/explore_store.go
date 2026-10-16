@@ -6,6 +6,7 @@
 //   - asset graph (companies/assets, already present) = "what the target is"
 //   - exploration graph (explorations/exploration_nodes/edges) = "how far it's
 //     been tested", a per-task lineage chain of goal→intent→fact→finding/hint.
+//
 // They connect through exploration_anchors(node_id, asset_id).
 package store
 

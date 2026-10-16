@@ -22,6 +22,8 @@ type LLMProfile struct {
 	APIKeyHint    string  `json:"api_key_hint,omitempty"`
 	RatePerSecond float64 `json:"rate_per_second"`
 	RatePerMinute float64 `json:"rate_per_minute"`
+	MaxConcurrent int     `json:"max_concurrent"`
+	KeepAlive     string  `json:"keep_alive"`
 	// ContextWindowK is the model's context window in K tokens, used to size
 	// compaction thresholds. 0 = use a 200K default; capped at 1000 (1M).
 	ContextWindowK int `json:"context_window_k"`
@@ -815,7 +817,7 @@ type MCPServer struct {
 	Env       json.RawMessage `json:"env"`
 	URL       string          `json:"url,omitempty"`
 	Enabled   bool            `json:"enabled"`
-	Insecure  bool            `json:"insecure"` // http: skip TLS cert verification (self-signed servers, issue #108)
+	Insecure  bool            `json:"insecure"`        // http: skip TLS cert verification (self-signed servers, issue #108)
 	Tools     []string        `json:"tools,omitempty"` // cached tool names (mcp_tools_cache)
 }
 

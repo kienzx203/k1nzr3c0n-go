@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"log"
 	"strconv"
 	"strings"
@@ -62,7 +63,7 @@ func (s *Server) hostTools() ([]actool.CoreTool, map[string][]string) {
 
 // orchestrationTools returns the cross-task tool set. Bound per-agent via the
 // tools table (default: no binding — opt-in for orchestration agents).
-func (s *Server) orchestrationTools() []actool.CoreTool {
+func (s *Server) orchestrationTools(lang ...locale.Lang) []actool.CoreTool {
 	return []actool.CoreTool{
 		s.toolListTasks(),
 		s.toolListLLMProfiles(),

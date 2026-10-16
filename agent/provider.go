@@ -68,6 +68,20 @@ type Config struct {
 	// OpenAI 推理模型(o 系列/GPT-5)只认后者,收到 max_tokens 会直接报
 	// unsupported_parameter;而多数兼容网关只认前者,故不做自动推断,交由用户按端点选。
 	MaxTokensField string
+	// MaxConcurrent caps concurrent LLM requests for this profile (0 = unlimited).
+	MaxConcurrent int
+	// KeepAlive is the Ollama keep-alive duration string (e.g. "30m"); empty = server default.
+	KeepAlive string
+	// JSONOutput requests JSON-mode from providers that support it (Ollama format=json).
+	JSONOutput bool
+	// LocalLLMOnly hard-restricts LLM egress to local/trusted addresses.
+	LocalLLMOnly bool
+	// LocalLLMAllowedCIDRs are admin-approved extra CIDRs for the local-only policy.
+	LocalLLMAllowedCIDRs []string
+	// PolicyResolver re-evaluates the local-only policy at request time
+	// (settings can toggle without restart).
+	PolicyResolver func() (bool, []string)
+
 	// SessionHeaderKey,非空时,让每次 LLM 请求带上一个自定义 HTTP 头,头名为该值、
 	// 头值为【当前会话的 session id】(chat 会话=conv-<id>,worker=exp<x>-worker-i<intent>
 	// 等,见 WorkerSessionID)。用于某些按 session-id 头做提示缓存/粘性路由的网关。
@@ -498,4 +512,15 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 		return lat, "", fmt.Errorf("模型无回复内容（请求已通，但未返回任何文本）")
 	}
 	return lat, reply, nil
+}
+
+// HTTPClient builds the shared quota-aware HTTP client for this profile.
+func (c Config) HTTPClient() (*http.Client, error) {
+	return quotaAwareHTTPClient(c.Proxy, c.SessionHeaderKey)
+}
+
+// Ready reports whether the config has the minimum fields to build a provider
+// (format + model resolved). Used by UI readiness checks.
+func (c Config) Ready() bool {
+	return c.Format != "" && c.Model != ""
 }

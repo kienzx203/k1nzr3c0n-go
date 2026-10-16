@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"log"
 	"math"
 	"net/http"
@@ -828,4 +829,15 @@ func firstLine(s string, max int) string {
 		s = string([]rune(s)[:max]) + "…"
 	}
 	return s
+}
+
+// isDefaultConversationTitle reports whether a title is the stock localized
+// "New conversation" default (any bundled language).
+func isDefaultConversationTitle(title string) bool {
+	for _, lang := range locale.Languages() {
+		if title == locale.Text(lang, "New conversation") {
+			return true
+		}
+	}
+	return false
 }

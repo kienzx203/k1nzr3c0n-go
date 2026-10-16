@@ -4,6 +4,8 @@ import (
 	"context"
 	"iter"
 	"log"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -76,4 +78,22 @@ func (p *concurrencyProvider) Complete(ctx context.Context, req llm.CompletionRe
 	}
 	defer release()
 	return p.inner.Complete(ctx, req)
+}
+
+// LLMMaxConcurrent reads the configured shared LLM concurrency cap (0 = unlimited).
+func (m *Manager) LLMMaxConcurrent() int {
+	if m == nil || m.pg == nil {
+		return 0
+	}
+	v, _, _ := m.pg.GetSetting("llm_max_concurrent")
+	n, _ := strconv.Atoi(strings.TrimSpace(v))
+	return n
+}
+
+// SetLLMMaxConcurrent persists the shared LLM concurrency cap (0 = unlimited).
+func (m *Manager) SetLLMMaxConcurrent(n int) error {
+	if m == nil || m.pg == nil {
+		return nil
+	}
+	return m.pg.SetSetting("llm_max_concurrent", strconv.Itoa(n))
 }

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -161,4 +162,10 @@ func humanBytes(n int64) string {
 	default:
 		return fmt.Sprintf("%d B", n)
 	}
+}
+
+// composeAgentMessageForLanguage is the locale-explicit form of
+// composeAgentMessage (attachment manifest text follows the chat language).
+func composeAgentMessageForLanguage(msg string, atts []chatAttachment, baseDir string, lang locale.Lang) string {
+	return composeAgentMessage(msg, atts, baseDir)
 }

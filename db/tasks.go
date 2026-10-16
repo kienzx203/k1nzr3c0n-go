@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"strconv"
 	"time"
 )
@@ -144,7 +145,8 @@ func (d *DB) CreateTask(description, goal string, llmProfileID *int64, timeoutSe
 // TaskCreateOptions contains the task data that must be committed atomically
 // with the task/exploration row.
 type TaskCreateOptions struct {
-	Name                 string // 可选任务名称;空=未命名
+	Language             locale.Lang // UI language for task-facing messages
+	Name                 string      // 可选任务名称;空=未命名
 	CategoryID           *int64
 	SourceTaskIDs        []int64
 	CompanyIDs           []int64

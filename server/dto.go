@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"strconv"
 	"time"
 
@@ -555,7 +556,7 @@ type AgentDTO struct {
 	ToolCount  int `json:"tool_count"`
 }
 
-func agentDTO(a *db.Agent) AgentDTO {
+func agentDTO(a *db.Agent, lang ...locale.Lang) AgentDTO {
 	return AgentDTO{
 		ID:                 i64s(a.ID),
 		Key:                a.Key,
@@ -586,6 +587,7 @@ func agentDTOs(in []*db.Agent) []AgentDTO {
 // ---- LLMProfile (frontend "LLMProfile") — string id ----
 
 type LLMProfileDTO struct {
+	APIKeyOptional  bool    `json:"api_key_optional"` // true when the format needs no key (e.g. local ollama)
 	ID              string  `json:"id"`
 	Name            string  `json:"name"`
 	Format          string  `json:"format"`

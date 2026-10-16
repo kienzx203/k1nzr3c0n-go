@@ -2,6 +2,7 @@ package intercept
 
 import (
 	"encoding/json"
+	"github.com/Autumn-27/artex/locale"
 	"io"
 	"strings"
 )
@@ -17,7 +18,7 @@ background 仅在有当前实际用户消息时由程序选取，source=user_mes
 background.truncated 为 true 表示背景原文已截断；当前工具参数完整保留。本节只定义输入含义，不新增或覆盖允许、拒绝、转人工的判定规则。
 不得编造或索取隐藏思考过程。输出继续遵循系统审查提示词的裁决格式，不执行工具，也不返回替换参数。`
 
-func EffectiveJudgePrompt(prompt string) string {
+func EffectiveJudgePrompt(prompt string, lang ...locale.Lang) string {
 	if !strings.Contains(prompt, JudgeContextBoundary) {
 		prompt += "\n\n" + JudgeContextBoundary
 	}

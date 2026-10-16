@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/Autumn-27/artex/locale"
 	"log"
 	"net/http"
 	"slices"
@@ -141,7 +142,7 @@ func (s *Server) startFindingRetest(w http.ResponseWriter, r *http.Request) {
 
 // Both tools derive the finding from server-owned conversation context. Tool
 // arguments cannot redirect a result into a different finding or conversation.
-func (s *Server) findingRetestTools() []actool.CoreTool {
+func (s *Server) findingRetestTools(lang ...locale.Lang) []actool.CoreTool {
 	return []actool.CoreTool{
 		roTool("get_finding_retest_context", "读取当前复测会话关联的漏洞证据快照、复测状态、补充说明与当前任务约束。无参数，只能读取本会话。",
 			objSchema(map[string]any{}), func(ctx context.Context, _ json.RawMessage) (actool.Result, error) {

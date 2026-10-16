@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"io"
 	"log"
 	"net/http"
@@ -309,7 +310,7 @@ func hasSchemaProps(raw json.RawMessage) bool {
 }
 
 // ensureSchema returns the tool's schema, or a thin {args:string} when none given.
-func ensureSchema(raw json.RawMessage) map[string]any {
+func ensureSchema(raw json.RawMessage, lang ...locale.Lang) map[string]any {
 	var m map[string]any
 	if len(raw) > 0 {
 		_ = json.Unmarshal(raw, &m)
@@ -528,4 +529,9 @@ func scalarStr(v any) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+// ensureSchemaForLanguage is the locale-explicit form of ensureSchema.
+func ensureSchemaForLanguage(raw json.RawMessage, lang locale.Lang) map[string]any {
+	return ensureSchema(raw, lang)
 }

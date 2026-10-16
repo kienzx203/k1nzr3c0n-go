@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Autumn-27/artex/locale"
 	"io"
 	"io/fs"
 	"log"
@@ -1997,7 +1998,7 @@ func normalizeSearchHost(raw string) (host, port string, err error) {
 
 // Tools exposes traffic lookup to work agents so they query already-captured
 // traffic instead of re-curling the same resource (token + dedup win).
-func (t *Traffic) Tools() []actool.CoreTool {
+func (t *Traffic) Tools(lang ...locale.Lang) []actool.CoreTool {
 	allow := func(context.Context, json.RawMessage, permission.Context) permission.Decision {
 		return permission.Allowed()
 	}
