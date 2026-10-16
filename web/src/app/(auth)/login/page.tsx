@@ -1,8 +1,5 @@
 "use client";
 
-import { LanguageSelector } from "@/i18n/language-selector";
-import { translate as swt } from "@/i18n/runtime";
-import { useI18n } from "@/i18n";
 import { useEffect, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
@@ -18,9 +15,6 @@ import { api } from "@/lib/api";
 import { auth } from "@/lib/auth";
 
 export default function LoginPage() {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -31,7 +25,7 @@ export default function LoginPage() {
   const [readToEnd, setReadToEnd] = useState(false);
   const termsBodyRef = useRef<HTMLDivElement>(null);
 
-  // Enable acceptance only after reaching the terms' bottom, including content that fits without scrolling.
+  // 滚动到条款底部（含无需滚动即可完整展示的情况）方可点击「同意」。
   function handleTermsScroll() {
     const el = termsBodyRef.current;
     if (!el) return;
@@ -40,18 +34,18 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!termsOpen) return;
-    // Reset on open and handle content shorter than the viewport, where no scroll event occurs.
+    // 打开时重置，并处理内容本就不足一屏、无法触发滚动的场景。
     setReadToEnd(false);
     const el = termsBodyRef.current;
     if (el && el.scrollHeight <= el.clientHeight + 8) setReadToEnd(true);
   }, [termsOpen]);
 
   useEffect(() => {
-    // Authenticated users go straight to the app; static export has no middleware redirect.
+    // 已登录直接进主界面（静态导出下无 middleware 代劳这层跳转）。
     const token = auth.getToken();
     if (token) {
-      // localStorage may retain credentials after the cookie is lost. Synchronize before a fresh request,
-      // so server guards or cached routes do not send users back to a login page still checking authentication.
+      // localStorage 可能仍有凭据但 cookie 已丢失。先同步，再发起全新请求，
+      // 避免服务端守卫或路由缓存把跳转送回仍处于 checking 状态的登录页。
       auth.setToken(token);
       window.location.replace("/function/tasks");
       return;
@@ -61,14 +55,14 @@ export default function LoginPage() {
       .then(({ initialized }) => {
         if (!initialized) router.replace("/setup");
       })
-      .catch(() => setError(swt("interface.m0001")))
+      .catch(() => setError("无法连接到后端服务"))
       .finally(() => setChecking(false));
   }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!agreed) {
-      setError(swt("interface.m0002"));
+      setError("请先阅读并同意《使用须知》");
       return;
     }
     setLoading(true);
@@ -78,7 +72,7 @@ export default function LoginPage() {
       auth.setToken(token);
       window.location.replace("/function/tasks");
     } catch {
-      setError(swt("interface.m0003"));
+      setError("用户名或密码错误");
     } finally {
       setLoading(false);
     }
@@ -87,13 +81,13 @@ export default function LoginPage() {
   if (checking) {
     return (
       <div role="status" className="flex min-h-dvh items-center justify-center text-muted-foreground">
-        {swt("interface.m0004")}</div>
+        正在检查登录状态…
+      </div>
     );
   }
 
   return (
-    <div className="relative flex min-h-dvh">
-      <div className="absolute right-4 top-4 z-10"><LanguageSelector /></div>
+    <div className="flex h-dvh">
       {/* Left panel */}
       <div className="hidden flex-col items-center justify-center bg-primary p-12 text-center lg:flex lg:w-1/3">
         <div className="relative flex items-center justify-center">
@@ -101,7 +95,7 @@ export default function LoginPage() {
           <div className="absolute size-60 rounded-full border border-primary-foreground/15" />
           <div className="absolute size-40 rounded-full border border-primary-foreground/20" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/scopeweaver.svg" alt="K1nzr3c0n" width={160} height={160} className="relative" />
+          <img src="/logo.png" alt="ARTEX" width={160} height={160} className="relative brightness-0 invert" />
         </div>
       </div>
 
@@ -109,22 +103,22 @@ export default function LoginPage() {
       <div className="flex w-full items-center justify-center bg-background p-8 lg:w-2/3">
         <div className="w-full max-w-md space-y-10 py-24 lg:py-32">
           <div className="space-y-4 text-center">
-            <h2 className="text-2xl font-medium tracking-tight">{swt("interface.m0005")}</h2>
-            <p className="mx-auto max-w-xl text-muted-foreground">{swt("interface.m0006")}</p>
+            <h2 className="text-2xl font-medium tracking-tight">登录</h2>
+            <p className="mx-auto max-w-xl text-muted-foreground">欢迎回来，请输入密码以继续使用 ARTEX</p>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="username">{swt("interface.m0007")}</Label>
+              <Label htmlFor="username">用户名</Label>
               <Input id="username" value="ARTEX" readOnly className="bg-muted text-muted-foreground" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="password">{swt("interface.m0008")}</Label>
+              <Label htmlFor="password">密码</Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={swt("interface.m0009")}
+                placeholder="请输入密码"
                 autoFocus
                 autoComplete="current-password"
               />
@@ -137,17 +131,19 @@ export default function LoginPage() {
                 className="mt-0.5"
               />
               <Label htmlFor="agree-terms" className="text-sm font-normal leading-relaxed text-muted-foreground">
-                {swt("interface.m0010")}<button
+                我已阅读并同意
+                <button
                   type="button"
                   onClick={() => setTermsOpen(true)}
                   className="mx-0.5 font-medium text-primary underline-offset-4 hover:underline"
                 >
-                  {swt("interface.m0011")}</button>
+                  《使用须知》
+                </button>
               </Label>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading || !password || !agreed}>
-              {loading ? swt("interface.m0012") : swt("interface.m0005")}
+              {loading ? "登录中..." : "登录"}
             </Button>
           </form>
         </div>
@@ -160,9 +156,10 @@ export default function LoginPage() {
               <ShieldCheck className="size-5" />
             </div>
             <div className="space-y-0.5">
-              <DialogTitle className="text-base">{swt("interface.m0013")}</DialogTitle>
+              <DialogTitle className="text-base">ARTEX 使用须知与免责声明</DialogTitle>
               <p className="text-xs text-muted-foreground">
-                {swt("interface.m0014")}</p>
+                版本 v1.0 · 生效日期 2026-09-18 · 请在登录前完整阅读以下全部条款
+              </p>
             </div>
           </DialogHeader>
 
@@ -172,9 +169,12 @@ export default function LoginPage() {
             className="max-h-[60vh] space-y-5 overflow-y-auto px-6 py-5 text-sm leading-relaxed text-muted-foreground"
           >
             <p className="rounded-lg border bg-muted/40 p-3 text-foreground/80">
-              {swt("interface.m0015")}<span className="font-medium text-foreground">
+              本《使用须知与免责声明》（以下简称"本声明"）是您与 ARTEX
+              项目作者及贡献者之间就使用本软件所达成的约定。请您在使用前审慎阅读、充分理解各条款内容，特别是以粗体或色块标注的免责、责任限制及禁止性条款。
+              <span className="font-medium text-foreground">
                 {" "}
-                {swt("interface.m0016")}</span>
+                一旦您下载、安装、访问或以任何方式使用本软件，即视为您已阅读、理解并同意接受本声明的全部约束。
+              </span>
             </p>
 
             <section className="space-y-1.5">
@@ -182,9 +182,13 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   1
                 </span>
-                {swt("interface.m0017")}</h4>
+                第一条 · 定义与开源许可
+              </h4>
               <p className="pl-7">
-                {swt("interface.m0018")}</p>
+                本软件（ARTEX）是一款基于 GNU Affero General Public License
+                v3.0（AGPL-3.0）发布的开源程序。您可依据该协议自由使用、复制、修改和分发本软件；但任何衍生作品（包括通过网络向第三方提供的在线服务）均须同样以
+                AGPL-3.0 协议开源并向使用者公开对应的完整源代码。AGPL-3.0 完整条款以随附的 LICENSE 文件为准。
+              </p>
             </section>
 
             <section className="space-y-1.5">
@@ -192,9 +196,11 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   2
                 </span>
-                {swt("interface.m0019")}</h4>
+                第二条 · 授权使用范围
+              </h4>
               <p className="pl-7">
-                {swt("interface.m0020")}</p>
+                本软件仅供个人学习、代码研究、安全技术原理探讨，以及在您自行搭建的本地隔离环境中进行技术验证之用，适用于学习、学术研究、代码审阅等非攻击性、非破坏性用途。除本条明确许可的情形外，您不得将本软件用于任何其他目的。
+              </p>
             </section>
 
             <section className="space-y-2">
@@ -203,14 +209,16 @@ export default function LoginPage() {
                   3
                 </span>
                 <AlertTriangle className="size-4" />
-                {swt("interface.m0021")}</h4>
+                第三条 · 禁止行为
+              </h4>
               <ul className="ml-7 list-decimal space-y-1.5 rounded-lg border border-destructive/20 bg-destructive/5 p-3 pl-8 text-foreground/80 marker:text-destructive/70">
                 <li>
-                  {swt("interface.m0022")}</li>
-                <li>{swt("interface.m0023")}</li>
-                <li>{swt("interface.m0024")}</li>
-                <li>{swt("interface.m0025")}</li>
-                <li>{swt("interface.m0026")}</li>
+                  严禁对任何网站、线上服务、他人或第三方所有的联网系统发起扫描、探测、利用或攻击（无论是否已获得授权、是否为您自有资产）；
+                </li>
+                <li>严禁将本软件用于任何实际的渗透测试、攻防对抗、红蓝演练或生产环境；</li>
+                <li>严禁将本软件用于非法入侵、数据窃取、勒索、拒绝服务（DoS/DDoS）或任何破坏性、犯罪性活动；</li>
+                <li>严禁移除、篡改或规避本软件及其输出中的任何版权、许可或安全提示信息；</li>
+                <li>严禁从事任何违反您所在国家或地区法律、法规及监管规定的行为。</li>
               </ul>
             </section>
 
@@ -219,9 +227,12 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   4
                 </span>
-                {swt("interface.m0027")}</h4>
+                第四条 · 知识产权
+              </h4>
               <p className="pl-7">
-                {swt("interface.m0028")}</p>
+                本软件的著作权及相关知识产权归项目作者及贡献者所有，并在 AGPL-3.0
+                协议约定的范围内向您授予相应权利。除该协议明确授予的权利外，本声明未以明示或默示方式授予您任何其他权利。
+              </p>
             </section>
 
             <section className="space-y-1.5">
@@ -229,9 +240,11 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   5
                 </span>
-                {swt("interface.m0029")}</h4>
+                第五条 · 数据与隐私
+              </h4>
               <p className="pl-7">
-                {swt("interface.m0030")}</p>
+                本软件为可自行部署的开源程序，作者不运营任何集中式服务、亦不会收集或上传您的使用数据。您在使用过程中产生、处理或接触的一切数据，均由您自行掌控并负责其合法性与安全性；因数据处理不当引发的任何后果由您自行承担。
+              </p>
             </section>
 
             <section className="space-y-1.5">
@@ -239,11 +252,14 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   6
                 </span>
-                {swt("interface.m0031")}</h4>
+                第六条 · 合规与法律责任
+              </h4>
               <p className="pl-7">
-                {swt("interface.m0032")}<span className="font-medium text-foreground">
+                您应自行遵守所在国家或地区关于网络安全、数据安全与个人信息保护、计算机犯罪等方面的全部法律法规（在中国大陆包括但不限于《网络安全法》《数据安全法》《个人信息保护法》及相关司法解释）。
+                <span className="font-medium text-foreground">
                   {" "}
-                  {swt("interface.m0033")}</span>
+                  因您违反上述法律法规或本声明约定而产生的一切法律责任与后果，均由您本人独立承担，与本软件作者及贡献者无关。
+                </span>
               </p>
             </section>
 
@@ -252,9 +268,12 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   7
                 </span>
-                {swt("interface.m0034")}</h4>
+                第七条 · 免责声明与责任限制
+              </h4>
               <p className="pl-7">
-                {swt("interface.m0035")}</p>
+                本软件按"现状（AS IS）"与"现有（AS
+                AVAILABLE）"状态提供，不附带任何明示或默示的担保，包括但不限于对适销性、特定用途适用性、准确性及不侵权的担保。在适用法律允许的最大范围内，本软件作者及贡献者不对因使用或无法使用本软件（无论使用方式是否得当）而导致的任何直接、间接、偶然、特殊或后果性损失承担责任，包括但不限于数据丢失、系统损坏、业务中断、利润损失或法律纠纷。
+              </p>
             </section>
 
             <section className="space-y-1.5">
@@ -262,15 +281,17 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   8
                 </span>
-                {swt("interface.m0036")}</h4>
+                第八条 · 条款变更与最终解释
+              </h4>
               <p className="pl-7">
-                {swt("interface.m0037")}</p>
+                作者有权根据法律法规或项目发展需要不时更新本声明，更新后的版本将随项目发布并自公布之日起生效；您继续使用本软件即视为接受修订后的条款。在法律允许的范围内，本声明的最终解释权归项目作者所有。若本声明任一条款被认定为无效，不影响其余条款的效力。
+              </p>
             </section>
           </div>
 
           <DialogFooter className="mx-0 mb-0 flex-col items-stretch gap-2 rounded-b-xl px-6 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
-              {readToEnd ? swt("interface.m0038") : swt("interface.m0039")}
+              {readToEnd ? "您已浏览全部条款" : "请将条款滚动至底部后再确认"}
             </p>
             <DialogClose asChild>
               <Button
@@ -281,7 +302,8 @@ export default function LoginPage() {
                   setError("");
                 }}
               >
-                {swt("interface.m0040")}</Button>
+                我已阅读并同意全部条款
+              </Button>
             </DialogClose>
           </DialogFooter>
         </DialogContent>

@@ -1,7 +1,5 @@
 "use client";
 
-import { translate as swt } from "@/i18n/runtime";
-import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { CheckIcon, CopyIcon, FileTextIcon } from "lucide-react";
@@ -14,9 +12,6 @@ import { api } from "@/lib/api";
 import { copyText } from "@/lib/utils";
 
 export function ReportTab({ taskId }: { taskId: string }) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const [report, setReport] = React.useState<string>("");
   const [loading, setLoading] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
@@ -45,10 +40,10 @@ export function ReportTab({ taskId }: { taskId: string }) {
     const ok = await copyText(report);
     if (ok) {
       setCopied(true);
-      toast.success(swt("interface.m0676"));
+      toast.success("已复制 Markdown");
       setTimeout(() => setCopied(false), 1500);
     } else {
-      toast.error(swt("interface.m0677"));
+      toast.error("复制失败，请手动选择文本复制");
     }
   }
 
@@ -57,7 +52,8 @@ export function ReportTab({ taskId }: { taskId: string }) {
     content = (
       <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed py-16 text-muted-foreground text-sm">
         <FileTextIcon className="size-8 opacity-40" />
-        {swt("interface.m0260")}</div>
+        加载中…
+      </div>
     );
   } else if (report) {
     content = (
@@ -69,7 +65,8 @@ export function ReportTab({ taskId }: { taskId: string }) {
     content = (
       <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed py-16 text-muted-foreground text-sm">
         <FileTextIcon className="size-8 opacity-40" />
-        {swt("interface.m0678")}</div>
+        暂无报告
+      </div>
     );
   }
 
@@ -77,11 +74,13 @@ export function ReportTab({ taskId }: { taskId: string }) {
     <Card>
       <CardHeader className="flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2 text-sm">
-          <FileTextIcon className="size-4" /> {swt("interface.m0679")}</CardTitle>
+          <FileTextIcon className="size-4" /> 渗透测试报告（Markdown）
+        </CardTitle>
         <div className="flex gap-2">
           {report && (
             <Button size="sm" variant="outline" onClick={copy}>
-              {copied ? <CheckIcon /> : <CopyIcon />} {swt("interface.m0680")}</Button>
+              {copied ? <CheckIcon /> : <CopyIcon />} 复制
+            </Button>
           )}
         </div>
       </CardHeader>

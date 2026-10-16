@@ -2,7 +2,7 @@ package db
 
 import (
 	"database/sql"
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -103,7 +103,7 @@ func (s *AssetStore) upsertTaskScope(ts TaskScope) error {
 
 // AddAutoScope records the conservative task scope implied by ONE explicitly-inserted
 // asset item (source='auto'). MUST be called only from insertAssets' top-level loop —
-// never from a db-layer side effect (linkHostAssets), so derived assets cannot blindly expand scope.
+// never from a db-layer side effect (linkHostAssets), so派生资产不会盲目扩大范围。
 // Rule: scope granularity follows the asset's own type. taskID<=0 → no-op.
 func (s *AssetStore) AddAutoScope(taskID int64, assetType, domain, rawURL, ip string) error {
 	if taskID <= 0 {
@@ -149,16 +149,16 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 	}
 	ts := TaskScope{TaskID: taskID, Kind: kind, Source: source, Reason: reason}
 	if taskID <= 0 {
-		return ts, locale.Errorf("task_id is required")
+		return ts, fmt.Errorf("需要 task_id")
 	}
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return ts, locale.Errorf("value must not be empty")
+		return ts, fmt.Errorf("value 不能为空")
 	}
 	switch kind {
 	case "company":
 		if s.company == nil {
-			return ts, locale.Errorf("Company store is not enabled")
+			return ts, fmt.Errorf("company store 未启用")
 		}
 		var comp *Company
 		var err error
@@ -171,7 +171,7 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 			return ts, err
 		}
 		if comp == nil {
-			return ts, locale.Errorf("Company not found: %s (check list_companies first, or create the company)", value)
+			return ts, fmt.Errorf("company 不存在: %s（先用 list_companies 确认，或建好企业）", value)
 		}
 		ts.CompanyID = &comp.ID
 	case "root_domain":
@@ -181,13 +181,13 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 			root = d
 		}
 		if root == "" {
-			return ts, locale.Errorf("Invalid root domain: %s", value)
+			return ts, fmt.Errorf("无效根域: %s", value)
 		}
 		ts.Domain = root
 	case "subdomain":
 		d := DomainKey(stripHostPort(value))
 		if d == "" {
-			return ts, locale.Errorf("Invalid subdomain: %s", value)
+			return ts, fmt.Errorf("无效子域: %s", value)
 		}
 		ts.Domain = d
 	case "ip", "cidr":
@@ -199,10 +199,10 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 			ts.Kind = "cidr"
 		}
 		if v == "" {
-			return ts, locale.Errorf("Invalid IP/CIDR: %s", value)
+			return ts, fmt.Errorf("无效 ip/cidr: %s", value)
 		}
 		if _, _, err := net.ParseCIDR(v); err != nil {
-			return ts, locale.Errorf("Invalid IP/CIDR: %s", value)
+			return ts, fmt.Errorf("无效 ip/cidr: %s", value)
 		}
 		ts.Net = v
 	case "icp", "keyword":
@@ -212,7 +212,7 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 		}
 		ts.Value = parsed.Value
 	default:
-		return ts, locale.Errorf("Unsupported kind: %s (company/root_domain/subdomain/ip/cidr/icp/keyword)", kind)
+		return ts, fmt.Errorf("不支持的 kind: %s（company/root_domain/subdomain/ip/cidr/icp/keyword）", kind)
 	}
 	if err := s.upsertTaskScope(ts); err != nil {
 		return ts, err
@@ -277,12 +277,12 @@ type CoverageByType struct {
 // NOT a precise metric. Denominator = assets matching any active task_scope row;
 // Tested = those anchored to at least one fact node in the exploration.
 type Coverage struct {
-	Enabled     bool             `json:"enabled"`     // Whether asset coverage is enabled; all other fields are zero values when false.
-	ScopeRows   int              `json:"scope_rows"`  // 0 means the scope is not anchored.
-	Denominator int              `json:"denominator"` // Assets within scope.
-	Tested      int              `json:"tested"`      // Approximately tested assets.
-	Pct         *float64         `json:"pct"`         // Coverage ratio; null when the denominator is zero.
-	ByType      []CoverageByType `json:"by_type"`     // Total/tested counts by asset type.
+	Enabled     bool             `json:"enabled"`     // 资产覆盖度功能是否开启；false 时其余字段为零值
+	ScopeRows   int              `json:"scope_rows"`  // 0 → 范围未锚定
+	Denominator int              `json:"denominator"` // 范围内资产数
+	Tested      int              `json:"tested"`      // 已测(约)
+	Pct         *float64         `json:"pct"`         // 覆盖度；分母 0 时 null
+	ByType      []CoverageByType `json:"by_type"`     // 按资产类型的 总数/已测
 }
 
 // CoverageEnabled reports whether a task has the asset-coverage feature turned on

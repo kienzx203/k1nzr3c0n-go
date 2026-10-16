@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -18,9 +18,9 @@ const (
 )
 
 var (
-	ErrTaskTemplateInvalid      = locale.NewError("invalid task template")
-	ErrTaskTemplateNameConflict = locale.NewError("task template name already exists")
-	ErrTaskTemplateNotFound     = locale.NewError("task template not found")
+	ErrTaskTemplateInvalid      = errors.New("invalid task template")
+	ErrTaskTemplateNameConflict = errors.New("task template name already exists")
+	ErrTaskTemplateNotFound     = errors.New("task template not found")
 )
 
 // TaskTemplate is a reusable task preset (description/goal + optional category
@@ -100,33 +100,33 @@ func normalizeTaskTemplateInput(in TaskTemplateInput) (TaskTemplateInput, string
 	in.Goal = strings.TrimSpace(in.Goal)
 	switch {
 	case in.Name == "":
-		return in, "", locale.Errorf("%w: name is required", ErrTaskTemplateInvalid)
+		return in, "", fmt.Errorf("%w: name is required", ErrTaskTemplateInvalid)
 	case utf8.RuneCountInString(in.Name) > MaxTaskTemplateNameRunes:
-		return in, "", locale.Errorf("%w: name exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateNameRunes)
+		return in, "", fmt.Errorf("%w: name exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateNameRunes)
 	case in.Description == "":
-		return in, "", locale.Errorf("%w: description is required", ErrTaskTemplateInvalid)
+		return in, "", fmt.Errorf("%w: description is required", ErrTaskTemplateInvalid)
 	case utf8.RuneCountInString(in.Description) > MaxTaskTemplateTextRunes:
-		return in, "", locale.Errorf("%w: description exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateTextRunes)
+		return in, "", fmt.Errorf("%w: description exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateTextRunes)
 	case in.Goal == "":
-		return in, "", locale.Errorf("%w: goal is required", ErrTaskTemplateInvalid)
+		return in, "", fmt.Errorf("%w: goal is required", ErrTaskTemplateInvalid)
 	case utf8.RuneCountInString(in.Goal) > MaxTaskTemplateTextRunes:
-		return in, "", locale.Errorf("%w: goal exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateTextRunes)
+		return in, "", fmt.Errorf("%w: goal exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateTextRunes)
 	}
 	return in, taskTemplateNKey(in.Name), nil
 }
 
 func normalizeTaskTemplatePatch(patch TaskTemplatePatch) (TaskTemplatePatch, *string, error) {
 	if patch.Name == nil && patch.Description == nil && patch.Goal == nil && !patch.SetCategoryID && !patch.SetInterceptRules {
-		return patch, nil, locale.Errorf("%w: no fields supplied", ErrTaskTemplateInvalid)
+		return patch, nil, fmt.Errorf("%w: no fields supplied", ErrTaskTemplateInvalid)
 	}
 	var nkey *string
 	if patch.Name != nil {
 		name := taskTemplateName(*patch.Name)
 		if name == "" {
-			return patch, nil, locale.Errorf("%w: name is required", ErrTaskTemplateInvalid)
+			return patch, nil, fmt.Errorf("%w: name is required", ErrTaskTemplateInvalid)
 		}
 		if utf8.RuneCountInString(name) > MaxTaskTemplateNameRunes {
-			return patch, nil, locale.Errorf("%w: name exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateNameRunes)
+			return patch, nil, fmt.Errorf("%w: name exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateNameRunes)
 		}
 		key := taskTemplateNKey(name)
 		patch.Name = &name
@@ -135,20 +135,20 @@ func normalizeTaskTemplatePatch(patch TaskTemplatePatch) (TaskTemplatePatch, *st
 	if patch.Description != nil {
 		description := strings.TrimSpace(*patch.Description)
 		if description == "" {
-			return patch, nil, locale.Errorf("%w: description is required", ErrTaskTemplateInvalid)
+			return patch, nil, fmt.Errorf("%w: description is required", ErrTaskTemplateInvalid)
 		}
 		if utf8.RuneCountInString(description) > MaxTaskTemplateTextRunes {
-			return patch, nil, locale.Errorf("%w: description exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateTextRunes)
+			return patch, nil, fmt.Errorf("%w: description exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateTextRunes)
 		}
 		patch.Description = &description
 	}
 	if patch.Goal != nil {
 		goal := strings.TrimSpace(*patch.Goal)
 		if goal == "" {
-			return patch, nil, locale.Errorf("%w: goal is required", ErrTaskTemplateInvalid)
+			return patch, nil, fmt.Errorf("%w: goal is required", ErrTaskTemplateInvalid)
 		}
 		if utf8.RuneCountInString(goal) > MaxTaskTemplateTextRunes {
-			return patch, nil, locale.Errorf("%w: goal exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateTextRunes)
+			return patch, nil, fmt.Errorf("%w: goal exceeds %d characters", ErrTaskTemplateInvalid, MaxTaskTemplateTextRunes)
 		}
 		patch.Goal = &goal
 	}

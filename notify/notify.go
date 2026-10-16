@@ -1,35 +1,37 @@
-// Package notify adapts IM and email finding notifications. It depends only on the standard library
-// and the locale catalog, not db/server. JSONB configuration arrives as map[string]any and content as
-// Message, allowing signatures, UTF-8 truncation, and filters to be tested without PostgreSQL while
-// server handles orchestration. Channel implementations must be stateless because concurrent
-// configurations and bot instances share them; credentials always come from cfg and must never be
-// cached in adapter fields.
+// Package notify 实现漏洞发现的 IM / 邮件推送渠道适配层。
+//
+// 分层：本包是**叶子包**，只依赖标准库。它不认识数据库、不认识 server。渠道配置
+// 以 map[string]any 传入（对应 notification_channels.config 这一 JSONB 列），
+// 待推送内容以 Message 传入。这样拆开的好处是：签名计算、UTF-8 截断、过滤匹配这些
+// 真正容易出错的地方可以脱离 PostgreSQL 单测，宿主只需在 server 侧做编排。
+//
+// 并发约定：Channel 的实现必须**无状态**。同一个 Channel 实例会被多个渠道配置
+// （甚至同一渠道的多个机器人实例）并发复用，所有凭据一律从 cfg 参数传入，
+// 不允许把 webhook URL 之类的东西缓存进实现自身的字段。
 package notify
 
-import "github.com/Autumn-27/artex/locale"
-
-// Channel identifiers also define valid notification_channels.kind values. The server uses an
-// allowlist instead of a DB CHECK, as with finding statuses, to simplify adding adapters.
+// 渠道类型标识。取值同时是 notification_channels.kind 的合法集合，由 server 侧
+// 白名单校验（与 findings.status 同理，不用 DB CHECK，方便后续加渠道）。
 const (
-	KindDingTalk = "dingtalk" // DingTalk custom bot.
-	KindFeishu   = "feishu"   // Feishu/Lark custom bot.
-	KindWeCom    = "wecom"    // WeCom group bot.
-	KindWebhook  = "webhook"  // Generic webhook with custom method, headers, and JSON template.
+	KindDingTalk = "dingtalk" // 钉钉自定义机器人
+	KindFeishu   = "feishu"   // 飞书(含 Lark)自定义机器人
+	KindWeCom    = "wecom"    // 企业微信群机器人
+	KindWebhook  = "webhook"  // 通用 Webhook：自定义方法/头/JSON 模板
 	KindTelegram = "telegram" // Telegram Bot API
-	KindEmail    = "email"    // SMTP email.
+	KindEmail    = "email"    // SMTP 邮件
 )
 
-// Event identifiers for notification_events.kind.
+// 事件类型，对应 notification_events.kind。
 const (
 	EventFindingCreated       = "finding_created"
 	EventFindingStatusChanged = "finding_status_changed"
 )
 
-// InitKind is the fallback when configuration omits kind.
+// InitKind 是 config 里为空的 kind 的兜底值。
 const InitKind = KindDingTalk
 
-// severityRank orders severity values. Unknown values rank zero and fail any valid minimum threshold,
-// avoiding noisy uncertain alerts.
+// severityRank 把漏洞级别映射成可比较的序数。未知级别返回 0，因此任何
+// min_severity 设置都会把未知级别挡在外面——存疑时不推，避免误报刷屏。
 var severityRank = map[string]int{
 	"low":      1,
 	"medium":   2,
@@ -37,53 +39,54 @@ var severityRank = map[string]int{
 	"critical": 4,
 }
 
-// SeverityRank returns the ordinal, or zero for unknown values.
+// SeverityRank 返回级别的序数；未知级别返回 0。
 func SeverityRank(severity string) int { return severityRank[severity] }
 
-// SeverityLabel returns a localized emoji label for titles. Unknown values remain verbatim.
-func SeverityLabel(severity string, langs ...locale.Lang) string {
+// SeverityLabel 返回带 emoji 的中文级别名，用于消息标题与卡片配色。
+// 未知级别原样回显，不臆造。
+func SeverityLabel(severity string) string {
 	switch severity {
 	case "critical":
-		return locale.Text(locale.First(langs), "🔴 Critical")
+		return "🔴 严重"
 	case "high":
-		return locale.Text(locale.First(langs), "🟠 High")
+		return "🟠 高危"
 	case "medium":
-		return locale.Text(locale.First(langs), "🟡 Medium")
+		return "🟡 中危"
 	case "low":
-		return locale.Text(locale.First(langs), "🔵 Low")
+		return "🔵 低危"
 	default:
 		return severity
 	}
 }
 
-// StatusLabel localizes built-in workflow statuses for transition messages.
-func StatusLabel(status string, langs ...locale.Lang) string {
+// StatusLabel 把处置状态翻译成中文，用于状态变更消息。
+func StatusLabel(status string) string {
 	switch status {
 	case "pending":
-		return locale.Text(locale.First(langs), "Pending")
+		return "待处理"
 	case "in_progress":
-		return locale.Text(locale.First(langs), "In progress")
+		return "处理中"
 	case "confirmed":
-		return locale.Text(locale.First(langs), "Confirmed")
+		return "已确认"
 	case "resolved":
-		return locale.Text(locale.First(langs), "Resolved")
+		return "已处理"
 	case "fixed":
-		return locale.Text(locale.First(langs), "Fixed")
+		return "已修复"
 	case "false_positive":
-		return locale.Text(locale.First(langs), "False positive")
+		return "误报"
 	case "ignored":
-		return locale.Text(locale.First(langs), "Ignored")
+		return "忽略"
 	case "duplicate":
-		return locale.Text(locale.First(langs), "Duplicate")
+		return "重复"
 	case "risk_accepted":
-		return locale.Text(locale.First(langs), "Risk accepted")
+		return "风险接受"
 	default:
 		return status
 	}
 }
 
-// AtLeast checks a severity threshold. Empty min accepts everything; unknown severity ranks zero and
-// fails supported nonempty thresholds (see severityRank).
+// AtLeast 判断 severity 是否达到 min 门槛。min 为空表示不设门槛，一律通过。
+// 注意未知 severity 的序数为 0，会被任何非空 min 拒掉（见 severityRank 注释）。
 func AtLeast(severity, min string) bool {
 	if min == "" {
 		return true

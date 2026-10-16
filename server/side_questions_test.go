@@ -16,7 +16,6 @@ import (
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/locale"
 	"github.com/Autumn-27/artex/sidequestion"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"
@@ -531,30 +530,5 @@ func TestSideRestoredWorkerRuntimePublishesNewCheckpoint(t *testing.T) {
 	snap, err := f.m.pg.SideSnapshot(t.Context(), p.Key())
 	if err != nil || snap == nil || snap.Request.Messages[0].Text() != "after restart context" {
 		t.Fatalf("restored runtime lost checkpoint publisher: %+v %v", snap, err)
-	}
-}
-
-func TestSideLocalizedCancellationPreservesQuestionAndSSE(t *testing.T) {
-	f := newSideHTTPFixture(t)
-	p, path := f.conversation(t)
-	f.checkpoint(t, p)
-	question := "Raw user question"
-	e := decodeSide(t, f.call(t, "POST", path+"?lang=ko", map[string]string{"question": question, "client_request_id": "localized-cancel"}, 202))
-	select {
-	case <-f.provider.started:
-	case <-time.After(time.Second):
-		t.Fatal("Provider did not start")
-	}
-	f.call(t, "POST", "/api/side-questions/"+e.ID+"/cancel", nil, 200)
-	row := waitSide(t, f.m.pg, e.ID, "cancelled")
-	if row.Question != question || row.Error != locale.Text(locale.Ko, "Answer stopped") {
-		t.Fatalf("Localized cancellation changed raw question or lost language: %+v", row)
-	}
-	req := httptest.NewRequest("GET", "/api/side-questions/"+e.ID+"/events?lang=en", nil)
-	req.Header.Set("Authorization", "Bearer "+f.token)
-	w := httptest.NewRecorder()
-	f.handler.ServeHTTP(w, req)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "event: snapshot") || !strings.Contains(w.Body.String(), question) || !strings.Contains(w.Body.String(), row.Error) {
-		t.Fatalf("SSE altered protocol or stored content: %d %s", w.Code, w.Body)
 	}
 }

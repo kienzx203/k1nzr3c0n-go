@@ -5,7 +5,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Autumn-27/artex/locale"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -27,11 +26,8 @@ type Database struct {
 
 // Config is the on-disk config file shape.
 type Config struct {
-	Database             Database `json:"database"`
-	SkillDir             string   `json:"skill_dir"`
-	LLM                  LLM      `json:"llm"`
-	LocalLLMOnly         bool     `json:"local_llm_only"`
-	LocalLLMAllowedCIDRs []string `json:"local_llm_allowed_cidrs"`
+	Database Database `json:"database"`
+	SkillDir string   `json:"skill_dir"`
 }
 
 // BaseDir is the directory that anchors all runtime artifacts (config.json and
@@ -84,9 +80,6 @@ func isGoRunDir(dir string) bool {
 // The first existing file wins. If none exist, the CWD path is returned so the
 // "not found" message points at the project dir the user most likely expected.
 func Path() string {
-	if v := strings.TrimSpace(os.Getenv("SCOPEWEAVER_CONFIG")); v != "" {
-		return v
-	}
 	if v := strings.TrimSpace(os.Getenv("ARTEX_CONFIG")); v != "" {
 		return v
 	}
@@ -143,16 +136,16 @@ func SkillDir() string {
 // DSN came from (for startup logging).
 func PostgresDSN() (dsn, source string, err error) {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_PG_DSN")); v != "" {
-		return v, locale.Text(locale.ServerDefault(), "environment variable ARTEX_PG_DSN"), nil
+		return v, "环境变量 ARTEX_PG_DSN", nil
 	}
 	db := Load().Database
 	if d := strings.TrimSpace(db.DSN); d != "" {
-		return d, locale.Text(locale.ServerDefault(), "configuration file ") + Path() + " (database.dsn)", nil
+		return d, "配置文件 " + Path() + " (database.dsn)", nil
 	}
 	if db.Host != "" || db.DBName != "" || db.User != "" {
-		return db.buildDSN(), locale.Text(locale.ServerDefault(), "configuration file ") + Path() + locale.Text(locale.ServerDefault(), " (database fields)"), nil
+		return db.buildDSN(), "配置文件 " + Path() + " (database 字段)", nil
 	}
-	return "", "", locale.Errorf("Database configuration not found: ARTEX_PG_DSN is unset and %s has no database configuration (dsn or host/user/dbname). Create the configuration file or set the environment variable and retry", Path())
+	return "", "", fmt.Errorf("未找到数据库配置：环境变量 ARTEX_PG_DSN 未设置，且配置文件 %s 未提供 database（dsn 或 host/user/dbname）。请创建该配置文件或设置环境变量后重试", Path())
 }
 
 func (d Database) buildDSN() string {

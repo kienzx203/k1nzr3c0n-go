@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Autumn-27/artex/locale"
 	"log"
 	"net/http"
 	"runtime"
@@ -15,31 +14,31 @@ import (
 	"github.com/Autumn-27/artex/selfupdate"
 )
 
-// HTTP endpoints for one-click updates. Download, verification, and replacement
-// live in selfupdate; this layer owns auth, mutual exclusion, progress, and exit signaling.
+// 页面一键更新的 HTTP 面。真正的下载/校验/换装逻辑全在 selfupdate 包里，
+// 这里只负责鉴权边界、并发互斥、进度广播，以及把"该退出了"告诉 main。
 //
-// The process does not restart itself. After staging it exits with ExitRestart;
-// start.sh/start.bat, or the Docker entrypoint supervisor, relaunches it.
+// 重启不由本进程完成：暂存好新版本后进程以 selfupdate.ExitRestart 退出，
+// 由守护脚本（start.sh / start.bat，Docker 下是 ENTRYPOINT）重新拉起。
 
-// restartCh closes once an upgrade is ready or rollback completes; main exits with ExitRestart.
+// restartCh 在升级就绪或回滚完成后关闭，main 收到后以 ExitRestart 退出。
 var (
 	restartOnce sync.Once
 	restartCh   = make(chan struct{})
 )
 
-// RestartRequested closes when main should exit and let the supervisor restart it.
+// RestartRequested 返回一个在"请退出并让守护进程重新拉起我"时关闭的 channel。
 func RestartRequested() <-chan struct{} { return restartCh }
 
 func requestRestart() { restartOnce.Do(func() { close(restartCh) }) }
 
-// bootState stores this startup's Bootstrap outcome: pending upgrade, rollback,
-// or discarded staging. main supplies it so the UI receives an accurate result.
+// bootState 是本次启动时 selfupdate.Bootstrap 的结论（升级成功 / 刚回滚 /
+// 暂存件被丢弃），由 main 注入，供 /api/update/check 如实告诉前端上一次升级的下场。
 var (
 	bootStateMu sync.Mutex
 	bootState   selfupdate.State
 )
 
-// SetBootUpdateState is called once by main at startup.
+// SetBootUpdateState 由 main 在启动时调用一次。
 func SetBootUpdateState(st selfupdate.State) {
 	bootStateMu.Lock()
 	defer bootStateMu.Unlock()
@@ -52,35 +51,35 @@ func bootUpdateState() selfupdate.State {
 	return bootState
 }
 
-// releaseCache caches GitHub's latest-release query.
+// releaseCache 缓存 GitHub 的最新版本查询结果。
 //
-// The top-bar update notice checks on each full page load. Unauthenticated GitHub
-// access allows 60 requests/hour/IP; multiple tabs and reloads would quickly
-// exhaust it without caching. Explicit update checks may bypass the cache with force.
+// 顶栏的"有新版本"提示会在每次整页加载时查一次，而未认证的 GitHub API 是
+// 每 IP 每小时 60 次——不缓存的话，多开几个标签页或刷几次页面就把配额耗光了，
+// 之后真想更新时反而查不动。用户显式点"检查更新"时可以 force 绕过缓存。
 type releaseCache struct {
 	mu  sync.Mutex
 	rel *selfupdate.Release
 	err error
 	at  time.Time
-	// fetch is a test injection point; nil performs the real GitHub query.
+	// fetch 是取数函数，仅为测试留的注入点；为 nil 时走真正的 GitHub 查询。
 	fetch func(context.Context, *http.Client) (*selfupdate.Release, error)
 }
 
 const (
 	releaseTTL = 30 * time.Minute
-	// Cache errors briefly so unreachable GitHub does not delay every page load;
-	// keep the TTL short to recover quickly when connectivity returns.
+	// 失败结果也缓存一小会儿，否则 GitHub 不可达时每次页面加载都要干等一次超时；
+	// 但 TTL 要短，网络恢复后很快就能自己好。
 	releaseErrTTL = 2 * time.Minute
-	// Query timeout: NewClient's 30-minute timeout is for package downloads, not version checks.
+	// 查询用的超时。NewClient 的 30 分钟超时是给下载整包用的，查版本不能等那么久。
 	releaseTimeout = 20 * time.Second
 )
 
 var relCache = &releaseCache{}
 
-// get returns the latest Release, avoiding network access on a cache hit.
+// get 返回最新 Release，命中缓存则不访问网络。
 //
-// Hold the lock while fetching so concurrent callers share one query rather
-// than issuing a burst of GitHub requests as multiple tabs load.
+// 取数期间一直持有锁：并发请求会排队等同一次查询的结果，而不是各自去打 GitHub
+// （页面刚加载时多个标签页同时来查，正是最容易触发限流的时刻）。
 func (c *releaseCache) get(ctx context.Context, client *http.Client, force bool) (*selfupdate.Release, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -102,8 +101,8 @@ func (c *releaseCache) get(ctx context.Context, client *http.Client, force bool)
 	ctx, cancel := context.WithTimeout(ctx, releaseTimeout)
 	defer cancel()
 	rel, err := fetch(ctx, client)
-	// Caller cancellation (such as closing a tab) is not a GitHub failure. Do not
-	// cache it, or the next visitor would receive an unrelated cancellation error.
+	// 请求被取消（用户关了标签页）不代表 GitHub 有问题，别把它写进缓存，
+	// 否则下一个访客会拿到一条莫名其妙的"已取消"错误。
 	if err != nil && ctx.Err() != nil && errors.Is(ctx.Err(), context.Canceled) {
 		return c.rel, err
 	}
@@ -111,21 +110,19 @@ func (c *releaseCache) get(ctx context.Context, client *http.Client, force bool)
 	return rel, err
 }
 
-// updateProgress is one progress event sent to the frontend.
+// updateProgress 是推给前端的一条进度。
 type updateProgress struct {
-	message locale.Message
-	cause   error
 	Phase   selfupdate.Phase `json:"phase"`
-	Percent int              `json:"percent"` // Meaningful only while downloading; otherwise -1.
+	Percent int              `json:"percent"` // 仅下载阶段有意义；其余为 -1
 	Message string           `json:"message"`
 	Version string           `json:"version,omitempty"`
 	Error   string           `json:"error,omitempty"`
 }
 
-// updateHub retains an upgrade's progress and broadcasts it to SSE subscribers.
+// updateHub 持有一次升级的进度并广播给 SSE 订阅者。
 //
-// running also provides exclusion: concurrent update/apply requests receive 409,
-// preventing two goroutines from writing the same scopeweaver.new file.
+// running 同时充当互斥：升级期间再次 POST /api/update/apply 直接 409，
+// 避免两个 goroutine 同时往同一个 artex.new 写。
 type updateHub struct {
 	mu      sync.Mutex
 	running bool
@@ -138,7 +135,7 @@ var updHub = &updateHub{
 	subs: map[chan updateProgress]struct{}{},
 }
 
-// begin claims update ownership, returning false if an update is already running.
+// begin 抢占升级权限，已在进行中则返回 false。
 func (h *updateHub) begin(version string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -146,37 +143,33 @@ func (h *updateHub) begin(version string) bool {
 		return false
 	}
 	h.running = true
-	h.cur = updateProgress{Phase: selfupdate.PhaseDownload, Percent: 0, Message: "Preparing…", message: locale.M("Preparing…"), Version: version}
+	h.cur = updateProgress{Phase: selfupdate.PhaseDownload, Percent: 0, Message: "准备中…", Version: version}
 	h.fanout(h.cur)
 	return true
 }
 
-// finish ends an update. A nil error means staging succeeded and restart is pending.
+// finish 结束一次升级。err 为 nil 表示暂存成功，等待重启。
 func (h *updateHub) finish(err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.running = false
 	if err != nil {
-		h.cur = updateProgress{Phase: selfupdate.PhaseFailed, Percent: -1, Message: "Update failed", message: locale.M("Update failed"), cause: err, Error: err.Error(), Version: h.cur.Version}
+		h.cur = updateProgress{Phase: selfupdate.PhaseFailed, Percent: -1, Message: "更新失败", Error: err.Error(), Version: h.cur.Version}
 	} else {
-		h.cur = updateProgress{Phase: selfupdate.PhaseStaged, Percent: 100, Message: "New version ready; restarting…", message: locale.M("New version ready; restarting…"), Version: h.cur.Version}
+		h.cur = updateProgress{Phase: selfupdate.PhaseStaged, Percent: 100, Message: "新版本已就绪，正在重启…", Version: h.cur.Version}
 	}
 	h.fanout(h.cur)
 }
 
 func (h *updateHub) publish(ph selfupdate.Phase, pct int, msg string) {
-	h.publishMessage(ph, pct, locale.M(msg))
-}
-
-func (h *updateHub) publishMessage(ph selfupdate.Phase, pct int, msg locale.Message) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.cur = updateProgress{Phase: ph, Percent: pct, Message: msg.In(locale.En), message: msg, Version: h.cur.Version}
+	h.cur = updateProgress{Phase: ph, Percent: pct, Message: msg, Version: h.cur.Version}
 	h.fanout(h.cur)
 }
 
-// fanout requires h.mu. Subscriber channels are buffered; drop events when full.
-// Progress is transient: a stalled SSE client must never block the upgrade itself.
+// fanout 必须在持有 h.mu 时调用。订阅者 channel 是有缓冲的，满了就丢——
+// 进度是可丢弃的瞬时信息，绝不能让一个卡住的 SSE 连接阻塞升级本身。
 func (h *updateHub) fanout(p updateProgress) {
 	for ch := range h.subs {
 		select {
@@ -208,12 +201,12 @@ func (h *updateHub) subscribe() (<-chan updateProgress, func()) {
 	}
 }
 
-// updateCheck queries GitHub's latest stable release and compares it with the running version.
+// updateCheck 查询 GitHub 上的最新正式版并与当前版本比较。
 //
-// The frontend may also contact api.github.com (CORS allows it), but this endpoint
-// is authoritative: the backend must reach GitHub to download updates. A browser
-// may have connectivity or a proxy that the server lacks; reporting that here
-// prevents offering an update that cannot be downloaded.
+// 前端也会直连 api.github.com（GitHub 的 CORS 是 *），但**以本接口为准**：
+// 下载是后端做的，只有后端能访问 GitHub 才谈得上更新。浏览器能连、服务器连不上
+// 的情况很常见（服务器在内网、或代理只配在浏览器上），那时点更新必然失败，
+// 不如在检查这一步就如实报错。
 func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 	current := BuildVersion
 	mode := "binary"
@@ -232,12 +225,12 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 		"rolled_back": boot.RolledBack,
 	}
 
-	// Top-bar checks use cache; explicit checks pass force=1 to fetch fresh data.
+	// 顶栏提示走缓存（默认）；用户点"检查更新"时带 force=1 强制回源。
 	force := r.URL.Query().Get("force") != ""
 	client := selfupdate.NewClient(s.m.GlobalProxy())
 	rel, err := relCache.get(r.Context(), client, force)
 	if err != nil {
-		out["error"] = locale.ErrorMessage(locale.FromRequest(r), err)
+		out["error"] = err.Error()
 		writeJSON(w, 200, out)
 		return
 	}
@@ -263,54 +256,54 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 	out["comparable"] = comparable
 	out["has_update"] = comparable && cmp < 0
 	if !comparable {
-		// Development builds (dev or suffixed git-describe versions) are incomparable.
-		// Disable updates to prevent a release overwriting the locally tested executable.
-		out["reason"] = locale.Text(locale.FromRequest(r), "Current version %q is not a stable release; one-click updates are disabled", current)
+		// 开发构建（dev / git describe 带后缀）没有可比较的版本号。放行只会
+		// 用正式版覆盖掉本地正在调试的二进制，所以直接不给更新。
+		out["reason"] = fmt.Sprintf("当前版本 %q 不是正式发布版本，已禁用一键更新", current)
 	}
 	writeJSON(w, 200, out)
 }
 
-// updateApply downloads/stages a version, then exits for supervisor-driven restart.
+// updateApply 下载并暂存新版本，完成后让进程退出交给守护脚本重启。
 //
-// Return 202 immediately and work in a goroutine. Full downloads may take minutes;
-// tying them to a request risks reverse-proxy timeouts. Progress uses /api/update/stream.
+// 立刻返回 202，实际工作在后台 goroutine 上跑：整包下载可能要几分钟，
+// 挂在请求上会被反代超时掐断。进度走 /api/update/stream。
 func (s *Server) updateApply(w http.ResponseWriter, r *http.Request) {
 	current := BuildVersion
 
-	// Use cache to install exactly the version the user saw and confirmed.
+	// 走缓存：确保装上的就是用户在界面上看到并确认的那个版本。
 	client := selfupdate.NewClient(s.m.GlobalProxy())
 	rel, err := relCache.get(r.Context(), client, false)
 	if err != nil {
-		writeError(w, 502, err)
+		writeErr(w, 502, err.Error())
 		return
 	}
 	cmp, comparable := selfupdate.CompareVersions(current, rel.TagName)
 	if !comparable {
-		writeErr(w, 400, locale.Text(locale.FromRequest(r), "Current version %q is not a stable release; one-click updates are disabled", current))
+		writeErr(w, 400, fmt.Sprintf("当前版本 %q 不是正式发布版本，已禁用一键更新", current))
 		return
 	}
 	if cmp >= 0 {
-		writeErr(w, 400, locale.Text(locale.FromRequest(r), "Already running the latest version %s", current))
+		writeErr(w, 400, fmt.Sprintf("当前已是最新版本 %s", current))
 		return
 	}
 	if !updHub.begin(rel.TagName) {
-		writeErr(w, 409, "An update is already in progress")
+		writeErr(w, 409, "已有一个更新正在进行中")
 		return
 	}
 
 	go func() {
-		// Use the server context: the HTTP request ends after its response, which would
-		// immediately cancel a download tied to the request context.
-		err := selfupdate.StageMessages(s.ctx, client, rel, current, func(ph selfupdate.Phase, pct int, msg locale.Message) {
-			updHub.publishMessage(ph, pct, msg)
+		// 刻意用 s.ctx 而不是请求的 ctx：HTTP 响应一返回请求就结束了，
+		// 挂在它上面下载会立刻被取消。
+		err := selfupdate.Stage(s.ctx, client, rel, current, func(ph selfupdate.Phase, pct int, msg string) {
+			updHub.publish(ph, pct, msg)
 		})
 		updHub.finish(err)
 		if err != nil {
-			log.Printf("[update] Update failed: %v", err)
+			log.Printf("[update] 更新失败：%v", err)
 			return
 		}
-		log.Printf("[update] %s -> %s staged; exiting to complete replacement", current, rel.TagName)
-		// Allow the final progress event to reach clients before requesting exit.
+		log.Printf("[update] %s → %s 已暂存，即将退出以完成换装", current, rel.TagName)
+		// 留一点时间把最后一条进度推给前端，再触发退出。
 		time.Sleep(1500 * time.Millisecond)
 		requestRestart()
 	}()
@@ -318,17 +311,17 @@ func (s *Server) updateApply(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 202, map[string]any{"ok": true, "target": rel.TagName})
 }
 
-// updateRollback restores the previous executable backed up as scopeweaver.old.
+// updateRollback 主动退回上一版本（换装前备份的 artex.old）。
 func (s *Server) updateRollback(w http.ResponseWriter, r *http.Request) {
 	if _, running := updHub.snapshot(); running {
-		writeErr(w, 409, "Cannot roll back while an update is in progress")
+		writeErr(w, 409, "更新正在进行中，无法回滚")
 		return
 	}
 	if err := selfupdate.Rollback(); err != nil {
-		writeError(w, 400, err)
+		writeErr(w, 400, err.Error())
 		return
 	}
-	log.Printf("[update] Manually rolled back to the previous version; exiting to complete the switch")
+	log.Printf("[update] 已手动回滚到上一版本，即将退出以完成切换")
 	writeJSON(w, 202, map[string]any{"ok": true})
 	go func() {
 		time.Sleep(500 * time.Millisecond)
@@ -336,7 +329,7 @@ func (s *Server) updateRollback(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
-// updateStream sends update progress over SSE.
+// updateStream 以 SSE 推送更新进度。
 func (s *Server) updateStream(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -352,12 +345,11 @@ func (s *Server) updateStream(w http.ResponseWriter, r *http.Request) {
 	defer unsub()
 
 	send := func(p updateProgress) {
-		p = p.inLanguage(locale.FromRequest(r))
 		b, _ := json.Marshal(p)
 		fmt.Fprintf(w, "data: %s\n\n", b)
 		flusher.Flush()
 	}
-	// Send current state immediately so a refreshed page sees the ongoing upgrade.
+	// 先补一条当前状态，页面刷新后能立刻看到进行中的升级。
 	cur, _ := updHub.snapshot()
 	send(cur)
 
@@ -378,15 +370,4 @@ func (s *Server) updateStream(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
-}
-
-// inLanguage renders a copy, so concurrent SSE subscribers cannot change each other's locale.
-func (p updateProgress) inLanguage(lang locale.Lang) updateProgress {
-	if p.message.Template != "" {
-		p.Message = p.message.In(lang)
-	}
-	if p.cause != nil {
-		p.Error = locale.ErrorMessage(lang, p.cause)
-	}
-	return p
 }

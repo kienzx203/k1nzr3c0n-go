@@ -1,5 +1,4 @@
 "use client";
-import { useI18n } from "@/i18n";
 
 import * as React from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -50,9 +49,6 @@ const components: Components = {
 };
 
 export function Markdown({ text }: { text: string }) {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   return (
     <div className="min-w-0 space-y-1.5 text-sm [&>*:first-child]:mt-0">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>

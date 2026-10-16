@@ -1,7 +1,5 @@
 "use client";
 
-import { translate as swt } from "@/i18n/runtime";
-import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { RotateCcwIcon } from "lucide-react";
@@ -29,11 +27,8 @@ interface FindingRetestDialogProps {
   onStarted?: (retest: FindingRetest) => void;
 }
 
-// Mount only while open and clear notes on close. List/details share submission locking and errors; remain on page after starting.
+// 仅在打开时挂载，关闭后清空说明；列表与详情共用提交锁及错误处理，启动后留在当前页。
 export function FindingRetestDialog({ findingId, findingName, onClose, onStarted }: FindingRetestDialogProps) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const notesId = React.useId();
   const [notes, setNotes] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
@@ -47,9 +42,9 @@ export function FindingRetestDialog({ findingId, findingName, onClose, onStarted
       const result = await api.startFindingRetest(findingId, notes.trim());
       onStarted?.(result.retest);
       onClose();
-      toast.success(result.created ? swt("interface.m2206") : swt("interface.m2207"));
+      toast.success(result.created ? "复测已启动，可点击「复测中」查看会话" : "该漏洞正在复测，可查看已有会话");
     } catch (e) {
-      toast.error(swt("interface.m2208", { p0: (e as Error).message }));
+      toast.error(`发起复测失败：${(e as Error).message}`);
     } finally {
       submitLock.current = false;
       setSubmitting(false);
@@ -60,14 +55,16 @@ export function FindingRetestDialog({ findingId, findingName, onClose, onStarted
     <Dialog open onOpenChange={(open) => !open && !submitLock.current && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{swt("interface.m2209")}{findingId}</DialogTitle>
+          <DialogTitle>复测漏洞 #{findingId}</DialogTitle>
           <DialogDescription className="break-words">
             {findingName ? <span className="mb-2 block">{findingName}</span> : null}
-            {swt("interface.m2210")}</DialogDescription>
+            复测 Agent
+            将读取原证据和测试约束，在独立会话中执行针对性验证。复测成功完成且确认修复后，漏洞状态自动改为「已修复」，其他结论保留原状态。
+          </DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field data-disabled={submitting}>
-            <FieldLabel htmlFor={notesId}>{swt("interface.m2211")}</FieldLabel>
+            <FieldLabel htmlFor={notesId}>补充说明（可选）</FieldLabel>
             <Textarea
               id={notesId}
               value={notes}
@@ -75,17 +72,18 @@ export function FindingRetestDialog({ findingId, findingName, onClose, onStarted
               rows={4}
               disabled={submitting}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder={swt("interface.m2212")}
+              placeholder="例如：使用原测试账号验证原接口；修复版本为 v2。"
             />
-            <FieldDescription>{swt("interface.m2213")}</FieldDescription>
+            <FieldDescription>可补充修复版本、测试条件或本次限制。</FieldDescription>
           </Field>
         </FieldGroup>
         <DialogFooter>
           <Button variant="outline" disabled={submitting} onClick={onClose}>
-            {swt("interface.m0063")}</Button>
+            取消
+          </Button>
           <Button disabled={submitting} onClick={() => void start()}>
             {submitting ? <Spinner data-icon="inline-start" /> : <RotateCcwIcon data-icon="inline-start" />}
-            {submitting ? swt("interface.m2214") : swt("interface.m2215")}
+            {submitting ? "正在创建…" : "开始复测"}
           </Button>
         </DialogFooter>
       </DialogContent>

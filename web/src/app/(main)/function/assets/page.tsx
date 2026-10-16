@@ -1,14 +1,11 @@
 "use client";
 
-import { translate as swt } from "@/i18n/runtime";
-import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import {
   BuildingIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  DownloadIcon,
   GlobeIcon,
   KeyRoundIcon,
   LayoutTemplateIcon,
@@ -77,9 +74,6 @@ const METHOD_COLOR: Record<string, string> = {
 };
 
 function MethodBadge({ method }: { method: string }) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const m = method.toUpperCase();
   return (
     <span
@@ -104,19 +98,16 @@ function statusTone(code: number) {
 const PAGE_SIZES = [25, 50, 100, 200];
 
 const TABS: { key: string; label: string; icon: LucideIcon }[] = [
-  { key: "company", get label() { return swt("interface.m0217"); }, icon: BuildingIcon },
-  { key: "root_domain", get label() { return swt("interface.m0142"); }, icon: GlobeIcon },
+  { key: "company", label: "企业", icon: BuildingIcon },
+  { key: "root_domain", label: "根域名", icon: GlobeIcon },
   { key: "ip", label: "IP", icon: NetworkIcon },
-  { key: "subdomain", get label() { return swt("interface.m0143"); }, icon: GlobeIcon },
-  { key: "app", get label() { return swt("interface.m0144"); }, icon: SmartphoneIcon },
-  { key: "service", get label() { return swt("interface.m0145"); }, icon: LayoutTemplateIcon },
-  { key: "endpoint", get label() { return swt("interface.m0218"); }, icon: LinkIcon },
+  { key: "subdomain", label: "子域名", icon: GlobeIcon },
+  { key: "app", label: "应用", icon: SmartphoneIcon },
+  { key: "service", label: "服务", icon: LayoutTemplateIcon },
+  { key: "endpoint", label: "接口", icon: LinkIcon },
 ];
 
 export default function AssetsPage() {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const [rows, setRows] = React.useState<Asset[]>([]);
   const [total, setTotal] = React.useState(0);
   const [companies, setCompanies] = React.useState<Company[]>([]);
@@ -201,36 +192,14 @@ export default function AssetsPage() {
     setDeleting(true);
     try {
       const res = await api.deleteAssets(deleteIds);
-      toast.success(swt("interface.m0219", { p0: res.deleted }));
+      toast.success(`已删除 ${res.deleted} 条资产`);
       setSelected(new Set());
       refresh();
     } catch (e) {
-      toast.error(swt("interface.m0110") + String((e as Error)?.message ?? e));
+      toast.error("删除失败：" + String((e as Error)?.message ?? e));
     } finally {
       setDeleting(false);
       setDeleteOpen(false);
-    }
-  };
-
-  const [exporting, setExporting] = React.useState(false);
-  const doExport = async (format: "csv" | "json") => {
-    setExporting(true);
-    try {
-      if (selected.size > 0) {
-        await api.exportAssets({ format, scope: "selected", ids: Array.from(selected) });
-      } else {
-        const dsl = query.trim();
-        await api.exportAssets({
-          format,
-          scope: "filtered",
-          filters: { type: tab !== "company" ? tab : "", dsl },
-        });
-      }
-      toast.success(swt("interface.m0372"));
-    } catch (e) {
-      toast.error(swt("interface.m0373", { p0: (e as Error).message }));
-    } finally {
-      setExporting(false);
     }
   };
 
@@ -241,12 +210,12 @@ export default function AssetsPage() {
       const res = await api.deleteCompany(companyDeleteTarget.id, companyDeleteAssets);
       const msg =
         companyDeleteAssets && res.assets_deleted > 0
-          ? swt("interface.m0220", { p0: res.assets_deleted })
-          : swt("interface.m0221");
+          ? `已删除企业，同时删除 ${res.assets_deleted} 条资产`
+          : "已删除企业";
       toast.success(msg);
       refresh();
     } catch (e) {
-      toast.error(swt("interface.m0110") + String((e as Error)?.message ?? e));
+      toast.error("删除失败：" + String((e as Error)?.message ?? e));
     } finally {
       setCompanyDeleting(false);
       setCompanyDeleteTarget(null);
@@ -321,7 +290,7 @@ export default function AssetsPage() {
     const m = new Map<number, string>();
     for (const c of companies) m.set(c.id, c.name);
     return m;
-  }, [swLocale, companies]);
+  }, [companies]);
 
   const companyName = (id?: number) => (id ? (companyById.get(id) ?? "") : "");
 
@@ -347,22 +316,20 @@ export default function AssetsPage() {
     <div className="flex h-[calc(100vh-6rem)] min-h-0 flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">{swt("interface.m0222")}</h1>
+          <h1 className="text-xl font-semibold tracking-tight">资产</h1>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">
-            {swt("interface.m0199")}<span className="tabular-nums">{totalAssets}</span> {swt("interface.m0223")}</span>
+            共 <span className="tabular-nums">{totalAssets}</span> 项资产
+          </span>
           {selected.size > 0 && (
             <Button variant="destructive" size="sm" onClick={() => openDelete(Array.from(selected) as number[])}>
-              <Trash2Icon className="size-3.5" /> {swt("interface.m0224")}{selected.size})
+              <Trash2Icon className="size-3.5" /> 删除已选 ({selected.size})
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => doExport("csv")} disabled={exporting || tab === "company"}>
-            <DownloadIcon className="size-3.5" /> CSV</Button>
-          <Button variant="outline" size="sm" onClick={() => doExport("json")} disabled={exporting || tab === "company"}>
-            <DownloadIcon className="size-3.5" /> JSON</Button>
           <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-            <RefreshCwIcon className={cn("size-4", loading && "animate-spin")} /> {swt("interface.m0225")}</Button>
+            <RefreshCwIcon className={cn("size-4", loading && "animate-spin")} /> 刷新
+          </Button>
           <CompanyDialog onSaved={refresh} />
         </div>
       </div>
@@ -380,17 +347,17 @@ export default function AssetsPage() {
           </TabsList>
         </div>
 
-        {/* Companies. */}
+        {/* 企业 */}
         <TabsContent value="company" className="mt-0 flex min-h-0 flex-1 flex-col">
           <Card className="flex min-h-0 flex-1 flex-col overflow-hidden py-0">
             <div className="min-h-0 flex-1 overflow-auto">
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-card">
                   <TableRow>
-                    <TableHead>{swt("interface.m0217")}</TableHead>
-                    <TableHead className="w-24 text-right">{swt("interface.m0226")}</TableHead>
-                    <TableHead>{swt("interface.m0227")}</TableHead>
-                    <TableHead className="w-36 text-right">{swt("interface.m0228")}</TableHead>
+                    <TableHead>企业</TableHead>
+                    <TableHead className="w-24 text-right">资产数</TableHead>
+                    <TableHead>资产范围</TableHead>
+                    <TableHead className="w-36 text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -413,7 +380,7 @@ export default function AssetsPage() {
                             ))}
                           </div>
                         ) : (
-                          <span className="text-xs text-muted-foreground">{swt("interface.m0229")}</span>
+                          <span className="text-xs text-muted-foreground">未设置范围</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
@@ -428,7 +395,7 @@ export default function AssetsPage() {
                               setCompanyDeleteTarget(c);
                               setCompanyDeleteAssets(false);
                             }}
-                            aria-label={swt("interface.m0230", { p0: c.name })}
+                            aria-label={`删除企业 ${c.name}`}
                           >
                             <Trash2Icon className="size-3.5" />
                           </Button>
@@ -439,7 +406,8 @@ export default function AssetsPage() {
                   {companies.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
-                        {swt("interface.m0231")}</TableCell>
+                        还没有企业。点击右上角「新增企业」并填写资产范围，系统会自动认领命中的资产。
+                      </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -448,11 +416,11 @@ export default function AssetsPage() {
           </Card>
         </TabsContent>
 
-        {/* Root domains. */}
+        {/* 根域名 */}
         <TabsContent value="root_domain" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", swt("interface.m0232"), swt("interface.m0233"), swt("interface.m0234"), ""]}
+            cols={["", "域名", "ICP 备案", "归属企业", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -471,7 +439,7 @@ export default function AssetsPage() {
                 <TableCell className="font-mono text-xs font-medium">{a.domain}</TableCell>
                 <TableCell className="text-xs">{a.icp || "—"}</TableCell>
                 <TableCell className="text-xs">
-                  {companyName(a.company_id) || <span className="text-muted-foreground">{swt("interface.m0235")}</span>}
+                  {companyName(a.company_id) || <span className="text-muted-foreground">未归属</span>}
                 </TableCell>
                 <TableCell className="w-8 pl-0">
                   <Button
@@ -479,7 +447,7 @@ export default function AssetsPage() {
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-destructive"
                     onClick={() => openDelete([a.id])}
-                    aria-label={swt("interface.m0236", { p0: a.domain || a.id })}
+                    aria-label={`删除资产 ${a.domain || a.id}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -493,7 +461,7 @@ export default function AssetsPage() {
         <TabsContent value="ip" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "IP", swt("interface.m0237"), swt("interface.m0238"), swt("interface.m0239"), ""]}
+            cols={["", "IP", "C段", "绑定域名", "开放端口", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -526,7 +494,7 @@ export default function AssetsPage() {
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-destructive"
                     onClick={() => openDelete([a.id])}
-                    aria-label={swt("interface.m0236", { p0: a.ip || a.id })}
+                    aria-label={`删除资产 ${a.ip || a.id}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -536,11 +504,11 @@ export default function AssetsPage() {
           </AssetCard>
         </TabsContent>
 
-        {/* Subdomains. */}
+        {/* 子域名 */}
         <TabsContent value="subdomain" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", swt("interface.m0232"), swt("interface.m0142"), swt("interface.m0240"), swt("interface.m0241"), ""]}
+            cols={["", "域名", "根域名", "解析类型", "解析值", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -568,7 +536,7 @@ export default function AssetsPage() {
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-destructive"
                     onClick={() => openDelete([a.id])}
-                    aria-label={swt("interface.m0236", { p0: a.domain || a.id })}
+                    aria-label={`删除资产 ${a.domain || a.id}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -578,11 +546,11 @@ export default function AssetsPage() {
           </AssetCard>
         </TabsContent>
 
-        {/* Applications. */}
+        {/* 应用 */}
         <TabsContent value="app" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", swt("interface.m0242"), "Bundle ID", swt("interface.m0243"), swt("interface.m0233"), ""]}
+            cols={["", "应用名", "Bundle ID", "分类", "ICP 备案", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -608,7 +576,7 @@ export default function AssetsPage() {
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-destructive"
                     onClick={() => openDelete([a.id])}
-                    aria-label={swt("interface.m0236", { p0: a.app_name || a.id })}
+                    aria-label={`删除资产 ${a.app_name || a.id}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -618,11 +586,11 @@ export default function AssetsPage() {
           </AssetCard>
         </TabsContent>
 
-        {/* Services. */}
+        {/* 服务 */}
         <TabsContent value="service" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", swt("interface.m0145"), swt("interface.m0232"), "IP", swt("interface.m0244"), swt("interface.m0245"), swt("interface.m0246"), swt("interface.m0247"), swt("interface.m0248"), ""]}
+            cols={["", "服务", "域名", "IP", "端口", "状态码", "标题", "指纹", "认证", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -687,7 +655,7 @@ export default function AssetsPage() {
                     ) : (
                       (a.auth ?? []).map((authItem, i) => {
                         const item = authItem as Record<string, string>;
-                        const label = item.type || item.username || swt("interface.m0248");
+                        const label = item.type || item.username || "认证";
                         return (
                           <span key={i} className="inline-flex items-center gap-1 text-[11px]">
                             <KeyRoundIcon className="size-3 text-muted-foreground" />
@@ -703,7 +671,7 @@ export default function AssetsPage() {
                       size="icon"
                       className="size-7 text-muted-foreground hover:text-destructive"
                       onClick={() => openDelete([a.id])}
-                      aria-label={swt("interface.m0236", { p0: a.url || a.id })}
+                      aria-label={`删除资产 ${a.url || a.id}`}
                     >
                       <Trash2Icon className="size-3.5" />
                     </Button>
@@ -714,11 +682,11 @@ export default function AssetsPage() {
           </AssetCard>
         </TabsContent>
 
-        {/* Endpoints. */}
+        {/* 接口 */}
         <TabsContent value="endpoint" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", swt("interface.m0249"), swt("interface.m0250"), swt("interface.m0251"), ""]}
+            cols={["", "方法", "完整地址", "参数", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -755,7 +723,7 @@ export default function AssetsPage() {
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-destructive"
                     onClick={() => openDelete([a.id])}
-                    aria-label={swt("interface.m0236", { p0: a.url || a.id })}
+                    aria-label={`删除资产 ${a.url || a.id}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -769,13 +737,14 @@ export default function AssetsPage() {
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{swt("interface.m0134")}</AlertDialogTitle>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
             <AlertDialogDescription>
-              {swt("interface.m0252")}<span className="font-semibold tabular-nums">{deleteIds.length}</span>{" "}
-              {swt("interface.m0253")}</AlertDialogDescription>
+              将永久删除 <span className="font-semibold tabular-nums">{deleteIds.length}</span>{" "}
+              条资产记录，此操作不可撤销。
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>{swt("interface.m0063")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -784,7 +753,7 @@ export default function AssetsPage() {
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? swt("interface.m0254") : swt("interface.m0134")}
+              {deleting ? "删除中…" : "确认删除"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -801,10 +770,10 @@ export default function AssetsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{swt("interface.m0255")}{companyDeleteTarget?.name}</AlertDialogTitle>
+            <AlertDialogTitle>删除企业 · {companyDeleteTarget?.name}</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
-                <p>{swt("interface.m0256")}</p>
+                <p>此操作将永久删除该企业及其资产范围配置，不可撤销。</p>
                 <label
                   htmlFor="delete-assets-opt"
                   className="flex cursor-pointer items-center gap-2.5 rounded-md border p-3 hover:bg-muted/50"
@@ -815,14 +784,15 @@ export default function AssetsPage() {
                     onCheckedChange={(v) => setCompanyDeleteAssets(!!v)}
                   />
                   <span className="text-sm leading-snug">
-                    {swt("interface.m0257")}<span className="block text-xs text-muted-foreground">{swt("interface.m0258")}</span>
+                    同时删除该企业下的所有资产
+                    <span className="block text-xs text-muted-foreground">不勾选则保留资产，仅取消归属关系</span>
                   </span>
                 </label>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={companyDeleting}>{swt("interface.m0063")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={companyDeleting}>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -831,7 +801,7 @@ export default function AssetsPage() {
               disabled={companyDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {companyDeleting ? swt("interface.m0254") : swt("interface.m0134")}
+              {companyDeleting ? "删除中…" : "确认删除"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -865,9 +835,6 @@ function AssetCard({
   onToggleAll?: (ids: number[]) => void;
   children: React.ReactNode;
 }) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const childRows = React.Children.toArray(children);
   const pageCount = Math.max(1, Math.ceil(total / size));
   const start = total === 0 ? 0 : page * size + 1;
@@ -903,7 +870,7 @@ function AssetCard({
             ) : (
               <TableRow>
                 <TableCell colSpan={cols.length} className="py-12 text-center text-sm text-muted-foreground">
-                  {loaded ? swt("interface.m0259") : swt("interface.m0260")}
+                  {loaded ? "暂无数据。" : "加载中…"}
                 </TableCell>
               </TableRow>
             )}
@@ -920,7 +887,8 @@ function AssetCard({
               <SelectGroup>
                 {PAGE_SIZES.map((n) => (
                   <SelectItem key={n} value={String(n)}>
-                    {n} {swt("interface.m0261")}</SelectItem>
+                    {n} / 页
+                  </SelectItem>
                 ))}
               </SelectGroup>
             </SelectContent>
@@ -960,9 +928,6 @@ function AssetCard({
 }
 
 function Chips({ items, mono }: { items: string[]; mono?: boolean }) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const clean = items.filter(Boolean);
   if (clean.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
   return (
@@ -977,9 +942,6 @@ function Chips({ items, mono }: { items: string[]; mono?: boolean }) {
 }
 
 function CompanyAvatar({ name, logo }: { name: string; logo?: string }) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const initial = (name.trim()[0] ?? "?").toUpperCase();
   return (
     <Avatar className="size-7 shrink-0">
@@ -989,8 +951,8 @@ function CompanyAvatar({ name, logo }: { name: string; logo?: string }) {
   );
 }
 
-// Backend warnings concern existing data, not submitted rows; saving has already succeeded.
-// Keep warnings visible longer so users can identify and address the affected assets.
+// 后端返回的 warnings 说的是既有数据问题（不是本次提交的行有错），保存本身已经
+// 成功。给更长的停留时间，因为它需要用户去处理具体的资产，扫一眼标题不够。
 function showScopeWarnings(warnings?: string[]) {
   for (const warning of warnings ?? []) {
     toast.warning(warning, { duration: 15000 });
@@ -1009,16 +971,13 @@ function savedScopeText(company: Company): string {
     .join("\n");
 }
 
-// Add companies in the same right-side drawer pattern as tasks and LLM profiles.
+// 新增企业使用与任务、LLM 编辑一致的右侧抽屉。
 function CompanyDialog({ onSaved }: { onSaved: () => void }) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState("");
   const [scopeText, setScopeText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const parsedScope = React.useMemo(() => parseCompanyScopeText(scopeText), [swLocale, scopeText]);
+  const parsedScope = React.useMemo(() => parseCompanyScopeText(scopeText), [scopeText]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -1028,11 +987,11 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
 
   const submit = async () => {
     if (!name.trim()) {
-      toast.error(swt("interface.m0262"));
+      toast.error("请填写企业名称");
       return;
     }
     if (parsedScope.errors.length > 0) {
-      toast.error(swt("interface.m0263"));
+      toast.error("请修正无效的资产范围");
       return;
     }
     setBusy(true);
@@ -1040,14 +999,14 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
       const res = await api.createCompany(name.trim(), parsedScope.rules);
       const added = res.scope_added ?? 0;
       const invalid = res.scope_invalid ?? 0;
-      if (invalid > 0) toast.warning(swt("interface.m0264", { p0: added, p1: invalid }));
-      else toast.success(swt("interface.m0265", { p0: added }));
+      if (invalid > 0) toast.warning(`已创建企业，添加 ${added} 条范围；${invalid} 行无效`);
+      else toast.success(`已创建企业，添加 ${added} 条范围`);
       setOpen(false);
       onSaved();
     } catch (e) {
       const msg = String((e as Error)?.message ?? e);
-      if (/:\s*409$/.test(msg)) toast.error(swt("interface.m0266"));
-      else toast.error(swt("interface.m0267", { p0: msg }));
+      if (/:\s*409$/.test(msg)) toast.error("企业已存在，请换个名称");
+      else toast.error(`保存失败：${msg}`);
     } finally {
       setBusy(false);
     }
@@ -1057,20 +1016,21 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button size="sm">
-          <BuildingIcon data-icon="inline-start" /> {swt("interface.m0268")}</Button>
+          <BuildingIcon data-icon="inline-start" /> 新增企业
+        </Button>
       </SheetTrigger>
       <SheetContent className="w-full! max-w-none! gap-0 p-0 sm:w-[520px]! sm:max-w-[520px]!">
         <SheetHeader className="border-b p-6">
-          <SheetTitle>{swt("interface.m0268")}</SheetTitle>
-          <SheetDescription>{swt("interface.m0269")}</SheetDescription>
+          <SheetTitle>新增企业</SheetTitle>
+          <SheetDescription>配置企业及其资产范围。关键词只作为 Agent 提示，不会自动归属资产。</SheetDescription>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto p-6">
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="cn-name">{swt("interface.m0270")}</FieldLabel>
+              <FieldLabel htmlFor="cn-name">企业名称</FieldLabel>
               <Input
                 id="cn-name"
-                placeholder={swt("interface.m0271")}
+                placeholder="如 Acme Corp（名称唯一）"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -1080,9 +1040,10 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
         </div>
         <SheetFooter className="flex-row justify-end gap-2 border-t p-4">
           <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
-            {swt("interface.m0063")}</Button>
+            取消
+          </Button>
           <Button onClick={submit} disabled={busy || !name.trim() || parsedScope.errors.length > 0}>
-            {busy ? swt("interface.m0272") : swt("interface.m0273")}
+            {busy ? "保存中…" : "保存"}
           </Button>
         </SheetFooter>
       </SheetContent>
@@ -1090,19 +1051,16 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
   );
 }
 
-// Replace asset scope dialog.
+// 编辑（覆盖）资产范围弹窗
 function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () => void }) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const [open, setOpen] = React.useState(false);
   const [scopeText, setScopeText] = React.useState("");
   const [reason, setReason] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const preservedScopeRules = React.useMemo(() => savedScopeRules(company), [swLocale, company]);
+  const preservedScopeRules = React.useMemo(() => savedScopeRules(company), [company]);
   const parsedScope = React.useMemo(
     () => parseCompanyScopeText(scopeText, { preservedRules: preservedScopeRules }),
-    [swLocale, preservedScopeRules, scopeText],
+    [preservedScopeRules, scopeText],
   );
 
   React.useEffect(() => {
@@ -1113,20 +1071,20 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
 
   const submit = async () => {
     if (parsedScope.errors.length > 0) {
-      toast.error(swt("interface.m0263"));
+      toast.error("请修正无效的资产范围");
       return;
     }
     setBusy(true);
     try {
       const res = await api.updateCompanyScope(company.id, parsedScope.rules, reason);
       const errCount = res.invalid ?? 0;
-      if (errCount > 0) toast.warning(swt("interface.m0274", { p0: errCount }));
-      else toast.success(swt("interface.m0275", { p0: res.added }));
+      if (errCount > 0) toast.warning(`已保存；${errCount} 行无效`);
+      else toast.success(`范围已更新，共 ${res.added} 条`);
       showScopeWarnings(res.warnings);
       setOpen(false);
       onSaved();
     } catch (e) {
-      toast.error(swt("interface.m0267", { p0: String((e as Error)?.message ?? e) }));
+      toast.error(`保存失败：${String((e as Error)?.message ?? e)}`);
     } finally {
       setBusy(false);
     }
@@ -1136,13 +1094,15 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="h-7">
-          {swt("interface.m0276")}</Button>
+          编辑
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{swt("interface.m0277")}{company.name}</DialogTitle>
+          <DialogTitle>编辑资产范围 · {company.name}</DialogTitle>
           <DialogDescription>
-            {swt("interface.m0278")}</DialogDescription>
+            编辑后将替换全部现有范围。ICP 精确匹配资产，企业关键词仅作为 Agent 提示。
+          </DialogDescription>
         </DialogHeader>
         <FieldGroup className="py-2">
           <ScopeTextEditor
@@ -1152,10 +1112,10 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
             parsed={parsedScope}
           />
           <Field>
-            <FieldLabel htmlFor="es-reason">{swt("interface.m0279")}</FieldLabel>
+            <FieldLabel htmlFor="es-reason">归属依据（可选）</FieldLabel>
             <Input
               id="es-reason"
-              placeholder={swt("interface.m0280")}
+              placeholder="如 证书 / whois / ASN 佐证"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />
@@ -1163,9 +1123,10 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
         </FieldGroup>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
-            {swt("interface.m0063")}</Button>
+            取消
+          </Button>
           <Button onClick={submit} disabled={busy || parsedScope.errors.length > 0}>
-            {busy ? swt("interface.m0272") : swt("interface.m0281")}
+            {busy ? "保存中…" : "覆盖保存"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1173,16 +1134,13 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
   );
 }
 
-// Append asset scope dialog.
+// 追加资产范围弹窗
 function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: () => void }) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const [open, setOpen] = React.useState(false);
   const [scopeText, setScopeText] = React.useState("");
   const [reason, setReason] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const parsedScope = React.useMemo(() => parseCompanyScopeText(scopeText), [swLocale, scopeText]);
+  const parsedScope = React.useMemo(() => parseCompanyScopeText(scopeText), [scopeText]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -1192,24 +1150,24 @@ function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: ()
 
   const submit = async () => {
     if (parsedScope.rules.length === 0) {
-      toast.error(swt("interface.m0282"));
+      toast.error("请填写要追加的范围");
       return;
     }
     if (parsedScope.errors.length > 0) {
-      toast.error(swt("interface.m0263"));
+      toast.error("请修正无效的资产范围");
       return;
     }
     setBusy(true);
     try {
       const res = await api.addCompanyScope(company.id, parsedScope.rules, reason);
       const errCount = res.invalid ?? 0;
-      if (errCount > 0) toast.warning(swt("interface.m0274", { p0: errCount }));
-      else toast.success(swt("interface.m0283", { p0: res.added }));
+      if (errCount > 0) toast.warning(`已保存；${errCount} 行无效`);
+      else toast.success(`已追加 ${res.added} 条范围`);
       showScopeWarnings(res.warnings);
       setOpen(false);
       onSaved();
     } catch (e) {
-      toast.error(swt("interface.m0267", { p0: String((e as Error)?.message ?? e) }));
+      toast.error(`保存失败：${String((e as Error)?.message ?? e)}`);
     } finally {
       setBusy(false);
     }
@@ -1219,12 +1177,13 @@ function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: ()
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="h-7">
-          {swt("interface.m0284")}</Button>
+          追加
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{swt("interface.m0285")}{company.name}</DialogTitle>
-          <DialogDescription>{swt("interface.m0286")}</DialogDescription>
+          <DialogTitle>追加资产范围 · {company.name}</DialogTitle>
+          <DialogDescription>新范围会追加到现有范围。ICP 精确匹配资产，企业关键词仅作为 Agent 提示。</DialogDescription>
         </DialogHeader>
         <FieldGroup className="py-2">
           <ScopeTextEditor
@@ -1234,10 +1193,10 @@ function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: ()
             parsed={parsedScope}
           />
           <Field>
-            <FieldLabel htmlFor="as-reason">{swt("interface.m0279")}</FieldLabel>
+            <FieldLabel htmlFor="as-reason">归属依据（可选）</FieldLabel>
             <Input
               id="as-reason"
-              placeholder={swt("interface.m0280")}
+              placeholder="如 证书 / whois / ASN 佐证"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />
@@ -1245,9 +1204,10 @@ function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: ()
         </FieldGroup>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
-            {swt("interface.m0063")}</Button>
+            取消
+          </Button>
           <Button onClick={submit} disabled={busy || parsedScope.rules.length === 0 || parsedScope.errors.length > 0}>
-            {busy ? swt("interface.m0272") : swt("interface.m0284")}
+            {busy ? "保存中…" : "追加"}
           </Button>
         </DialogFooter>
       </DialogContent>

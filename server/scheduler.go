@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/locale"
 )
 
 // Scheduler drives P3 triggers: on each tick it fires due interval triggers and
@@ -51,7 +50,7 @@ func (sc *Scheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			sc.s.reconcileConcurrency() // Fill available concurrency slots with queued tasks.
+			sc.s.reconcileConcurrency() // 并发上限:有空位就把排队任务补位启动
 			sc.step()
 		}
 	}
@@ -134,7 +133,6 @@ func (sc *Scheduler) step() {
 // fireIntervals fires triggers whose interval has elapsed since last_fire.
 func (sc *Scheduler) fireIntervals(triggers []*db.AgentTrigger) {
 	now := time.Now()
-	lang := locale.ServerDefault()
 	for _, tr := range triggers {
 		if tr.IntervalSec <= 0 {
 			continue
@@ -144,8 +142,8 @@ func (sc *Scheduler) fireIntervals(triggers []*db.AgentTrigger) {
 			continue
 		}
 		_ = sc.pg.TouchTriggerFire(tr.ID)
-		ctx := locale.Text(lang, "\n\n[Scheduled trigger]") + now.Format(" 2006-01-02 15:04:05 MST")
-		sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf(locale.Text(lang, "Scheduled trigger · %s"), now.Format("15:04")), reporterTriggerText(tr.IntervalMessage, lang)+ctx, 0, false, "", "", lang)
+		ctx := "\n\n【本次为定时触发】" + now.Format(" 2006-01-02 15:04:05 MST")
+		sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("定时触发 · %s", now.Format("15:04")), tr.IntervalMessage+ctx, 0, false, "", "")
 	}
 }
 
@@ -168,17 +166,16 @@ func (sc *Scheduler) fireFindings(triggers []*db.AgentTrigger) {
 	// trigger enabled later would replay the entire historical backlog at once.
 	maxID := last
 	for _, e := range events {
-		lang := taskLanguage(sc.pg, strconv.FormatInt(e.TaskID, 10))
 		if e.NodeID > maxID {
 			maxID = e.NodeID
 		}
 		if len(want) == 0 {
 			continue
 		}
-		msgCtx := fmt.Sprintf(locale.Text(lang, "\n\n[Triggered by a task finding]\nFinding: [%s/%s] %s"),
+		msgCtx := fmt.Sprintf("\n\n【本次由任务发现 finding 触发】\n发现: [%s/%s] %s",
 			e.VulnClass, e.Severity, e.Summary)
 		for _, tr := range want {
-			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf(locale.Text(lang, "Finding trigger · task#%d"), e.TaskID), reporterTriggerText(tr.FindingMessage, lang)+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal, lang)
+			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("finding 触发 · task#%d", e.TaskID), tr.FindingMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
 		}
 	}
 	_ = sc.pg.SetSchedState(schedKeyLastFinding, strconv.FormatInt(maxID, 10))
@@ -201,7 +198,6 @@ func (sc *Scheduler) fireGoals(triggers []*db.AgentTrigger) {
 	fired := sc.firedGoalSet()
 	changed := false
 	for _, e := range events {
-		lang := taskLanguage(sc.pg, strconv.FormatInt(e.TaskID, 10))
 		if fired[e.NodeID] {
 			continue
 		}
@@ -210,9 +206,9 @@ func (sc *Scheduler) fireGoals(triggers []*db.AgentTrigger) {
 		if len(want) == 0 {
 			continue
 		}
-		msgCtx := fmt.Sprintf(locale.Text(lang, "\n\n[Triggered by task goal completion]\nCompleted goal: %s"), e.Summary)
+		msgCtx := fmt.Sprintf("\n\n【本次由任务完成目标触发】\n达成目标: %s", e.Summary)
 		for _, tr := range want {
-			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf(locale.Text(lang, "Goal trigger · task#%d"), e.TaskID), reporterTriggerText(tr.GoalMessage, lang)+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal, lang)
+			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("目标触发 · task#%d", e.TaskID), tr.GoalMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
 		}
 	}
 	if changed {
@@ -237,16 +233,15 @@ func (sc *Scheduler) fireTaskTimeouts(triggers []*db.AgentTrigger) {
 	// Advance the watermark even with no active trigger — see fireFindings.
 	maxID := last
 	for _, e := range events {
-		lang := taskLanguage(sc.pg, strconv.FormatInt(e.TaskID, 10))
 		if e.NodeID > maxID {
 			maxID = e.NodeID
 		}
 		if len(want) == 0 {
 			continue
 		}
-		msgCtx := locale.Text(lang, "\n\n[Triggered by a task timeout]")
+		msgCtx := "\n\n【本次由任务超时触发】"
 		for _, tr := range want {
-			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf(locale.Text(lang, "Timeout trigger · task#%d"), e.TaskID), reporterTriggerText(tr.TaskTimeoutMessage, lang)+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal, lang)
+			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("超时触发 · task#%d", e.TaskID), tr.TaskTimeoutMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
 		}
 	}
 	_ = sc.pg.SetSchedState(schedKeyLastTimeout, strconv.FormatInt(maxID, 10))
@@ -269,16 +264,15 @@ func (sc *Scheduler) fireTaskCreates(triggers []*db.AgentTrigger) {
 	// Advance the watermark even with no active trigger — see fireFindings.
 	maxID := last
 	for _, e := range events {
-		lang := taskLanguage(sc.pg, strconv.FormatInt(e.TaskID, 10))
 		if e.NodeID > maxID {
 			maxID = e.NodeID
 		}
 		if len(want) == 0 {
 			continue
 		}
-		msgCtx := locale.Text(lang, "\n\n[Triggered by task creation]")
+		msgCtx := "\n\n【本次由任务创建触发】"
 		for _, tr := range want {
-			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf(locale.Text(lang, "Task creation trigger · task#%d"), e.TaskID), reporterTriggerText(tr.TaskCreateMessage, lang)+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal, lang)
+			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("任务创建触发 · task#%d", e.TaskID), tr.TaskCreateMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
 		}
 	}
 	_ = sc.pg.SetSchedState(schedKeyLastTaskCreate, strconv.FormatInt(maxID, 10))
@@ -302,7 +296,6 @@ func (sc *Scheduler) fireToolCalls(triggers []*db.AgentTrigger) {
 	// Advance the watermark even with no active trigger — see fireFindings.
 	maxID := last
 	for _, e := range events {
-		lang := taskLanguage(sc.pg, strconv.FormatInt(e.TaskID, 10))
 		if e.NodeID > maxID {
 			maxID = e.NodeID
 		}
@@ -316,15 +309,15 @@ func (sc *Scheduler) fireToolCalls(triggers []*db.AgentTrigger) {
 		}
 		errTag := ""
 		if e.ToolIsErr {
-			errTag = locale.Text(lang, "[error] ")
+			errTag = "[error] "
 		}
-		msgCtx := fmt.Sprintf(locale.Text(lang, "\n\n[Triggered by a tool call]\nTool: %s\nInput: %s\nOutput: %s%s"),
-			e.Tool, trunc(e.ToolInput, 1500, lang), errTag, trunc(e.ToolOutput, 1500, lang))
+		msgCtx := fmt.Sprintf("\n\n【本次由工具调用触发】\n工具: %s\n入参: %s\n返回: %s%s",
+			e.Tool, trunc(e.ToolInput, 1500), errTag, trunc(e.ToolOutput, 1500))
 		for _, tr := range want {
 			if !containsFold(tr.ToolNames, e.Tool) {
 				continue
 			}
-			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf(locale.Text(lang, "Tool trigger · %s · task#%d"), e.Tool, e.TaskID), reporterTriggerText(tr.ToolCallMessage, lang)+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal, lang)
+			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("工具触发 · %s · task#%d", e.Tool, e.TaskID), tr.ToolCallMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
 		}
 	}
 	_ = sc.pg.SetSchedState(schedKeyLastToolCall, strconv.FormatInt(maxID, 10))
@@ -341,12 +334,12 @@ func containsFold(set []string, name string) bool {
 }
 
 // trunc caps s to max runes, appending an ellipsis + original length when cut.
-func trunc(s string, max int, langs ...locale.Lang) string {
+func trunc(s string, max int) string {
 	r := []rune(s)
 	if len(r) <= max {
 		return s
 	}
-	return string(r[:max]) + fmt.Sprintf(locale.Text(locale.First(langs), "…(truncated; %d characters total)"), len(r))
+	return string(r[:max]) + fmt.Sprintf("…(已截断,共 %d 字)", len(r))
 }
 
 func (sc *Scheduler) mustState(key string) string {
@@ -376,6 +369,6 @@ func (sc *Scheduler) saveFiredGoalSet(set map[int64]bool) {
 	}
 	b, _ := json.Marshal(ids)
 	if err := sc.pg.SetSchedState(schedKeyFiredGoals, string(b)); err != nil {
-		log.Printf(locale.Text(locale.ServerDefault(), "[scheduler] save fired goals failed: %v"), err)
+		log.Printf("[scheduler] save fired goals failed: %v", err)
 	}
 }

@@ -42,7 +42,7 @@ func callInsertAssets(t *testing.T, ts *ToolSet, payload any) map[string]any {
 
 // =====================================================================
 // TestInsertAssetsSubdomainSideEffects
-// Subdomain insertion creates root_domain and IP assets and binds the domain to the IP.
+// 子域名插入 → 自动创建 root_domain + IP 资产，IP 绑定域名
 // =====================================================================
 func TestInsertAssetsSubdomainSideEffects(t *testing.T) {
 	d := testDB(t)
@@ -111,7 +111,7 @@ func TestInsertAssetsSubdomainSideEffects(t *testing.T) {
 
 // =====================================================================
 // TestInsertAssetsMultiIPSubdomain
-// Multiple subdomain IPs all remain in record_value[] and each creates an IP asset.
+// 多个 IP 的子域名：所有 IP 都应存入 record_value[]，各自创建 IP 资产
 // =====================================================================
 func TestInsertAssetsMultiIPSubdomain(t *testing.T) {
 	d := testDB(t)
@@ -159,7 +159,7 @@ func TestInsertAssetsMultiIPSubdomain(t *testing.T) {
 
 // =====================================================================
 // TestInsertAssetsHTTPServiceTechnologies
-// HTTP service insertion persists technologies; a supplied IP receives domain and port associations.
+// HTTP 服务插入：technologies 存储并可读回；IP 存在时域名和端口写入 IP 资产
 // =====================================================================
 func TestInsertAssetsHTTPServiceTechnologies(t *testing.T) {
 	d := testDB(t)
@@ -242,7 +242,7 @@ func TestInsertAssetsHTTPServiceTechnologies(t *testing.T) {
 
 // =====================================================================
 // TestInsertAssetsOtherService
-// Non-HTTP services generate c_segment; IP assets include open_ports and bound_domains.
+// 非 HTTP 服务：c_segment 自动生成，IP 资产含 open_ports 和 bound_domains
 // =====================================================================
 func TestInsertAssetsOtherService(t *testing.T) {
 	d := testDB(t)
@@ -303,7 +303,7 @@ func TestInsertAssetsOtherService(t *testing.T) {
 
 // =====================================================================
 // TestInsertAssetsMixedBatch
-// Mixed batch: insert multiple asset types in one call.
+// 混合批量插入：一次调用插入多种类型
 // =====================================================================
 func TestInsertAssetsMixedBatch(t *testing.T) {
 	d := testDB(t)
@@ -361,7 +361,7 @@ func TestInsertAssetsMixedBatch(t *testing.T) {
 
 // =====================================================================
 // TestInsertAssetsDedup
-// Idempotent insertion: inserting the same asset twice returns the same ID.
+// 幂等写入：同一资产插入两次，返回相同 ID
 // =====================================================================
 func TestInsertAssetsDedup(t *testing.T) {
 	d := testDB(t)
@@ -398,8 +398,8 @@ func TestInsertAssetsDedup(t *testing.T) {
 
 // =====================================================================
 // TestInsertAssetsRejectsHostnameIPPerItem
-// A hostname incorrectly placed in ip fails only that batch item; others persist.
-// Include its index and correction guidance so the agent can fix the next call.
+// 一批里混入 ip 填了主机名的一条 → 只有那条失败，其余照常入库，
+// 且错误里带得上 index 和改正方法，Agent 下一轮能自己修好。
 // =====================================================================
 func TestInsertAssetsRejectsHostnameIPPerItem(t *testing.T) {
 	d := testDB(t)

@@ -1,5 +1,5 @@
 // Package enrich is the engine-side (non-AI) asset auto-completion layer described
-// in the asset model and automatic association design, section 5: an async worker pool that resolves domains
+// in docs/资产模型与自动关联设计.md §5: an async worker pool that resolves domains
 // (dnsx) and probes web assets (HTTP, through the recording proxy) and writes the
 // results back into the asset graph — creating IP/port nodes, resolves/exposes
 // edges, and filling attrs.dns / attrs.http. DNS is ungated; HTTP probing is gated
@@ -8,7 +8,6 @@ package enrich
 
 import (
 	"crypto/tls"
-	"github.com/Autumn-27/artex/locale"
 	"html"
 	"io"
 	"log"
@@ -72,7 +71,7 @@ func New(as *db.AssetStore, proxy func() string, workers int) *Engine {
 		Timeout:       4 * time.Second,
 	})
 	if err != nil {
-		log.Printf(locale.Text(locale.ServerDefault(), "[enrich] dnsx initialization failed; DNS resolution disabled: %v"), err)
+		log.Printf("[enrich] dnsx 初始化失败，DNS 解析停用：%v", err)
 		resolv = nil
 	}
 	e := &Engine{
@@ -129,7 +128,7 @@ func (e *Engine) enqueue(j job) {
 	select {
 	case e.jobs <- j:
 	default: // queue full → drop (best-effort enrichment)
-		log.Printf(locale.Text(locale.ServerDefault(), "[enrich] Queue full; dropping job kind=%d id=%d"), j.kind, j.id)
+		log.Printf("[enrich] 队列已满，丢弃任务 kind=%d id=%d", j.kind, j.id)
 	}
 }
 

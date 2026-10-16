@@ -1,7 +1,5 @@
 "use client";
 
-import { translate as swt } from "@/i18n/runtime";
-import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { SearchIcon } from "lucide-react";
@@ -10,173 +8,173 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 // ── DSL autocomplete ──────────────────────────────────────────────────────────
-// Shared by global assets (/function/assets) and per-task test assets
+// Shared by the global asset view (/function/assets) and the per-task 测试资产
 // search, so both search boxes behave and look identical.
 
 const DSL_FIELDS: { name: string; desc: string; ops: { op: string; desc: string }[] }[] = [
   {
     name: "domain",
-    get desc() { return swt("interface.m2166"); },
+    desc: "域名（根域名/子域名/服务域名）",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "ip",
-    get desc() { return swt("interface.m2169"); },
+    desc: "IPv4/IPv6 地址",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "url",
-    get desc() { return swt("interface.m2170"); },
+    desc: "完整 URL（服务/接口）",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "root_domain",
-    get desc() { return swt("interface.m0142"); },
+    desc: "根域名",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "page_title",
-    get desc() { return swt("interface.m2171"); },
+    desc: "页面标题（HTTP 服务）",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "icp",
-    get desc() { return swt("interface.m2172"); },
+    desc: "ICP 备案号",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "service_name",
-    get desc() { return swt("interface.m2173"); },
+    desc: "服务名称（非 HTTP 服务）",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "app_name",
-    get desc() { return swt("interface.m2174"); },
+    desc: "应用名称",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "bundle_id",
-    get desc() { return swt("interface.m2175"); },
+    desc: "应用 Bundle ID",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "category",
-    get desc() { return swt("interface.m2176"); },
+    desc: "应用分类",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "app_icp",
-    get desc() { return swt("interface.m2177"); },
+    desc: "应用 ICP 备案",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "method",
-    get desc() { return swt("interface.m2178"); },
+    desc: "HTTP 方法 GET/POST/PUT/…",
     ops: [
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "service_type",
-    get desc() { return swt("interface.m2179"); },
+    desc: "服务类型：http | other",
     ops: [
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "record_type",
-    get desc() { return swt("interface.m2180"); },
+    desc: "DNS 解析类型 A/CNAME/MX/…",
     ops: [
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "technology",
-    get desc() { return swt("interface.m2181"); },
+    desc: "技术指纹（数组字段）",
     ops: [
-      { op: "=", get desc() { return swt("interface.m1156"); } },
-      { op: "==", get desc() { return swt("interface.m2167"); } },
-      { op: "!=", get desc() { return swt("interface.m2168"); } },
+      { op: "=", desc: "模糊匹配" },
+      { op: "==", desc: "精确匹配" },
+      { op: "!=", desc: "排除" },
     ],
   },
   {
     name: "port",
-    get desc() { return swt("interface.m2182"); },
+    desc: "端口号（整数）",
     ops: [
-      { op: "==", get desc() { return swt("interface.m2183"); } },
-      { op: "!=", get desc() { return swt("interface.m2184"); } },
-      { op: ">", get desc() { return swt("interface.m2185"); } },
-      { op: ">=", get desc() { return swt("interface.m2186"); } },
-      { op: "<", get desc() { return swt("interface.m2187"); } },
-      { op: "<=", get desc() { return swt("interface.m2188"); } },
+      { op: "==", desc: "等于" },
+      { op: "!=", desc: "不等于" },
+      { op: ">", desc: "大于" },
+      { op: ">=", desc: "大于等于" },
+      { op: "<", desc: "小于" },
+      { op: "<=", desc: "小于等于" },
     ],
   },
   {
     name: "status_code",
-    get desc() { return swt("interface.m2189"); },
+    desc: "HTTP 状态码（整数）",
     ops: [
-      { op: "==", get desc() { return swt("interface.m2183"); } },
-      { op: "!=", get desc() { return swt("interface.m2184"); } },
-      { op: ">", get desc() { return swt("interface.m2185"); } },
-      { op: ">=", get desc() { return swt("interface.m2186"); } },
-      { op: "<", get desc() { return swt("interface.m2187"); } },
-      { op: "<=", get desc() { return swt("interface.m2188"); } },
+      { op: "==", desc: "等于" },
+      { op: "!=", desc: "不等于" },
+      { op: ">", desc: "大于" },
+      { op: ">=", desc: "大于等于" },
+      { op: "<", desc: "小于" },
+      { op: "<=", desc: "小于等于" },
     ],
   },
-  { name: "company_id", get desc() { return swt("interface.m2190"); }, ops: [{ op: "==", get desc() { return swt("interface.m2183"); } }] },
-  { name: "task_id", get desc() { return swt("interface.m2191"); }, ops: [{ op: "==", get desc() { return swt("interface.m2183"); } }] },
+  { name: "company_id", desc: "归属企业 ID（整数）", ops: [{ op: "==", desc: "等于" }] },
+  { name: "task_id", desc: "来源任务 ID（整数）", ops: [{ op: "==", desc: "等于" }] },
 ];
 
 const LOGIC_OPS = [
-  { label: "AND", get desc() { return swt("interface.m2192"); } },
-  { label: "OR", get desc() { return swt("interface.m2193"); } },
+  { label: "AND", desc: "且（两个条件都满足）" },
+  { label: "OR", desc: "或（满足其中之一）" },
 ];
 
 interface DslSuggestion {
@@ -263,7 +261,7 @@ const KIND_STYLE: Record<string, string> = {
 };
 
 // AssetDslSearch is the shared DSL search box: a monospace input with a
-// field/operator/logic autocomplete and status text such as Found N records /
+// field/operator/logic autocomplete popover and a status line ("找到 N 条" /
 // error / loading). Used by both the global asset view and the per-task view.
 export function AssetDslSearch({
   query,
@@ -278,9 +276,6 @@ export function AssetDslSearch({
   error: string;
   count?: number;
 }) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [suggestions, setSuggestions] = React.useState<DslSuggestion[]>([]);
   const [selIdx, setSelIdx] = React.useState(0);
@@ -346,7 +341,7 @@ export function AssetDslSearch({
         <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           ref={inputRef}
-          placeholder={swt("interface.m2194")}
+          placeholder="DSL 搜索：domain=example AND status_code>=400"
           value={query}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
@@ -380,7 +375,7 @@ export function AssetDslSearch({
       </div>
       {query.trim() && !open && (
         <p className="pl-1 text-[11px] text-muted-foreground">
-          {loading ? swt("interface.m2195") : error ? <span className="text-destructive">{error}</span> : swt("interface.m2196", { p0: count ?? 0 })}
+          {loading ? "搜索中…" : error ? <span className="text-destructive">{error}</span> : `找到 ${count ?? 0} 条`}
         </p>
       )}
     </div>

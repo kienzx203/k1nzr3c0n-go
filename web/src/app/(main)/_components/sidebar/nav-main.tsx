@@ -1,5 +1,4 @@
 "use client";
-import { useI18n } from "@/i18n";
 
 import * as React from "react";
 import Link from "next/link";
@@ -74,9 +73,6 @@ interface NavCollapsibleItemProps {
 }
 
 function CollapsedIconFallback({ title }: { title: string }) {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   return (
     <span className="flex size-4 shrink-0 items-center justify-center rounded-xs font-medium text-[10px] outline">
       {title.slice(0, 1)}
@@ -89,11 +85,8 @@ function hasSubItems(item: NavMainItem): item is NavMainParentItem {
 }
 
 export function NavMain({ items }: NavMainProps) {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   const rawPath = usePathname();
-  // Decode percent-encoded path segments before comparing navigation URLs so active highlighting works.
+  // 路由段含中文，pathname 可能是百分号编码，解码后再与导航 url 比较，保证高亮命中。
   const path = (() => {
     try {
       return decodeURIComponent(rawPath);
@@ -147,9 +140,6 @@ export function NavMain({ items }: NavMainProps) {
 }
 
 function NavItem({ item, isItemActive, isSubItemActive, isSubmenuOpen }: NavItemProps) {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   const { state, isMobile } = useSidebar();
   const isCollapsedDesktop = state === "collapsed" && !isMobile;
 
@@ -174,9 +164,6 @@ function NavItem({ item, isItemActive, isSubItemActive, isSubmenuOpen }: NavItem
 // InterceptPendingBadge polls /api/intercept/pending every 5 s and shows a red
 // count badge when there are unresolved approval requests.
 function InterceptPendingBadge() {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   const [count, setCount] = React.useState(0);
   React.useEffect(() => {
     let live = true;
@@ -199,9 +186,6 @@ function InterceptPendingBadge() {
 }
 
 function NavLinkItem({ item, isActive, showIconFallback }: NavLinkItemProps) {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild aria-disabled={item.disabled} tooltip={item.title} isActive={isActive}>
@@ -221,9 +205,6 @@ function NavLinkItem({ item, isActive, showIconFallback }: NavLinkItemProps) {
 }
 
 function NavLinkIcon({ item, showFallback }: NavLinkIconProps) {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   const Icon = item.icon;
 
   if (Icon) {
@@ -238,9 +219,6 @@ function NavLinkIcon({ item, showFallback }: NavLinkIconProps) {
 }
 
 function NavDropdownItem({ item, isActive, isSubItemActive }: NavDropdownItemProps) {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   const Icon = item.icon;
 
   return (
@@ -282,9 +260,6 @@ function NavDropdownItem({ item, isActive, isSubItemActive }: NavDropdownItemPro
 }
 
 function NavCollapsibleItem({ item, isActive, defaultOpen, isSubItemActive }: NavCollapsibleItemProps) {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   const Icon = item.icon;
 
   return (
@@ -332,9 +307,6 @@ function NavCollapsibleItem({ item, isActive, defaultOpen, isSubItemActive }: Na
 }
 
 function NavItemBadge({ badge }: { badge?: NavBadge }) {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   if (!badge) {
     return null;
   }

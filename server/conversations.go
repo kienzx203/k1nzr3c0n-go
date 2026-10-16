@@ -16,7 +16,6 @@ import (
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/intercept"
-	"github.com/Autumn-27/artex/locale"
 	"github.com/Autumn-27/artex/sidequestion"
 )
 
@@ -31,9 +30,9 @@ func decodeConversationRequest(w http.ResponseWriter, r *http.Request, value any
 	if err := decode(r, value); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeErr(w, http.StatusRequestEntityTooLarge, locale.Text(responseLanguage(w), "Request body is too large"))
+			writeErr(w, http.StatusRequestEntityTooLarge, "请求正文过大")
 		} else {
-			writeError(w, http.StatusBadRequest, err)
+			writeErr(w, http.StatusBadRequest, err.Error())
 		}
 		return false
 	}
@@ -59,7 +58,7 @@ func (s *Server) pgListConversations(w http.ResponseWriter, r *http.Request) {
 	}
 	cs, err := pg.ListConversations()
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	items := make([]conversationListItem, 0, len(cs))
@@ -86,39 +85,39 @@ func (s *Server) pgCreateConversation(w http.ResponseWriter, r *http.Request) {
 	}
 	req.AgentKey = strings.TrimSpace(req.AgentKey)
 	if req.AgentKey == "" {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "agent_key is required"))
+		writeErr(w, 400, "agent_key 不能为空")
 		return
 	}
 	if utf8.RuneCountInString(req.AgentKey) > maxConversationAgentKeyRunes {
-		writeErr(w, 400, fmt.Sprintf(locale.Text(responseLanguage(w), "agent_key must not exceed %d characters"), maxConversationAgentKeyRunes))
+		writeErr(w, 400, fmt.Sprintf("agent_key 最多 %d 个字符", maxConversationAgentKeyRunes))
 		return
 	}
 	a, err := pg.GetAgentByKey(req.AgentKey)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	if a == nil {
-		writeErr(w, 404, locale.Text(responseLanguage(w), "Agent does not exist"))
+		writeErr(w, 404, "agent 不存在")
 		return
 	}
 	if req.LLMProfileID != nil {
 		if _, ok := s.loadProfileConfig(*req.LLMProfileID); !ok {
-			writeErr(w, 400, locale.Text(responseLanguage(w), "The selected LLM configuration does not exist or has no API key"))
+			writeErr(w, 400, "指定的 LLM 配置不存在或未设置 API Key")
 			return
 		}
 	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
-		title = locale.Text(responseLanguage(w), "New conversation")
+		title = "新对话"
 	}
 	if utf8.RuneCountInString(title) > maxConversationTitleRunes {
-		writeErr(w, 400, fmt.Sprintf(locale.Text(responseLanguage(w), "Title must not exceed %d characters"), maxConversationTitleRunes))
+		writeErr(w, 400, fmt.Sprintf("标题最多 %d 个字符", maxConversationTitleRunes))
 		return
 	}
 	c, err := pg.CreateConversation(req.AgentKey, title, req.LLMProfileID)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, c)
@@ -137,12 +136,12 @@ func (s *Server) pgUpdateConversation(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.LLMProfileID != nil {
 		if _, ok := s.loadProfileConfig(*req.LLMProfileID); !ok {
-			writeErr(w, 400, locale.Text(responseLanguage(w), "The selected LLM configuration does not exist or has no API key"))
+			writeErr(w, 400, "指定的 LLM 配置不存在或未设置 API Key")
 			return
 		}
 	}
 	if err := pg.UpdateConversationProfile(c.ID, req.LLMProfileID); err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
@@ -156,16 +155,16 @@ func (s *Server) convByID(w http.ResponseWriter, r *http.Request) (*db.DB, *db.C
 	}
 	id, ok := pathInt(r, "id")
 	if !ok {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "bad conversation id"))
+		writeErr(w, 400, "bad conversation id")
 		return nil, nil, false
 	}
 	c, err := pg.GetConversation(id)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return nil, nil, false
 	}
 	if c == nil {
-		writeErr(w, 404, locale.Text(responseLanguage(w), "conversation not found"))
+		writeErr(w, 404, "conversation not found")
 		return nil, nil, false
 	}
 	return pg, c, true
@@ -184,28 +183,28 @@ func (s *Server) pgRenameConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Title == nil && req.Pinned == nil {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "Provide at least title or pinned"))
+		writeErr(w, 400, "至少需要提供 title 或 pinned")
 		return
 	}
 	if req.Title != nil {
 		title := strings.TrimSpace(*req.Title)
 		if title == "" {
-			writeErr(w, 400, locale.Text(responseLanguage(w), "Title is required"))
+			writeErr(w, 400, "标题不能为空")
 			return
 		}
 		if utf8.RuneCountInString(title) > maxConversationTitleRunes {
-			writeErr(w, 400, fmt.Sprintf(locale.Text(responseLanguage(w), "Title must not exceed %d characters"), maxConversationTitleRunes))
+			writeErr(w, 400, fmt.Sprintf("标题最多 %d 个字符", maxConversationTitleRunes))
 			return
 		}
 		req.Title = &title
 	}
 	updated, err := pg.UpdateConversation(c.ID, db.ConversationPatch{Title: req.Title, Pinned: req.Pinned})
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	if updated == nil {
-		writeErr(w, 404, locale.Text(responseLanguage(w), "conversation not found"))
+		writeErr(w, 404, "conversation not found")
 		return
 	}
 	writeJSON(w, 200, updated)
@@ -219,7 +218,7 @@ func (s *Server) pgDeleteConversation(w http.ResponseWriter, r *http.Request) {
 	s.cancelConversation(c.ID)
 	s.cancelSideWhere(func(p sidequestion.Parent) bool { return p.ConversationID == c.ID })
 	if err := pg.DeleteConversation(c.ID); err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"deleted": c.ID})
@@ -261,7 +260,7 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 	seen := make(map[int64]struct{}, len(request.IDs))
 	for _, id := range request.IDs {
 		if id <= 0 {
-			writeErr(w, http.StatusBadRequest, locale.Text(responseLanguage(w), "Invalid conversation ID"))
+			writeErr(w, http.StatusBadRequest, "对话 id 无效")
 			return
 		}
 		if _, exists := seen[id]; exists {
@@ -271,7 +270,7 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 		ids = append(ids, id)
 	}
 	if len(ids) == 0 || len(ids) > maxConversationDeleteBatch {
-		writeErr(w, http.StatusBadRequest, fmt.Sprintf(locale.Text(responseLanguage(w), "ids must contain between 1 and %d entries"), maxConversationDeleteBatch))
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("ids 数量必须为 1-%d", maxConversationDeleteBatch))
 		return
 	}
 	for _, id := range ids {
@@ -280,7 +279,7 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 	}
 	deleted, err := pg.DeleteConversations(ids)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	deletedSet := make(map[int64]struct{}, len(deleted))
@@ -292,7 +291,7 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 		_, ok := deletedSet[id]
 		item := conversationDeleteItem{ID: id, OK: ok}
 		if !ok {
-			item.Error = locale.Text(responseLanguage(w), "conversation not found")
+			item.Error = "conversation not found"
 		}
 		items = append(items, item)
 	}
@@ -321,7 +320,7 @@ func (s *Server) pgConversationMessages(w http.ResponseWriter, r *http.Request) 
 		since, _ := strconv.ParseInt(sv, 10, 64)
 		items, cursor, err := pg.ConvActivityList(c.ID, since, max(limit, 1000))
 		if err != nil {
-			writeError(w, 500, err)
+			writeErr(w, 500, err.Error())
 			return
 		}
 		writeJSON(w, 200, map[string]any{"items": activityDTOs(items), "cursor": cursor, "running": running, "hasMore": false})
@@ -334,7 +333,7 @@ func (s *Server) pgConversationMessages(w http.ResponseWriter, r *http.Request) 
 	before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
 	items, hasMore, err := pg.ConvActivityPage(c.ID, before, limit)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	cursor := before
@@ -352,12 +351,12 @@ func (s *Server) pgConversationMsgDetail(w http.ResponseWriter, r *http.Request)
 	}
 	seq, ok := pathInt(r, "seq")
 	if !ok {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "bad seq"))
+		writeErr(w, 400, "bad seq")
 		return
 	}
 	detail, err := pg.ConvActivityDetail(c.ID, seq)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"detail": detail})
@@ -393,15 +392,15 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 	}
 	var req struct {
 		Message     string           `json:"message"`
-		Attachments []chatAttachment `json:"attachments,omitempty"` // Uploaded files, with paths relative to the conversation working directory.
+		Attachments []chatAttachment `json:"attachments,omitempty"` // 方式1 上传的文件(路径相对会话工作目录)
 	}
 	if err := decode(r, &req); err != nil {
-		writeError(w, 400, err)
+		writeErr(w, 400, err.Error())
 		return
 	}
 	msg := strings.TrimSpace(req.Message)
 	if msg == "" && len(req.Attachments) == 0 {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "Message is required"))
+		writeErr(w, 400, "消息不能为空")
 		return
 	}
 	agentMessage, ok := s.prepareChatMentionMessage(w, msg)
@@ -413,7 +412,7 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 	// conversation that picked a valid LLM is not rejected just because no global
 	// config is active.
 	if s.resolveChatAgent(c) == nil {
-		writeErr(w, 503, s.chatUnavailableReason(locale.FromRequest(r)))
+		writeErr(w, 503, s.chatUnavailableReason())
 		return
 	}
 
@@ -421,7 +420,7 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 	s.chatMu.Lock()
 	if s.chatBusy[busyKey] {
 		s.chatMu.Unlock()
-		writeErr(w, 409, locale.Text(responseLanguage(w), "This conversation is processing the previous message; please wait"))
+		writeErr(w, 409, "该会话正在处理上一条消息，请稍候")
 		return
 	}
 	s.chatBusy[busyKey] = true
@@ -439,12 +438,12 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 		ua.Detail = msg
 	}
 	if _, err := pg.AppendConvActivity(c.ID, ua); err != nil {
-		log.Printf(locale.Text(responseLanguage(w), "[conv %d] append user msg failed: %v"), c.ID, err)
+		log.Printf("[conv %d] append user msg failed: %v", c.ID, err)
 	}
-	if isDefaultConversationTitle(c.Title) {
+	if c.Title == "" || c.Title == "新对话" {
 		title := firstLine(msg, 40)
 		if title == "" {
-			title = locale.Text(responseLanguage(w), "Attachment message")
+			title = "附件消息"
 		}
 		_ = pg.RenameConversation(c.ID, title)
 	}
@@ -455,7 +454,7 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 	// conv-<id>/), matching chatUpload's landing dir and agent/chat.go's sessionWorkDir
 	// — busyKey == convBusyKey(c.ID) == "conv-<id>" == that session id.
 	baseDir := filepath.Join(s.m.dir, "sessions", busyKey)
-	s.runConversationWithContext(r.Context(), c, composeAgentMessageForLanguage(agentMessage, req.Attachments, baseDir, locale.FromContext(r.Context())), busyKey, msg)
+	s.runConversation(c, composeAgentMessage(agentMessage, req.Attachments, baseDir), busyKey, msg)
 	writeJSON(w, 202, map[string]any{"status": "accepted"})
 }
 
@@ -464,12 +463,7 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 // conversation_activities. Shared by the chat HTTP handler and the P3 scheduler.
 // busyKey clears when the run ends (best-effort in-flight marker).
 func (s *Server) runConversation(c *db.Conversation, msg, busyKey string, userMessage ...string) {
-	s.runConversationWithContext(s.ctx, c, msg, busyKey, userMessage...)
-}
-
-func (s *Server) runConversationWithContext(request context.Context, c *db.Conversation, msg, busyKey string, userMessage ...string) {
 	ctx, cancel := s.conversationRunContext(c.ID, busyKey)
-	ctx = backgroundLanguage(ctx, request)
 	// Only the human-message handler supplies this field, before adding the
 	// attachment manifest. Scheduler/retest prompts must not be labelled as users.
 	if len(userMessage) == 1 {
@@ -482,9 +476,8 @@ func (s *Server) runConversationWithContext(request context.Context, c *db.Conve
 // run ends (clearing busyKey). runConversation wraps it in a goroutine for the
 // fire-and-forget chat path; the P3 trigger queue calls it directly so it can wait
 // for completion before starting the next queued fire for the same agent.
-func (s *Server) runConversationSync(c *db.Conversation, msg, busyKey string, langs ...locale.Lang) {
+func (s *Server) runConversationSync(c *db.Conversation, msg, busyKey string) {
 	ctx, cancel := s.conversationRunContext(c.ID, busyKey)
-	ctx = locale.WithLang(ctx, locale.First(langs))
 	s.runConversationTurn(ctx, cancel, c, msg, busyKey)
 }
 
@@ -510,32 +503,32 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 	}()
 	// Only the first turn executes a historical retest. Follow-up conversation
 	// turns may explain the sealed result; the result tool refuses to overwrite it.
-	finishStatus, finishReason := "failed", locale.Text(locale.FromContext(ctx), "Retest could not start")
+	finishStatus, finishReason := "failed", "复测未能启动"
 	if c.AgentKey == db.FindingRetestAgentKey {
 		// Read without the run cancellation so an immediate stop still seals pending.
 		r, err := s.m.pg.FindingRetestForConversation(context.Background(), c.ID)
 		if err != nil {
 			// The sealing defer below needs r.ID, which we do not have here. Seal by
 			// conversation instead, otherwise the row stays 'pending' forever.
-			log.Printf(locale.Text(locale.FromContext(ctx), "[conv %d] load retest: %v"), c.ID, err)
-			if err := s.m.pg.FailPendingRetestForConversation(c.ID, locale.Text(locale.FromContext(ctx), "Failed to read retest status; start a new retest")); err != nil {
-				log.Printf(locale.Text(locale.FromContext(ctx), "[conv %d] seal retest: %v"), c.ID, err)
+			log.Printf("[conv %d] load retest: %v", c.ID, err)
+			if err := s.m.pg.FailPendingRetestForConversation(c.ID, "复测状态读取失败，请重新发起"); err != nil {
+				log.Printf("[conv %d] seal retest: %v", c.ID, err)
 			}
 			return
 		}
 		if r != nil && r.Status == "pending" {
 			defer func() {
 				if ctx.Err() != nil {
-					finishStatus, finishReason = "stopped", locale.Text(locale.FromContext(ctx), "Retest stopped or the service shut down")
+					finishStatus, finishReason = "stopped", "复测已停止或服务已关闭"
 				}
-				s.finishRetest(r.ID, finishStatus, finishReason, locale.FromContext(ctx))
+				s.finishRetest(r.ID, finishStatus, finishReason)
 			}()
 			if ctx.Err() != nil {
 				return
 			}
 			started, err := s.m.pg.StartFindingRetest(ctx, r.ID)
 			if err != nil {
-				finishReason = locale.ErrorMessage(locale.FromContext(ctx), err)
+				finishReason = err.Error()
 				return
 			}
 			if !started {
@@ -549,7 +542,7 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 	// precedence: the conversation agent's own binding → this conversation's pin → global.
 	ca := s.resolveChatAgent(c)
 	if ca == nil {
-		finishReason = s.chatUnavailableReason(locale.FromContext(ctx))
+		finishReason = s.chatUnavailableReason()
 		return
 	}
 	pg := s.m.pg
@@ -562,16 +555,16 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 	sessionID := s.convBusyKey(c.ID) // "conv-<id>" transcript session
 	emit := func(rec db.Activity) {
 		if _, err := pg.AppendConvActivity(c.ID, rec); err != nil {
-			log.Printf(locale.Text(locale.FromContext(ctx), "[conv %d] append activity failed: %v"), c.ID, err)
+			log.Printf("[conv %d] append activity failed: %v", c.ID, err)
 		}
 	}
-	// On a manual stop ctx is cancelled; Chat already emits a clean "Stopped manually"
+	// On a manual stop ctx is cancelled; Chat already emits a clean "已手动停止"
 	// step, so skip the raw-error entry — only surface genuine failures.
 	if _, err := ca.Chat(ctx, c.AgentKey, sessionID, msg, maxTurns, maxDuration, webSearch, emit); err != nil {
-		finishReason = locale.ErrorMessage(locale.FromContext(ctx), err)
+		finishReason = err.Error()
 		if ctx.Err() == nil {
 			_, _ = pg.AppendConvActivity(c.ID, db.Activity{Worker: c.AgentKey, Kind: "text", IsError: true,
-				Summary: locale.Text(locale.FromContext(ctx), "(Error: %s)", locale.ErrorMessage(locale.FromContext(ctx), err)), Detail: locale.ErrorMessage(locale.FromContext(ctx), err)})
+				Summary: "（出错：" + err.Error() + "）", Detail: err.Error()})
 		}
 	} else {
 		finishStatus, finishReason = "completed", ""
@@ -579,16 +572,16 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 	_ = pg.TouchConversation(c.ID)
 }
 
-// triggerBehavior is an agent's cached P3 trigger post-processing policy (see the
+// triggerBehavior is an agent's cached P3 trigger post-processing策略 (see the
 // agents table trigger_* columns). Read once per fire in StartTriggeredRun so the
 // pump never touches the DB while holding queueMu.
 type triggerBehavior struct {
 	runMode     string // serial | parallel
-	mergeMode   string // by_task | all | none (serial only; parallel ignores merging and uses one conversation per event)
-	maxParallel int    // per-agent parallel limit; <=0 means unlimited
+	mergeMode   string // by_task | all | none (serial 用;parallel 忽略,每条各自一个会话)
+	maxParallel int    // parallel 用的每 agent 并发上限;<=0=不限
 }
 
-// readTriggerBehavior loads an agent's policy, falling back to safe defaults
+// readTriggerBehavior loads an agent's策略, falling back to safe defaults
 // (serial / all / 5) on any error or unknown enum value.
 func (s *Server) readTriggerBehavior(agentKey string) triggerBehavior {
 	b := triggerBehavior{runMode: "serial", mergeMode: "all", maxParallel: 5}
@@ -611,21 +604,17 @@ func (s *Server) readTriggerBehavior(agentKey string) triggerBehavior {
 }
 
 // StartTriggeredRun enqueues a P3 trigger fire for agentKey and pumps the queue. The
-// agent's policy decides concurrency + merge: serial → run one at a time (optionally
+// agent's策略 decides concurrency + merge: serial → run one at a time (optionally
 // merging by task / all / none); parallel → run each fire in its own concurrent
 // conversation up to trigger_max_parallel. Distinct agents always run concurrently.
-func (s *Server) StartTriggeredRun(agentKey, title, message string, taskID int64, mergeable bool, taskDesc, taskGoal string, langs ...locale.Lang) {
+func (s *Server) StartTriggeredRun(agentKey, title, message string, taskID int64, mergeable bool, taskDesc, taskGoal string) {
 	if s.m.pg == nil || s.chatAgentRef() == nil {
 		return
-	}
-	lang := locale.First(langs)
-	if len(langs) == 0 && taskID > 0 {
-		lang = taskLanguage(s.m.pg, strconv.FormatInt(taskID, 10))
 	}
 	cfg := s.readTriggerBehavior(agentKey) // DB read BEFORE the lock (never under queueMu)
 	s.queueMu.Lock()
 	s.triggerCfg[agentKey] = cfg
-	s.triggerQ[agentKey] = append(s.triggerQ[agentKey], triggeredRun{language: lang, agentKey: agentKey, title: title, message: message, taskID: taskID, taskDesc: taskDesc, taskGoal: taskGoal, mergeable: mergeable})
+	s.triggerQ[agentKey] = append(s.triggerQ[agentKey], triggeredRun{agentKey: agentKey, title: title, message: message, taskID: taskID, taskDesc: taskDesc, taskGoal: taskGoal, mergeable: mergeable})
 	s.pumpLocked(agentKey)
 	s.queueMu.Unlock()
 }
@@ -711,16 +700,16 @@ func (s *Server) nextTriggerRun(agentKey string, cfg triggerBehavior) triggeredR
 // times N fires was the dominant bloat). Returns "" for interval/none triggers
 // (taskID==0, no task context). desc/goal are truncated to keep even a single copy
 // bounded.
-func taskContextHeader(taskID int64, desc, goal string, langs ...locale.Lang) string {
+func taskContextHeader(taskID int64, desc, goal string) string {
 	if desc == "" && goal == "" {
 		// No task context to show (interval/none fire, or a merged run that already
 		// embedded its per-task headers and cleared these fields).
 		return ""
 	}
 	if goal != "" {
-		return fmt.Sprintf(locale.Text(locale.First(langs), "[Task #%d %s (goal: %s)]"), taskID, trunc(desc, 200, locale.First(langs)), trunc(goal, 500, locale.First(langs)))
+		return fmt.Sprintf("【任务 #%d %s（目标：%s）】", taskID, trunc(desc, 200), trunc(goal, 500))
 	}
-	return fmt.Sprintf(locale.Text(locale.First(langs), "[Task #%d %s]"), taskID, trunc(desc, 200, locale.First(langs)))
+	return fmt.Sprintf("【任务 #%d %s】", taskID, trunc(desc, 200))
 }
 
 // finalTriggerMessage renders the message actually sent to the agent for a single
@@ -728,7 +717,7 @@ func taskContextHeader(taskID int64, desc, goal string, langs ...locale.Lang) st
 // body. Merged runs embed their per-task headers inline and clear taskDesc/taskGoal,
 // so this returns their message unchanged.
 func finalTriggerMessage(item triggeredRun) string {
-	if h := taskContextHeader(item.taskID, item.taskDesc, item.taskGoal, locale.Resolve(item.language)); h != "" {
+	if h := taskContextHeader(item.taskID, item.taskDesc, item.taskGoal); h != "" {
 		return h + "\n" + item.message
 	}
 	return item.message
@@ -743,19 +732,17 @@ func mergeTriggeredRuns(items []triggeredRun) triggeredRun {
 		return items[0]
 	}
 	first := items[0]
-	lang := locale.Resolve(first.language)
 	var b strings.Builder
-	fmt.Fprintf(&b, locale.Text(lang, "[Task #%d: this conversation combines %d trigger events; process them together]\n"), first.taskID, len(items))
-	if h := taskContextHeader(first.taskID, first.taskDesc, first.taskGoal, lang); h != "" {
+	fmt.Fprintf(&b, "【本会话合并了任务 #%d 的 %d 条触发事件，请一并处理】\n", first.taskID, len(items))
+	if h := taskContextHeader(first.taskID, first.taskDesc, first.taskGoal); h != "" {
 		fmt.Fprintf(&b, "%s\n", h) // same task → task context appears once
 	}
 	for i, it := range items {
-		fmt.Fprintf(&b, locale.Text(lang, "\n── Trigger %d ──\n%s\n"), i+1, it.message)
+		fmt.Fprintf(&b, "\n── 触发 %d ──\n%s\n", i+1, it.message)
 	}
 	return triggeredRun{
-		language:  lang,
 		agentKey:  first.agentKey,
-		title:     fmt.Sprintf(locale.Text(lang, "Merged triggers · task#%d · %d events"), first.taskID, len(items)),
+		title:     fmt.Sprintf("合并触发 · task#%d · %d 条", first.taskID, len(items)),
 		message:   b.String(),
 		taskID:    first.taskID,
 		mergeable: true,
@@ -774,7 +761,6 @@ func mergeAllRuns(items []triggeredRun) triggeredRun {
 		return items[0]
 	}
 	first := items[0]
-	lang := locale.Resolve(first.language)
 	order := []int64{}
 	groups := map[int64][]triggeredRun{}
 	for _, it := range items {
@@ -784,22 +770,21 @@ func mergeAllRuns(items []triggeredRun) triggeredRun {
 		groups[it.taskID] = append(groups[it.taskID], it)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, locale.Text(lang, "[This conversation combines %d queued events across %d tasks; process them together]\n"), len(items), len(order))
+	fmt.Fprintf(&b, "【本会话合并了队列中的 %d 条触发事件（共 %d 个任务），请一并处理】\n", len(items), len(order))
 	seq := 0
 	for _, tid := range order {
 		g := groups[tid]
-		if h := taskContextHeader(tid, g[0].taskDesc, g[0].taskGoal, lang); h != "" {
+		if h := taskContextHeader(tid, g[0].taskDesc, g[0].taskGoal); h != "" {
 			fmt.Fprintf(&b, "\n%s\n", h) // same task → context appears once, even if interleaved
 		}
 		for _, it := range g {
 			seq++
-			fmt.Fprintf(&b, locale.Text(lang, "\n── Trigger %d (task#%d) ──\n%s\n"), seq, tid, it.message)
+			fmt.Fprintf(&b, "\n── 触发 %d（task#%d）──\n%s\n", seq, tid, it.message)
 		}
 	}
 	return triggeredRun{
-		language:  lang,
 		agentKey:  first.agentKey,
-		title:     fmt.Sprintf(locale.Text(lang, "Merged triggers · all · %d events"), len(items)),
+		title:     fmt.Sprintf("合并触发 · 全部 · %d 条", len(items)),
 		message:   b.String(),
 		taskID:    first.taskID,
 		mergeable: true,
@@ -813,24 +798,24 @@ func mergeAllRuns(items []triggeredRun) triggeredRun {
 func (s *Server) runTriggeredRun(item triggeredRun) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf(locale.Text(locale.Resolve(item.language), "[trigger] run for %s panicked: %v"), item.agentKey, r)
+			log.Printf("[trigger] run for %s panicked: %v", item.agentKey, r)
 		}
 	}()
 	pg := s.m.pg
 	c, err := pg.CreateConversation(item.agentKey, firstLine(item.title, 60), nil)
 	if err != nil {
-		log.Printf(locale.Text(locale.Resolve(item.language), "[trigger] create conversation for %s failed: %v"), item.agentKey, err)
+		log.Printf("[trigger] create conversation for %s failed: %v", item.agentKey, err)
 		return
 	}
 	msg := finalTriggerMessage(item) // prepend the task-context header for single (non-merged) fires
 	if _, err := pg.AppendConvActivity(c.ID, db.Activity{Worker: item.agentKey, Kind: "user", Summary: firstLine(msg, 200), Detail: msg}); err != nil {
-		log.Printf(locale.Text(locale.Resolve(item.language), "[trigger] append msg failed: %v"), err)
+		log.Printf("[trigger] append msg failed: %v", err)
 	}
 	busyKey := s.convBusyKey(c.ID)
 	s.chatMu.Lock()
 	s.chatBusy[busyKey] = true
 	s.chatMu.Unlock()
-	s.runConversationSync(c, msg, busyKey, locale.Resolve(item.language))
+	s.runConversationSync(c, msg, busyKey)
 }
 
 // firstLine returns a single-line, length-capped preview (shared with summaries).
@@ -843,18 +828,4 @@ func firstLine(s string, max int) string {
 		s = string([]rune(s)[:max]) + "…"
 	}
 	return s
-}
-
-// isDefaultConversationTitle recognizes only exact built-in titles, including the
-// legacy Chinese title, so existing empty conversations can still be auto-titled.
-func isDefaultConversationTitle(title string) bool {
-	if title == "" || title == "新对话" {
-		return true
-	}
-	for _, lang := range locale.Languages() {
-		if title == locale.Text(lang, "New conversation") {
-			return true
-		}
-	}
-	return false
 }

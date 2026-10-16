@@ -10,7 +10,6 @@ function Progress({
   value,
   ...props
 }: React.ComponentProps<typeof ProgressPrimitive.Root>) {
-
   return (
     <ProgressPrimitive.Root
       data-slot="progress"

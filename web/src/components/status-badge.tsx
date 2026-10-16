@@ -1,6 +1,3 @@
-"use client";
-
-import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 import {
   statusMeta,
@@ -21,8 +18,6 @@ export function StatusBadge({
   dot?: boolean;
   className?: string;
 }) {
-  "use no memo";
-  useI18n();
   const meta = statusMeta(domain, value);
   return (
     <span

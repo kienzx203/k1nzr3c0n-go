@@ -1,327 +1,228 @@
 <div align="center">
 
-# ScopeWeaver
+# ARTEX
 
-An LLM multi-agent autonomous penetration-testing system (Go backend + Next.js frontend)
+面向企业攻击面的自主渗透测试智能体（Go 后端 + Next.js 前端）
 
-English · [한국어](README.ko.md)
+🌐 **在线 Demo（模拟数据）**： <https://artex-demo.mhtsec.com>
 
 </div>
 
 ---
 
-> **About this project.** ScopeWeaver is a derivative of [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX),
-> rebranded and translated into English and Korean. It is built from upstream commit `160fe13`.
+## 项目背景
 
-Modification date: **2026-10-02**. See [provenance and changes](docs/PROVENANCE.md); this is not a release tag.
+**Artex Pro（企业版）/ ARTEX（开源版）** 是面向企业攻击面的自主渗透测试智能体，为微步 RedAgents 产品负责人的个人项目。
 
-[Verification status and known limitations](docs/VERIFICATION.md).
+- **Artex Pro（企业版）** 重点提升了安全管控能力：以工程化思路将自主智能体构建为一套完整的红队系统，不止能自主突破和发现漏洞，还能做到**全程可控、运行稳定、结果可追溯**。
+- **ARTEX（开源版）** 此前作为开源项目运营，于 **2026 年 9 月 3 日** 在百度安全「Agent+」攻防能力挑战赛中斩获**冠军**；后被攻击者恶意利用、引发国外多起大规模金融行业安全事件，已于 **2026 年 10 月 8 日** 宣布**正式转为闭源**。
 
-> The code and architecture originate in ARTEX. This standalone derivative changes the product
-> name, English/Korean interface and messages, documentation, and distribution targets. See [Provenance and changes](#provenance-and-changes)
-> for the full list of what differs from upstream, and [License and disclaimer](#license-and-disclaimer)
-> for the terms, which are unchanged (AGPL-3.0).
+### 关于本仓库
+
+本仓库是 ARTEX 开源版闭源前**最后一个版本的纯源码备份**，后续由 **棉花糖**（[@mhtsec](https://github.com/mhtsec)，公众号 **棉花糖fans**）维护，欢迎参与共建：
+
+- 🐛 问题反馈 / 功能建议：[提交 Issue](https://github.com/mhtsec/ARTEX/issues)
+- 🛠 代码共建：欢迎提交 [Pull Request](https://github.com/mhtsec/ARTEX/pulls)
+- 💬 交流群：见文末 [交流与社区](#交流与社区)
+
+> 原 Docker 镜像源 `autumn27/artex` 已失效，现由本仓库自维护镜像 `mianhuatang11/artex`（Docker Hub）；拉取失败时可 `docker compose build` 从纯源码本地构建，无任何外部预编译依赖。
 >
-> **Authorization.** This is a security-testing tool. Use it only against systems you own or are
-> explicitly authorized to test. The upstream usage restrictions still apply — read them below.
+> 致谢原作者的开源贡献：原作者微信公众号为 **SecSentry**，原项目地址 [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)。
 
 ---
 
-## Language
+## 截图预览
 
-English is the default. Select English, Korean or Simplified Chinese (`zh-Hans`) in the interface.
-Bare `zh`, `zh-CN` and `zh-SG` resolve to Simplified Chinese; explicit Hans tags keep their script even
-with a Traditional region. Undeclared Traditional tags (`zh-Hant`, `zh-TW`, `zh-HK`, `zh-MO`) fall
-through to the next preference rather than select Simplified Chinese. See the
-[contributor locale guide](web/src/i18n/README.md). The server's durable default is
-`language` in system settings; `SCOPEWEAVER_LANGUAGE` (or `ARTEX_LANGUAGE`) supplies the environment
-fallback. Operating-system `LANG` does not select the application language.
+> 完整交互见[在线 Demo](https://artex-demo.mhtsec.com)。
 
-Requests prefer `lang`, then supported `Accept-Language` preferences, then the `scopeweaver_locale`
-cookie, then the server default. New HTTP-created tasks retain their language across queues and
-restarts; older tasks without saved language use the server default. Built-in agent guidance and
-output instructions use the run language; user-edited templates and stored evidence remain intact.
-Report/CSV/ZIP labels use the export request's language. [Full documentation](docs/README.md) and
-[Korean references](docs/ko/README.md) include the bundled skill guidance.
-
-## Screenshots
-
-These captures show ScopeWeaver's English interface with the included fictional demo data.
-They do not represent scans of live targets. See the [Korean screenshots](README.ko.md#스크린샷)
-and [mobile view](screenshots/en/mobile.png).
-
-| Dashboard | Tasks |
+| 仪表盘（总览 / Token 消耗 / 活动流） | 任务列表 |
 | :---: | :---: |
-| ![English dashboard](screenshots/en/dashboard.png) | ![English task list](screenshots/en/tasks.png) |
-| Findings | Settings |
-| ![English findings](screenshots/en/findings.png) | ![English settings](screenshots/en/settings.png) |
+| ![仪表盘](screenshots/dashboard.png) | ![任务](screenshots/tasks.png) |
 
-Original Chinese screenshots remain in [the screenshots directory](screenshots), credited to
-[upstream ARTEX](https://github.com/Autumn-27/ARTEX/tree/160fe13c243be361eeac5408c40a96e824fa842c/screenshots).
+| 任务 · 执行过程（会话 / 工具调用） | 探索链路 |
+| :---: | :---: |
+| ![执行过程](screenshots/sessions.png) | ![探索链路](screenshots/graph.png) |
 
----
+| 发现 | 资产 |
+| :---: | :---: |
+| ![发现](screenshots/findings.png) | ![资产](screenshots/assets.png) |
 
-## Approval records
+| 流量录制 | 人在环路对话 |
+| :---: | :---: |
+| ![流量](screenshots/traffic.png) | ![对话](screenshots/chat.png) |
 
-The global "Approval records" view, the in-task "Interception approval" panel, and the approval
-cards shown inside conversations all expand to show full detail. The presentation follows the
-[approval-detail component from AegisHook](https://github.com/RuoJi6/AegisHook/blob/main/web/src/components/CallDetail.vue),
-reusing the upstream component and theme.
+| Agent 管理 | LLM 配置 |
+| :---: | :---: |
+| ![Agent](screenshots/agents.png) | ![LLM](screenshots/llm.png) |
 
-## Asset sync (ScopeSentry)
-
-You can sync asset data directly from [ScopeSentry](https://github.com/Autumn-27/ScopeSentry),
-which saves you from collecting the same data twice:
-
-- On the **Asset sync** page, enter your ScopeSentry address and API key to connect the data source.
-- Choose what to sync by **project** or by **task**, and pick the asset types (domain / subdomain /
-  IP / port / site / endpoint …).
-- Import in one click. Assets are merged into the company asset scope and go straight into the
-  asset graph for agents to explore.
+| 拦截审批 | 后端日志 |
+| :---: | :---: |
+| ![拦截](screenshots/intercept.png) | ![日志](screenshots/logs.png) |
 
 ---
 
-## Installation
+## 资产同步（ScopeSentry）
 
-### GLM and other model providers
+支持从 [ScopeSentry](https://github.com/Autumn-27/ScopeSentry) 直接同步资产数据，免去重复收集：
 
-The **LLM → New** form includes GLM-5.3 configuration templates for Z.ai's General API and a
-separately labeled Coding Plan reference. Add your own API key; template selection does not save,
-activate, or contact a provider. Coding Plan use is restricted to officially supported tools, and
-ScopeWeaver is not listed. See [provider setup and support limits](docs/llm-providers.md).
+- 在「**资产同步**」页填 ScopeSentry 的地址与 API Key，接入数据源；
+- 按**项目**或**任务**维度选择要同步的目标与资产类型（域名 / 子域 / IP / 端口 / 站点 / 端点…）；
+- 一键导入并按公司资产范围归并，直接进入 ARTEX 的资产图供 agent 探索使用。
 
-Optional **native Ollama** profiles run without an API key. Three templates cover Ollama on the same
-machine, on the host from Docker, and the opt-in `docker compose --profile local-llm` service. Selecting one reads installed models and prefills one, preferring declared tool support;
-it does not download or run a model. They send a 32K context (`num_ctx` 32,768), one request at a time and a 30-minute keep-alive. An opt-in
-**local-only LLM network** setting (off by default) restricts LLM connections to local or trusted
-addresses. Cloud formats, custom URLs and proxies keep working. See
-[native Ollama](docs/llm-providers.md#native-ollama-local-inference).
+---
 
-> Requires a **PostgreSQL** database. Exploration needs an **LLM** configured
-> (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, a keyless Ollama profile, or set it in the UI).
+## 安装
 
-### Option 1: one-click install script (recommended)
+> 依赖数据库 **PostgreSQL**；探索需配置 **LLM**（`ANTHROPIC_API_KEY` 或 `OPENAI_API_KEY`，也可在 UI 里配）。
+
+### 方式一：一键安装脚本（推荐）
 
 ```bash
-git clone https://github.com/cskwork/scopeweaver.git
-cd scopeweaver
+git clone https://github.com/mhtsec/ARTEX.git
+cd ARTEX
 ./install.sh
 ```
 
-The script detects (and optionally installs) Docker, then lets you choose **① all-in-Docker** or
-**② build and run locally**:
+脚本会：检测 / 自动安装 Docker → 让你选 **① 全部 Docker** 或 **② 本地编译运行**：
 
-- **① All-in-Docker**: enter one Postgres password (press Enter for a random one) → it writes
-  `.env` → `docker compose up -d`.
-- **② Local**: pick a database (connect to an existing one, or start one with Docker) → it
-  generates `config.json` → `go` compiles a single binary with the frontend embedded → start.
+- **① 全部 Docker**：填一个 Postgres 密码（可回车随机）→ 自动写 `.env` → `docker compose up -d`。
+- **② 本地运行**：选数据库（连已有 / 用 Docker 起一个）→ 生成 `config.json` → `go` 编译内嵌单二进制 → 启动。
 
-Once it is up, open **http://localhost:8787** (the first visit lands on `/setup` to set the admin
-password).
+装好后打开 \*\*<http://localhost:8787\*\*（首次进入> `/setup` 设置管理员密码）。
 
-> The scripts speak English by default. For Korean prompts, set `SCOPEWEAVER_LANGUAGE=ko` (or
-> `ARTEX_LANGUAGE=ko`) before running, for example `SCOPEWEAVER_LANGUAGE=ko ./install.sh`.
-
-### Option 2: Docker Compose (manual)
+### 方式二：Docker Compose（手动）
 
 ```bash
-git clone https://github.com/cskwork/scopeweaver.git
-cd scopeweaver
-cp .env.example .env          # set POSTGRES_PASSWORD, optionally ANTHROPIC_API_KEY
-docker compose up -d --build  # builds the scopeweaver image locally + postgres
+git clone https://github.com/mhtsec/ARTEX.git
+cd ARTEX
+cp .env.example .env          # 填 POSTGRES_PASSWORD、可选 ANTHROPIC_API_KEY
+docker compose up -d          # 拉取 mianhuatang11/artex 镜像 + postgres
 # → http://localhost:8787
 ```
 
-> The default compose file **builds the image locally** from this source. To use a published
-> release image from `ghcr.io/cskwork/scopeweaver`, explicitly select its version in compose.
+> 原镜像源 `autumn27/artex` 已从 Docker Hub 删除，镜像现由本仓库自维护为 **`mianhuatang11/artex`**。  
+> 镜像源不可用（或想自行改代码）时，本地从纯源码构建即可：`docker compose build && docker compose up -d`。  
+> Dockerfile 为多阶段构建（前端静态导出 → Go 静态编译 → 运行镜像），默认走国内友好依赖源，可加 `--build-arg GOPROXY=... / --build-arg NPM_REGISTRY=...` 覆盖。正式镜像支持 `linux/amd64` 和 `linux/arm64`，Docker 会自动选择对应架构；固定版本可在 `.env` 设置 `ARTEX_TAG=v0.3.16`。
 
-The image bundles common tools (ripgrep/curl/vim/npm/nmap…); `./skills` and `./data` are
-bind-mounted so they persist.
+镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）；`./skills` 与 `./data` 以绑定挂载持久化。
 
-A remote MCP can use `http` (Streamable HTTP) or `sse` (legacy SSE) in system settings. Legacy SSE
-servers usually open the event stream with `GET /sse` and then receive JSON-RPC requests on the
-`/message?sessionId=...` the server returns; set the URL to `/sse` and the header to
-`Authorization=Bearer <token>`.
+远程 MCP 可在系统设置中选择 `http`（Streamable HTTP）或 `sse`（旧版 SSE）。  
+旧版 SSE 服务通常使用 `GET /sse` 建立事件流，再通过服务返回的  
+`/message?sessionId=...` 接收 JSON-RPC 请求；配置时将 URL 填为 `/sse`，请求头按  
+`Authorization=Bearer <token>` 填写。
 
-### Option 3: download a prebuilt binary (Releases)
+### 方式三：下载预编译二进制（Releases）
 
-> Download a platform archive from [Releases](https://github.com/cskwork/scopeweaver/releases).
-> The archive for each platform is
-> `scopeweaver-<version>-<os>-<arch>.zip`, unpacking to `scopeweaver` + `start.sh`
-> (`start.bat` on Windows) + `skills/` + `config.example.json`:
-
-The archive also includes `adapters/agent/`; see the [agent setup instructions](adapters/agent/README.md).
+到本仓库 [Releases](https://github.com/mhtsec/ARTEX/releases) 下载对应平台的 zip：解压后得到 `artex` + `start.sh`（Windows 为 `start.bat`）+ `skills/` + `config.example.json`：
 
 ```bash
-cp config.example.json config.json   # fill in the database connection
-./start.sh                            # → http://localhost:8787
+cp config.example.json config.json   # 填好 database 连接
+./start.sh                           # → http://localhost:8787
 ```
 
-> Start with `start.sh` / `start.bat`, not `./scopeweaver` directly. It is a supervisor: after the
-> program exits it decides, from the exit code, whether to relaunch, and the
-> [in-app one-click update](#option-1-in-app-one-click-update-recommended) relies on it to swap in
-> the new build. Running `./scopeweaver` directly means an update will not be relaunched.
-> To run in the background: `nohup ./start.sh >scopeweaver.log 2>&1 &`.
+> 请用 `start.sh` / `start.bat` 启动，而不是直接跑 `./artex`。它是个守护脚本：程序退出后按退出码决定是否重新拉起，**页面上的[一键更新](#方式一页面一键更新推荐)靠它完成换装**。直接运行 `./artex` 时更新完就不会被拉起了。  
+> 后台常驻：`nohup ./start.sh >artex.log 2>&1 &`。
 
-### Option 4: build a single binary from source
+### 方式四：从源码编译单二进制
 
 ```bash
-# 1) export the frontend as static files
+# 1) 前端静态导出
 cd web && npm ci && npm run build:static && cd ..
-# 2) copy it into the embed directory
-mkdir -p server/webui/dist
-cp -R web/out/. server/webui/dist/
-# 3) build (the embedui tag embeds the frontend)
-CGO_ENABLED=0 go build -tags embedui -o scopeweaver ./cmd/artex
+# 2) 拷进内嵌目录
+cp -r web/out server/webui/dist
+# 3) 编译（-tags embedui 才内嵌前端）
+CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 ./start.sh
 ```
 
-> The build source path stays `./cmd/artex` and the Go module stays `github.com/Autumn-27/artex`
-> for compatibility with upstream. Only the output binary is named `scopeweaver`.
+### 方式五：构建跨平台 Release 压缩包
 
-### Option 5: build cross-platform release archives
-
-`build.sh` builds and embeds the frontend, strips debug info with the Go linker, and zips each
-release. Release mode builds Linux amd64/arm64, macOS amd64/arm64, and Windows amd64 by default:
-
-Archives include `THIRD_PARTY_NOTICES.txt`; container images retain the same notice at
-`/app/THIRD_PARTY_NOTICES.txt` for the vendored shadcn stylesheet.
+`build.sh` 会先构建并嵌入前端，再使用 Go linker 去除调试信息，并将发布文件压缩为 zip。Release 模式默认生成 Linux amd64/arm64、macOS amd64/arm64 和 Windows amd64 的 zip 包：
 
 ```bash
 ./build.sh --release
-# output: dist/scopeweaver-0.3.3-*.zip
+# 产物：dist/artex-0.3.3-*.zip
 ```
 
-UPX-packed self-extracting binaries can clash with some Linux kernels, virtualization, or security
-policies, so UPX is off by default. Set custom targets with `ARTEX_TARGETS`, and pass `--upx` explicitly when you have confirmed the target is compatible:
+UPX 自解压二进制可能与部分 Linux 内核、虚拟化环境或安全策略不兼容，因此默认不启用。可用 `ARTEX_TARGETS` 自定义目标；确认目标运行环境兼容时，可显式传入 `--upx` 进一步缩小二进制：
 
 ```bash
 ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 ./build.sh --target linux/amd64 --upx
 ```
 
-### Reverse proxy deployments
+Docker 镜像随 Release 发布，使用同一份 `SHA256SUMS` 校验过的 Linux 二进制、启动脚本和 skills；两个架构分别在原生 runner 上完成 PostgreSQL、登录与配置持久化、内嵌网页、Chromium 和停止/重启检查，通过后才合并版本标签。`latest` 仅指向当前稳定 Release，补发历史版本不会将它回退。
 
-Production builds serve the UI, API, and live SSE streams from the same origin.
-You can expose HTTPS on port 443 and keep the backend port private. Disable proxy
-buffering and allow long-lived connections so live events reach the browser:
+维护者需在仓库 Actions 配置变量 `DOCKERHUB_IMAGE=mianhuatang11/artex`，以及加密 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`。正常推送版本 tag 会自动发布；仅补发 Docker 镜像时，在 Actions 中手工运行 `docker-release` 并填写已有 Release 标签。任一架构构建或验证失败都不会更新 `latest`，按日志修复后重跑。
 
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:8787;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_http_version 1.1;
-    proxy_set_header Connection "";
-    proxy_buffering off;
-    proxy_cache off;
-    proxy_read_timeout 3600s;
-}
-```
-
-Set `NEXT_PUBLIC_SSE_BASE` at build time only when SSE uses a different origin.
-Changing it at container runtime does not change the exported frontend. During
-`next dev`, SSE still connects directly to port 8787 to bypass Next.js buffering;
-an explicit empty `NEXT_PUBLIC_SSE_BASE` selects the same origin.
+本地从源码构建可用 `--build-arg ARTEX_BUILD_VERSION=v0.3.16` 写入版本；默认 `dev`。Playwright 工具版本固定在 Dockerfile 中，浏览器默认从官方 CDN 下载，需要镜像站时可指定 `--build-arg PLAYWRIGHT_DOWNLOAD_HOST=...`。排查镜像时可执行 `python3 scripts/smoke-docker.py <镜像> <版本号>`，检查只使用临时数据库和内部网络，不读取本地 `.env` 或连接真实目标。
 
 ---
 
-## Updating
+## 更新升级
 
-> Updates swap the program only; your data stays put. The Postgres volume `pgdata`, `./data`
-> (jwt.key / SQLite / …), and `./skills` are all preserved. **Database migrations run on their
-> own** — `scopeweaver` re-runs `schema.sql` idempotently on every start (including `ADD COLUMN` /
-> `CREATE INDEX IF NOT EXISTS`), so "restart is migrate." Still, back up `./data` and the database
-> before upgrading.
+> 升级只换程序、不动数据：Postgres 数据卷 `pgdata`、`./data`（jwt.key / SQLite 等）、`./skills` 都会保留。**数据库迁移无需手动执行**——`artex` 每次启动会幂等重跑 `schema.sql`（含 `ADD COLUMN` / `CREATE INDEX IF NOT EXISTS`），即“重启即迁移”。升级前仍建议先备份 `./data` 与数据库。
 
-### Option 1: in-app one-click update (recommended)
+### 方式一：页面一键更新（推荐）
 
-On the **System configuration** page (sidebar "System configuration" → `/system/settings`), the
-**Version and updates** card checks for and installs new versions without logging into the server.
+在 **系统配置** 页（侧边栏「系统配置」→ `/system/settings`）的**版本与更新**卡片里，可以直接检查并安装新版本，无需登录服务器。
 
-After you click "Update": it downloads the release for your platform → checks it against the
-release's `SHA256SUMS` → smoke-tests the new binary with `-h` → stages it as `scopeweaver.new` →
-the program exits and `start.sh` / `start.bat` relaunches it to finish the swap. The page waits for
-the new version to come up and refreshes.
+点「更新」后：下载当前平台的发布包 → 比对 Release 的 `SHA256SUMS` → 用 `-h` 冒烟测试新二进制 → 暂存为 `artex.new` → 程序退出，由 `start.sh` / `start.bat` 重新拉起并完成换装。页面会自动等到新版本上线后刷新。
 
-- **A failed update leaves no broken program**: if verification or the smoke test fails, the staged
-  file is discarded and the current version keeps running. If a swapped-in version fails to start
-  three times in a row, it rolls back to `scopeweaver.old` automatically (the failed one is kept as
-  `scopeweaver.failed` for inspection).
-- **Roll back anytime**: the previous version is kept as `scopeweaver.old`, and the card has a
-  "Roll back to previous version" button. Note that the database schema does not roll back.
-- **Updating interrupts running tasks** — an update is a restart, so do it when idle.
-- **Development builds get no updates**: this is disabled when the version is `dev` or a
-  `git describe` string with a suffix, so a release does not overwrite a locally built debug binary.
-- **Under Docker, only the program changes, not the image**: the playwright / nmap toolchains in the
-  image do not upgrade along with it, and rebuilding the container with `docker compose up -d` reverts
-  to the versions baked into the image. To upgrade the image too, use
-  `docker compose pull scopeweaver && docker compose up -d scopeweaver` (once a published image exists;
-  otherwise `docker compose up -d --build scopeweaver`).
-- If reaching GitHub needs a proxy, configure the **global proxy** on the same page and the update
-  path uses it. Updates download only from GitHub domains and force HTTPS.
+- **失败不会留下坏程序**：校验或冒烟不通过就丢弃暂存件、继续跑当前版本；换装后的新版若连续 3 次启动失败，会自动回滚到 `artex.old`（失败的那个留作 `artex.failed` 供排查）。
+- **随时可回退**：上一版本保留为 `artex.old`，卡片上有「回滚到上一版本」。注意数据库结构不会回退。
+- **更新会中断正在运行的任务**——更新即重启，请在空闲时进行。
+- **开发构建不给更新**：版本号是 `dev` 或 `git describe` 带后缀时禁用，避免正式版覆盖掉本地调试的二进制。
+- **Docker 下只换程序、不换镜像**：镜像里的 playwright / nmap 等工具链不会跟着升级，且 `docker compose up -d` 重建容器后会退回镜像自带的版本。要连镜像一起升级仍请用 `docker compose pull artex && docker compose up -d artex`。
+- 访问 GitHub 需要代理时，在同一页面配置**全局代理**即可，更新链路会走它。更新只从 GitHub 域名下载并强制 HTTPS。
 
-### Option 2: one-click update script
+### 方式二：一键更新脚本
 
 ```bash
-cd scopeweaver
+cd ARTEX
 ./update.sh
 ```
 
-The script optionally runs `git pull` first, then lets you choose **① Docker update** or
-**② local build update** (matching `install.sh`):
+脚本先可选 `git pull` 拉取最新代码，再让你选 **① Docker 更新** 或 **② 本地编译更新**（与 `install.sh` 对应）：
 
-- **① Docker**: rebuild the current checkout with `docker compose build scopeweaver`, then
-  recreate the service with `docker compose up -d scopeweaver`.
-- **② Local**: rebuild the frontend static output → recompile `./scopeweaver` (restart the process
-  to apply).
+- **① Docker**：可指定目标镜像 tag（回车沿用 `.env` 的 `ARTEX_TAG`，缺省 `latest`）→ `docker compose pull` → `docker compose up -d`（换新镜像重启即自动迁移）。
+- **② 本地**：重建前端静态产物 → 重新编译 `./artex`（完成后重启进程生效）。
 
-### Option 3: Docker Compose (manual)
+### 方式三：Docker Compose（手动）
 
 ```bash
-cd scopeweaver
-git pull                       # update compose / scripts (optional)
-# To pin a source version, check out a reviewed tag or commit before building.
-docker compose up -d --build scopeweaver   # rebuild from source and restart → auto-migrate schema
-docker image prune -f          # clean up old images (optional)
+cd ARTEX
+git pull                       # 更新 compose / 脚本（可选）
+# 指定版本：在 .env 设 ARTEX_TAG=v0.3.16；不设则用 latest
+docker compose pull artex
+docker compose up -d artex     # 换新镜像重启 → 自动迁移 schema
+docker image prune -f          # 清理旧镜像（可选）
 ```
 
-> Once a published image exists and compose explicitly selects it, replace the build step with
-> `docker compose pull scopeweaver && docker compose up -d scopeweaver`.
+### 方式四：预编译二进制（Releases）
 
-### Option 4: prebuilt binary (Releases)
-
-Download the new `scopeweaver-<version>-<os>-<arch>.zip`, stop the old process,
-overwrite `scopeweaver` and `skills/` (keep your `config.json` and `data/`), and restart:
+到 [Releases](https://github.com/mhtsec/ARTEX/releases) 下载新版本 zip，停掉旧进程后覆盖 `artex` 与 `skills/`（保留你的 `config.json` 与 `data/`），重启即可：
 
 ```bash
-cp -r <unpacked>/skills ./ && cp <unpacked>/scopeweaver ./
+cp -r <解压目录>/skills ./ && cp <解压目录>/artex ./
 ./start.sh
 ```
 
-### Option 5: build from source
+### 方式五：从源码编译
 
 ```bash
 git pull
 cd web && npm ci && npm run build:static && cd ..
 cp -r web/out server/webui/dist
-CGO_ENABLED=0 go build -tags embedui -o scopeweaver ./cmd/artex
-# restart ./start.sh
+CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
+# 重启 ./start.sh
 ```
 
 ---
 
-## Configuration
+## 配置
 
-### Coding-agent integration
-
-Claude Code, Codex and Pi can create tasks, read progress, coverage and findings through the
-[agent adapter](adapters/agent/README.md). Claude Code/Codex use local stdio MCP; Pi uses a native
-extension. Reads are enabled by default, with task creation and pause/resume explicitly enabled
-through configuration. The adapter uses the existing authenticated API and keeps ScopeWeaver's
-internal agents and model configuration intact.
-
-**Database** (`config.json`, or override with the environment variable `ARTEX_PG_DSN`):
+**数据库**（`config.json`，或用环境变量 `ARTEX_PG_DSN` 覆盖）：
 
 ```json
 {
@@ -333,99 +234,104 @@ internal agents and model configuration intact.
 }
 ```
 
-> The configuration and environment keys keep the `ARTEX_*` prefix and the `artex` database defaults
-> for compatibility with upstream. Scripts also accept the `SCOPEWEAVER_*` aliases where noted.
+**LLM**：`export ANTHROPIC_API_KEY=sk-...`（或 `OPENAI_API_KEY`），也可在 UI 的「LLM 配置」页填写。  
+可选：`ARTEX_LLM_PROVIDER` / `ARTEX_LLM_MODEL` / `ARTEX_LLM_BASE_URL` / `ARTEX_LLM_PROXY`。
 
-**LLM**: `export ANTHROPIC_API_KEY=sk-...` (or `OPENAI_API_KEY`), or set it on the UI's "LLM
-configuration" page. Optional: `ARTEX_LLM_PROVIDER` / `ARTEX_LLM_MODEL` / `ARTEX_LLM_BASE_URL` /
-`ARTEX_LLM_PROXY`. Each `SCOPEWEAVER_LLM_*` alias overrides its `ARTEX_LLM_*` counterpart; Ollama
-also accepts `CONTEXT_WINDOW_K`, `MAX_CONCURRENT`, `KEEP_ALIVE` and `MAX_TOKENS` suffixes
-([full list](docs/llm-providers.md#environment-and-configuration)).
+**并发**：每个任务的 work agent 数在「系统设置」里配置（默认 3）。
 
-**Concurrency**: the number of work agents per task is set in "System settings" (default 3).
+**常用参数**：`./start.sh -addr :8787 -proxy :8788`（`-addr` 前端+API，`-proxy` 流量录制代理）。启动脚本会把参数原样透传给 `artex`。
 
-**Common flags**: `./start.sh -addr :8787 -proxy :8788` (`-addr` is frontend + API, `-proxy` is the
-traffic-capture proxy). The start script passes flags straight through to `scopeweaver`.
+### 反向代理部署（HTTPS / 只开放 443）
 
----
+前端和 API/SSE 都由同一个后端端口（默认 `:8787`）提供，实时活动流默认走**同源**地址，因此**无需配置 `NEXT_PUBLIC_SSE_BASE`**，公网只开放 443、把 8787 留在内网即可。
 
-## Development
+SSE 是长连接 + 持续推送，反代**必须关闭缓冲**，否则浏览器能连上却收不到事件（表现为活动流一直转圈）。Nginx 示例：
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for requirements, checks, and how pull requests are reviewed and merged.
+```nginx
+server {
+    listen 443 ssl;
+    server_name your.domain.com;
+    # ssl_certificate / ssl_certificate_key ...
 
-### Manual vulnerability retest
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
 
-The task-detail "Retest" tab paginates the task's vulnerabilities, shows each one's past
-conclusions and evidence, and lets you start a retest by hand. Once started it keeps the current
-tab, shows a spinner and "Retesting"; when a fix is confirmed it updates the vulnerability status.
-
-Click "Retest" on a row in the vulnerability list, or "Start retest" in the vulnerability detail's
-"Retest" area, and fill in the optional fix version, test conditions, or limits. The system creates
-a separate retest agent session and keeps the current page. The flat, grouped-by-task, and asset
-views all offer this entry point; a running retest shows a spinner and "Retesting," and you click in
-to view the session. When it ends it returns to "Retest." A retest does not restart the original
-scan task. Conclusions are "Still reproducible," "Fixed," or "Cannot confirm," and each conclusion,
-its evidence, and the session link are saved in the vulnerability detail.
-
-The newer backend pre-creates an editable "vulnerability retest" (`retester`) agent on first start;
-you can configure its prompt, LLM, run budget, and tools in agent management. It uses its bound LLM
-by default, or the globally active configuration if none is bound. When a retest session completes
-successfully with a "Fixed" conclusion, the system sets the vulnerability disposition to "Fixed"
-automatically; running, failed, stopped, or other conclusions keep the original status. The original
-evidence and report are always kept. You can also set "Fixed" by hand from the status dropdown.
-
-This version's history is viewed through the vulnerability detail and the session; it is not yet in
-the vulnerability report export or the task archive, and it is not auto-linked to a traffic capture.
-Demo mode only produces clearly labeled simulated records and does not touch real targets.
-
-### Local run and tests
-
-```bash
-./dev.sh    # backend(:8787) + traffic proxy(:8788) + frontend next dev(:5173) → http://localhost:5173
+        # SSE 关键项：关缓冲、长超时、HTTP/1.1
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+}
 ```
 
-- Backend: `go run ./cmd/artex` (without `-tags embedui` the frontend is not embedded)
-- Frontend: `cd web && npm run dev` (`/api` is reverse-proxied to the backend, with hot reload)
-- Tests: `go test ./...`
-- Mock preview (no backend): `cd web && NEXT_PUBLIC_MOCK=1 npm run dev`
+> 仅当 SSE 需要走与页面不同的来源（如独立子域）时，才在**构建期**设置 `NEXT_PUBLIC_SSE_BASE`（该变量在 `next build` 时固化进静态包，容器运行时再设无效）。
 
 ---
 
-## Architecture
+## 开发
 
-ScopeWeaver (ARTEX under the hood) is an **LLM multi-agent autonomous penetration system**: a single
-Go backend (with the Next.js frontend embedded) plus PostgreSQL. Agent capabilities come from the
-[`norma`](https://github.com/Autumn-27/norma) SDK (`agentcore` / `tool` / `permission` / `harness` /
-`memory` / `transcript`). The core is a **two-graph architecture**, with two autonomy mechanisms
-built around it: **process-level information exchange between workers** and a **planner's
-multi-round shared todolist that keeps the attack chain stable**.
+### 手动漏洞复测
 
-### Layers
+任务详情的「复测」页签可分页选择本任务的漏洞、查看历次结论和证据，并手动发起复测。启动后保留当前页签，显示转圈图标和「复测中」；确认修复后同步更新漏洞状态。
+
+在漏洞列表每行操作区点击「复测」，或在漏洞详情的「漏洞复测」区域点击「发起复测」，填写可选的修复版本、测试条件或限制，系统会创建独立的复测 Agent 会话，启动后保留当前页面。列表的平铺、按任务分组和资产视图均支持该入口；复测运行时显示转圈图标和「复测中」，需要查看时点击进入对应会话，结束后恢复「复测」。复测无需重新启动原扫描任务，结论分为「仍可复现」「已修复」「无法确认」，每次的结论、证据和会话链接保存在漏洞详情中。
+
+新版后端首次启动会预置可编辑的「漏洞复测」（`retester`）Agent，可在 Agent 管理中配置提示词、LLM、运行预算和工具。默认使用其绑定的 LLM，未绑定则使用全局激活配置。复测会话成功完成且结论为「已修复」时，系统自动将漏洞处置状态改为「已修复」；执行中、失败、停止或其他结论保留原状态。原始证据和报告始终保留。也可在状态下拉菜单中手动选择「已修复」。同一漏洞正在复测时复用已有会话，停止、失败或服务重启后可重新发起。
+
+本版历史记录通过漏洞详情和会话查看，暂未纳入漏洞报告导出或任务归档包，也未自动关联流量包。演示模式只生成明确标注的模拟记录，不请求真实目标。
+
+### 本地运行与测试
+
+```bash
+./dev.sh    # 后端(:8787) + 流量代理(:8788) + 前端 next dev(:5173) → http://localhost:5173
+```
+
+- 后端：`go run ./cmd/artex`（不带 `-tags embedui` 则不内嵌前端）
+- 前端：`cd web && npm run dev`（`/api` 反代到后端，带热更新）
+- 测试：`go test ./...`
+- Mock 预览（无后端）：`cd web && NEXT_PUBLIC_MOCK=1 npm run dev`
+- 在线 Demo 重新部署（Cloudflare Pages，静态导出 + Mock 数据）：
+  ```bash
+  cd web && NEXT_PUBLIC_MOCK=1 npm run build:static
+  CLOUDFLARE_API_TOKEN=<token> npx wrangler pages deploy out --project-name=artex-demo --branch=main
+  ```
+
+---
+
+## 系统技术架构
+
+ARTEX 是一套 **LLM 多 agent 驱动的自主渗透系统**：Go 单体后端（内嵌 Next.js 前端）+ PostgreSQL，agent 能力由 [`norma`](https://github.com/Autumn-27/norma) SDK 提供（`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`）。核心是**双图架构**，以及围绕它的两条自主性机制：**worker 间过程级信息交换**与 **planner 多轮共享 todolist 稳定攻击链路**。
+
+### 总体分层
 
 ```mermaid
 flowchart TB
-  subgraph FE["Frontend Next.js (embedded in the single binary via go:embed)"]
-    UI["Dashboard · Tasks · Assets · Coverage graph · Traffic · Workspace · System config"]
+  subgraph FE["前端 Next.js（go:embed 内嵌单二进制）"]
+    UI["仪表盘 · 任务 · 资产 · 覆盖图 · 流量 · 工作空间 · 系统配置"]
   end
-  subgraph SRV["server (Go net/http)"]
-    API["REST /api/*  JWT auth  SSE"]
-    ENG["engine scheduling loop"]
-    MGR["Manager  task/engine/store lifecycle"]
+  subgraph SRV["server（Go net/http）"]
+    API["REST /api/*　JWT 鉴权　SSE"]
+    ENG["engine 调度循环"]
+    MGR["Manager　任务/引擎/store 生命周期"]
   end
-  subgraph AG["agent (norma SDK)"]
-    GO["goals  goal decomposition + scope extraction"]
-    PL["planner  (the only intent generator)"]
-    WK["worker  executor ×N"]
-    MA["mainagent  human-in-the-loop"]
+  subgraph AG["agent（norma SDK）"]
+    GO["goals　目标分解 + 提取范围"]
+    PL["planner　规划者（唯一意图生成者）"]
+    WK["worker　执行者 ×N"]
+    MA["mainagent　人在环路"]
   end
   subgraph DB["PostgreSQL"]
-    AGRAPH["asset graph  assets / companies / task_scope"]
-    EGRAPH["exploration graph  exploration_nodes / anchors / activity"]
+    AGRAPH["资产图　assets / companies / task_scope"]
+    EGRAPH["探索图　exploration_nodes / anchors / activity"]
   end
-  subgraph SUB["Supporting subsystems"]
-    PROXY["traffic-recording proxy  MITM + CA trail"]
-    GUARD["guard / intercept  tool approval gate"]
-    ENR["enrich  DNS / HTTP async completion"]
+  subgraph SUB["支撑子系统"]
+    PROXY["流量记录代理　MITM + CA 留痕"]
+    GUARD["guard / intercept　工具审批门"]
+    ENR["enrich　DNS / HTTP 异步补全"]
     EXT["MCP · skills · memory · report"]
   end
 
@@ -439,7 +345,7 @@ flowchart TB
   WK --> DB
   MA --> DB
   GO --> DB
-  WK -->|"Bash / HTTP fully traced"| PROXY
+  WK -->|"Bash / HTTP 全程留痕"| PROXY
   WK --> GUARD
   WK --> ENR
   PL -.-> EXT
@@ -447,49 +353,39 @@ flowchart TB
   MA -.-> EXT
 ```
 
-| Layer | Responsibility |
+
+| 层 | 职责 |
 | --- | --- |
-| **Frontend** | Next.js static export, embedded in the single binary with `go:embed`; visualizes tasks/assets/exploration/coverage and the human-in-the-loop chat |
-| **server** | `net/http` routing + JWT auth + SSE; `Manager` owns the lifecycle of tasks, engines, and DB stores |
-| **engine** | one `plannerLoop` + N worker goroutines per task; intent claiming, timeout/pause/drain |
-| **agent** | goals / planner / worker / mainagent; the `ToolSet` exposes the two graphs as LLM tools |
-| **db** | Postgres backing (pgx) for both graphs; schema is embedded via `go:embed` and created idempotently on every start |
-| **support** | recording MITM proxy, approval gate, async completion, MCP/skills/memory/report |
+| **前端** | Next.js 静态导出，`go:embed` 内嵌进单二进制；可视化任务/资产/探索链路/覆盖图，人在环路对话 |
+| **server** | `net/http` 路由 + JWT 鉴权 + SSE；`Manager` 托管任务、引擎、DB store 的生命周期 |
+| **engine** | 每任务一个 `plannerLoop` + N 个 worker goroutine；意图领取、超时/暂停/drain |
+| **agent** | goals / planner / worker / mainagent，`ToolSet` 把双图暴露成 LLM 工具 |
+| **db** | 双图的 Postgres 落地（pgx）；schema 随 `go:embed` 每次启动幂等建表 |
+| **支撑** | 记录型 MITM 代理、审批门、异步补全、MCP/技能/记忆/报告 |
 
-### Two-graph architecture: exploration graph + asset graph
+### 双图架构：探索图 + 资产图
 
-The system splits "**what the target is**" from "**how far it has been tested**" into two
-independent graphs that connect through anchors:
+系统把「**目标是什么**」和「**测到了什么程度**」拆成两张相互独立、又通过锚点相连的图：
 
-- **Asset graph (global, shared)**: the single source of truth for assets across tasks. Nodes are
-  `root_domain / subdomain / ip / service / app / endpoint`, each owned by a company. The
-  domain→subdomain→service→endpoint parent-child relationships and dedup keys are all computed by
-  the program; agents only submit raw observations.
-- **Exploration graph (per task)**: the "thinking and progress" of one task. Nodes are
-  `goal / intent / fact / finding / hint`, connected by `spawns / derived_from / yields / proves`
-  edges into a **lineage chain** that answers "which direction derived from which facts, and what it
-  produced."
-- **The two graphs connect through anchors**: `exploration_anchors(node_id, asset_id)` anchors an
-  intent/fact/finding to a specific asset — so you can see which assets a direction is probing, and
-  from any asset look back at which intents tested it in this task and what facts they produced. This
-  also drives **asset test coverage** and the **asset coverage graph** (in-scope assets + tested
-  highlighted).
+- **资产图（Asset Graph，全局共享）**：跨任务同一份的资产真值库。节点为 `root_domain / subdomain / ip / service / app / endpoint`，归属公司；域名→子域→服务→端点的父子关系与去重 key 全部由程序计算，agent 只提交原始信息。
+- **探索图（Exploration Graph，每任务独立）**：一次任务的“思考与推进”过程。节点为 `goal（目标）/ intent（意图）/ fact（事实）/ finding（漏洞）/ hint（提示）`，靠 `spawns / derived_from / yields / proves` 等边连成**血缘链**，回答“哪个方向派生自哪些事实、产出了什么”。
+- **两图靠锚点相连**：`exploration_anchors(node_id, asset_id)` 把意图/事实/漏洞锚定到具体资产上——于是既能从“探索方向”看它打的是哪些资产，也能从“某个资产”反查它在本任务被哪些意图测过、得出过哪些事实。这也支撑了**资产测试覆盖度**与**资产覆盖图**（范围内资产 + 已测高亮）。
 
 ```mermaid
 flowchart LR
-  subgraph EG["Exploration graph (per task · progress chain)"]
+  subgraph EG["探索图（每任务独立 · 推进链）"]
     direction TB
-    G["goal"]
-    I1["intent A"]
-    F1["fact"]
-    I2["intent B"]
-    FD["finding"]
+    G["goal 目标"]
+    I1["intent 意图 A"]
+    F1["fact 事实"]
+    I2["intent 意图 B"]
+    FD["finding 漏洞"]
     G -->|spawns| I1
     I1 -->|yields| F1
     F1 -->|derived_from| I2
     I2 -->|proves| FD
   end
-  subgraph AG["Asset graph (global · source of truth)"]
+  subgraph AG["资产图（全局共享 · 真值库）"]
     direction TB
     RD["root_domain"]
     SD["subdomain"]
@@ -503,196 +399,136 @@ flowchart LR
   FD -. anchor .-> EP
 ```
 
-> Division of labor: the **planner** reads the exploration graph's state, judges the goal, and only
-> sends an **intent** into the frontier when there is an uncovered new direction; a **worker** claims
-> **one intent**, runs real tools, writes the new assets/facts/findings back to both graphs, and
-> stops. The asset graph is shared fact; the exploration graph is each task's progress chain.
+> 分工：**planner** 读探索图态势、判目标、只在有未覆盖的新方向时派**意图**进 frontier；**worker** 领**一条意图**、用真实工具执行、把新资产/事实/漏洞写回两图后即停。资产图是共享事实，探索图是每任务的推进链。
 
-### Engine and intent lifecycle (one exploration loop)
+### 引擎与意图生命周期（一次探索的闭环）
 
-The engine is an **event-driven** loop: a graph change wakes the planner, the planner sends intents,
-a worker claims an intent, executes, and writes back, and the write-back triggers the next round —
-until the goal is proven (`prove_goal`).
+引擎是**事件驱动**的闭环：图一变就唤醒 planner，planner 派意图，worker 领意图执行并写回，写回又触发下一轮——直到目标被证明（`prove_goal`）。
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant EV as graph-change debounce
+  participant EV as 图变更 debounce
   participant P as planner
-  participant FR as frontier intent queue
+  participant FR as frontier 意图队列
   participant W as worker
-  participant PX as recording proxy
-  participant DB as two graphs + activity
+  participant PX as 记录代理
+  participant DB as 双图 + activity
 
-  EV-->>P: wake
-  P->>DB: read state (graph_overview prefetch + coverage/scope)
-  P->>FR: send 0..N intents (with asset_ids)
-  Note over P,FR: most wakes send 0 — no new direction means done
-  W->>FR: claimNext one intent
-  W->>DB: load the intent's asset_ids as initial context
-  W->>PX: run real tools (Kali / Bash / HTTP)
-  PX-->>W: response (fully traced + CA verified)
-  W->>DB: write back fact / asset / finding + per-step activity
-  DB-->>EV: graph change
-  EV-->>P: wake again (loop)
+  EV-->>P: 唤醒
+  P->>DB: 读态势(graph_overview 预取 + coverage/scope)
+  P->>FR: 派 0..N 个意图(带 asset_ids)
+  Note over P,FR: 大多数唤醒派 0 个——无新方向即结束
+  W->>FR: claimNext 领一条意图
+  W->>DB: 取意图 asset_ids 的原始资产作为初始信息
+  W->>PX: 真实工具执行(Kali / Bash / HTTP)
+  PX-->>W: 响应(全程留痕 + CA 验证)
+  W->>DB: 写回 fact / asset / finding + 每步 activity
+  DB-->>EV: 图变更
+  EV-->>P: 再次唤醒(闭环)
 ```
 
-### Process-level information exchange between workers
+### worker 间的过程级信息交换
 
-In a deep exploration, many valuable observations (an error, a response, a hidden parameter) show up
-in one worker's **execution process** without being written as a formal fact. To avoid duplicate
-work and let workers on a chain stand on each other's shoulders, a worker can **search across other
-workers' processes**:
+一次深入的探索里，很多有价值的观察（某个报错、某段响应、某个隐藏参数）出现在一个 worker 的**执行过程**中，却未必被写成正式 fact。为避免重复劳动、让链路上的 worker 能站在彼此的肩膀上，worker 具备**跨 work 检索过程**的能力：
 
-- `search_all_worker_traces(q)`: keyword-search the **execution process of other works in this task**
-  (automatically excluding this intent's own steps); hits carry an `intent_id`.
-- `list_worker_traces` / `get_worker_trace(intent_id, step_ids=[…])`: first see which works have run,
-  then pull the full content of specific steps of one work for a detailed exchange.
+- `search_all_worker_traces(q)`：在**本任务其他 work 的执行过程**里按关键字检索（自动排除自己这条意图的步骤），命中项带 `intent_id`；
+- `list_worker_traces` / `get_worker_trace(intent_id, step_ids=[…])`：先看有哪些 work 跑过，再取某个 work 具体几步的完整内容做细节交换。
 
-So even when the exploration graph has no matching fact yet, later workers can reuse others'
-in-process observations — **information flows between workers at the granularity of the "execution
-process,"** while the boundary holds (each worker still does only the one intent it claimed).
+这样即便探索图上还没有对应的 fact，后续 worker 也能复用他人过程中的观察——**信息在 worker 之间以“执行过程”为粒度流动**，而边界不变（每个 worker 仍只做自己领到的那条意图）。
 
 ```mermaid
 flowchart LR
-  WA["worker A (intent #12)"] -->|"per-step activity"| ACT[("exploration graph · activity store")]
-  WB["worker B (intent #34)"] -->|"per-step activity"| ACT
-  WC["worker C (intent #56)"] ==>|"1) search_all_worker_traces(q)"| ACT
-  ACT ==>|"2) hits in A/B's steps (own excluded)"| WC
+  WA["worker A（意图 #12）"] -->|"每步 activity"| ACT[("探索图 · activity 过程库")]
+  WB["worker B（意图 #34）"] -->|"每步 activity"| ACT
+  WC["worker C（意图 #56）"] ==>|"1) search_all_worker_traces(q)"| ACT
+  ACT ==>|"2) 命中 A/B 的步骤（排除自己）"| WC
   WC ==>|"3) get_worker_trace(id, step_ids)"| ACT
-  ACT ==>|"4) return full process content"| WC
+  ACT ==>|"4) 返回完整过程内容"| WC
 ```
 
-### The planner's shared multi-round todolist → a stable attack chain
+### planner 多轮共享 todolist → 稳定的攻击链路
 
-A real attack chain is often a **multi-step sequence with dependencies** (find an injection point →
-get credentials → move laterally → escalate). Sending all of that out in parallel at once only
-causes chaos. So the planner holds a **planning todolist that is kept per task and shared across
-wakes**:
+真实攻击链往往是**有前后依赖的多步序列**（如：发现注入点 → 拿到凭据 → 横向 → 提权），一次性把这些并行派下去只会乱套。planner 因此持有一份**按任务保留、跨唤醒共享的规划待办（todolist）**：
 
-- The planner is event-driven — a graph change wakes it, but **each wake is a fresh session**; the
-  shared todolist lets it **record a serial exploitation chain once** and then **send intents step by
-  step across rounds** according to dependencies, instead of laying the whole chain out up front in
-  one round.
-- Each round sends an intent only for the next step whose "prerequisites are done and whose depended
-  facts exist," and updates the list as it goes (marking steps that facts have satisfied as complete).
+- planner 是事件驱动的——图一变就被唤醒，但**每次唤醒是全新会话**；共享的 todolist 让它把一条串行利用链**记录一次**、然后在后续多轮里**按依赖逐步派意图**，而不是把整条链在一轮里全部前置展开；
+- 每轮只对「前置步骤已完成、其依赖的 fact 已存在」的下一步派意图，并随进展更新清单（把已被 fact 满足的步骤标完成）。
 
 ```mermaid
 flowchart TB
-  subgraph TODO["shared todolist (kept per task · persists across wakes)"]
+  subgraph TODO["共享 todolist（按任务保留 · 跨唤醒常驻）"]
     direction LR
-    T1["1 injection point  [done]"]
-    T2["2 get credentials  [in progress]"]
-    T3["3 lateral  [blocked]"]
-    T4["4 escalate  [blocked]"]
-    T1 -.prereq met.-> T2 -.-> T3 -.-> T4
+    T1["1 注入点　[已完成]"]
+    T2["2 取凭据　[进行中]"]
+    T3["3 横向　[待前置]"]
+    T4["4 提权　[待前置]"]
+    T1 -.前置满足.-> T2 -.-> T3 -.-> T4
   end
-  R1["round 1 wake  send intent ①"] --> T1
-  R2["round 2 (① produced a fact)  send intent ②"] --> T2
-  R3["round 3 (② produced a fact)  send intent ③"] --> T3
+  R1["第 1 轮唤醒　派意图①"] --> T1
+  R2["第 2 轮（①产出 fact）　派意图②"] --> T2
+  R3["第 3 轮（②产出 fact）　派意图③"] --> T3
 ```
 
-So the attack chain still **advances steadily, without repeats or reordering** in an "event-driven +
-stateless session" setting — the key to how the system walks a multi-step exploitation chain on its
-own.
+于是攻击链在“事件驱动 + 无状态会话”的环境下依然**稳定推进、不重复、不错序**——这是 ARTEX 能自主走完多步利用链的关键。
 
 ---
 
-## Provenance and changes
+## 项目文档
 
-ScopeWeaver is derived from [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX) at upstream commit
-`160fe13`. Changes in this standalone derivative:
-
-- **Product name**: "ARTEX" → "ScopeWeaver" in the user-visible documentation, scripts, and
-  distribution. The Go module (`github.com/Autumn-27/artex`), the build source path (`./cmd/artex`),
-  the `ARTEX_*` config/env keys, and the `artex` database defaults are **kept** for compatibility.
-- **Documentation language**: English is the default; a Korean translation lives in
-  [README.ko.md](README.ko.md) and under [docs/ko](docs/ko/README.md).
-- **Script language**: setup/build/start/update/reset-password prompts default to English, with
-  Korean selectable via `SCOPEWEAVER_LANGUAGE=ko` (`ARTEX_LANGUAGE=ko` also works). No network
-  translation is used.
-- **Distribution**: the output binary is `scopeweaver`, release archives are
-  `scopeweaver-<version>-<os>-<arch>.zip`, the repository is
-  `https://github.com/cskwork/scopeweaver`, and container images target this repo's GHCR. Upstream's
-  Docker Hub image (`autumn27/artex`) is not used.
-- **ScopeWeaver release history**: standalone releases start at `v0.1.0`, with notes under
-  [log/](log/changelog-v0.1.0.md). Version tags trigger platform archives and container builds.
-  Docker Compose continues to build locally unless a published image is explicitly selected.
-
-The changelog translation in [CHANGELOG.md](CHANGELOG.md) describes the history of the **upstream
-ARTEX** project faithfully; it does not attribute those changes to ScopeWeaver.
-
-### Screenshots and localized assets
-
-The localized captures are in `screenshots/en/` and `screenshots/ko/`. They show the included demo
-fixtures on desktop and mobile. Original ARTEX screenshots elsewhere in `screenshots/` remain
-unchanged and credited to upstream.
+- [架构复核与演进设计](docs/架构复核与演进设计.md)：复核后的可靠性设计，明确先审计、再加固完成权限、图事务与规划恢复，随后接入四道门。
+- [问题驱动的实验搜索架构](docs/问题驱动的实验搜索架构.md)：以现有 Planner 加四道门为主方案，规定独立控制器的必要条件、残余失败样本和四组对照验收。
+- [创新路线与版本规划](docs/创新路线/README.md)：M0—M4 实施顺序与六条能力方向；R05 作为公共基础，R02 优先，R03 先做可达性，R01/R06 随依据与复测推进，R04 后置。新增机制均为待实施设计。
 
 ---
 
-## Credits
+## 交流与社区
 
-- **Upstream**: [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX) — the project this derivative is
-  derived from. The original code and architecture are credited to its authors.
-- **Agent SDK**: [`norma`](https://github.com/Autumn-27/norma).
-- **Asset sync**: [ScopeSentry](https://github.com/Autumn-27/ScopeSentry).
-- **Approval-detail UI**: [AegisHook](https://github.com/RuoJi6/AegisHook).
-- **Reference**: [Cairn](https://github.com/oritera/Cairn).
-- **Upstream community**: the ARTEX authors run the WeChat public account **SecSentry**
-  (`screenshots/wx.png` is their QR code, kept as an upstream asset). This is the upstream project's
-  channel, not a ScopeWeaver channel.
+本仓库后续由 **棉花糖** 持续维护，欢迎通过以下方式交流共建：
+
+- 🐛 **问题反馈 / 功能建议**：[提交 Issue](https://github.com/mhtsec/ARTEX/issues)
+- 🛠 **代码共建**：欢迎提交 [Pull Request](https://github.com/mhtsec/ARTEX/pulls)
+- 💬 **交流群**：扫码关注微信公众号 **棉花糖fans**，在**菜单栏点击「找棉花糖」**加好友，添加后发送 **「ARTEX」** 即可受邀进群
+
+<div align="center">
+
+<img src="screenshots/wx_mhtsec.png" alt="微信公众号 棉花糖fans" width="560" />
+
+</div>
 
 ---
+## 参考
 
-## License and disclaimer
+https://github.com/oritera/Cairn
 
-> This section preserves the upstream license and the authors' usage restrictions and disclaimer,
-> translated faithfully from ARTEX. The terms are unchanged.
 
-### Open-source license
+## 许可与免责声明
 
-This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. The full
-terms are in the [LICENSE](LICENSE) file at the repository root.
+### 开源协议
 
-This means anyone may use, modify, and distribute this project freely, but **derivative works must
-also be open-sourced under AGPL-3.0**; in particular, **if you modify this project and offer it to
-users over a network (for example, as a hosted service), you must also make the corresponding
-complete source code available to those users.**
+本项目采用 **GNU Affero General Public License v3.0（AGPL-3.0）** 授权，完整条款见仓库根目录的 [LICENSE](LICENSE) 文件。
 
-> ⚠️ **Important**: an open-source license does not by itself restrict how the software may be used.
-> The "usage restrictions" and "disclaimer" below are additional conditions and a serious statement
-> from the authors to users. Please observe them.
+这意味着任何人都可以自由使用、修改和分发本项目，但**衍生作品必须同样以 AGPL-3.0 开源**；特别地，**若你修改本项目并通过网络（如部署为在线服务）向用户提供，也必须向这些用户公开对应的完整源码**。
 
-**ARTEX is intended only for personal study, source-code research, and local technical validation. It
-must not be used to launch real tests against any online system or website.**
+> ⚠️ **重要提示**：开源协议本身不限制软件的使用用途。以下的「使用限制」与「免责声明」是作者对使用者的额外约定与郑重声明，请务必遵守。
 
-### Permitted use
+**ARTEX 仅供个人学习、代码研究与本地技术验证使用，不得用于对任何线上系统或网站发起实际测试。**
 
-- Only for **reading, studying, and researching this project's source code**, and for validating the
-  technical principles in a **locally isolated environment**.
-- Suitable for personal study, academic research, code review, and other non-attacking uses.
+### 允许使用范围
 
-### Prohibited
+- 仅可用于**阅读、学习与研究本项目源码**，以及在**本地隔离环境**中进行技术原理验证；
+- 适用于个人学习、学术研究、代码审阅等非攻击性用途。
 
-- **Do not use this tool to scan, probe, exploit, or attack any website, online service, or
-  networked system** (whether or not you are authorized, and whether or not the asset is your own).
-- Do not use this tool for any real penetration test, red/blue exercise, or production environment.
-- Do not use this tool for illegal intrusion, data theft, extortion, denial of service, or any
-  destructive or criminal activity.
-- Do not use this tool for anything that violates the laws and regulations of your country or region.
+### 禁止事项
 
-### Compliance responsibility
+- **严禁使用本工具对任何网站、线上服务或联网系统发起扫描、探测、利用或攻击**（无论是否获得授权、是否为自有资产）；
+- 严禁将本工具用于任何实际的渗透测试、攻防对抗或生产环境；
+- 严禁将本工具用于非法入侵、数据窃取、勒索、拒绝服务或任何破坏性、犯罪性活动；
+- 严禁利用本工具从事违反所在国家/地区法律法规的行为。
 
-Users must comply with all laws and regulations on cybersecurity, data protection, and computer crime
-in their own country or region (in mainland China, including but not limited to the Cybersecurity
-Law, the Data Security Law, the Personal Information Protection Law, and related judicial
-interpretations). **All legal responsibility and consequences arising from use of this tool rest with
-the user.**
+### 合规责任
 
-### Disclaimer
+使用者须自行遵守所在国家/地区关于网络安全、数据保护与计算机犯罪的全部法律法规（在中国大陆包括但不限于《网络安全法》《数据安全法》《个人信息保护法》及相关司法解释）。**因使用本工具产生的一切法律责任与后果，均由使用者自行承担。**
 
-This project is provided "AS IS," without any express or implied warranty. The authors and
-contributors are not liable for any direct or indirect loss, data loss, system damage, or legal
-dispute arising from use of this tool, whether or not the use was appropriate. **By downloading,
-installing, or using this project, you confirm that you have read, understood, and agreed to all of
-the terms above.**
+### 免责声明
+
+本项目按“现状（AS IS）”提供，不附带任何明示或默示的担保。作者及贡献者不对使用本工具（无论使用方式是否得当）所导致的任何直接或间接损失、数据丢失、系统损坏或法律纠纷承担责任。**下载、安装或使用本项目，即表示你已阅读、理解并同意上述全部条款。**

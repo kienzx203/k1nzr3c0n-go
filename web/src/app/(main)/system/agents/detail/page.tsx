@@ -1,6 +1,4 @@
 "use client";
-import { translate as swt } from "@/i18n/runtime";
-import { useI18n } from "@/i18n";
 
 import * as React from "react";
 
@@ -16,9 +14,6 @@ import { Button } from "@/components/ui/button";
 // /system/agents; this page reuses the same AgentEditor component full-width so a
 // direct URL (or an external link) still opens the editor.
 function AgentDetailInner() {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   const searchParams = useSearchParams();
   const key = searchParams.get("key") ?? "";
 
@@ -31,7 +26,7 @@ function AgentDetailInner() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">{swt("english.e082")}</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Agent</h1>
           <p className="text-muted-foreground font-mono text-xs">{key}</p>
         </div>
       </div>
@@ -44,9 +39,6 @@ function AgentDetailInner() {
 
 // useSearchParams must sit under a Suspense boundary for static export.
 export default function AgentDetailPage() {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   return (
     <React.Suspense fallback={null}>
       <AgentDetailInner />

@@ -1,10 +1,8 @@
 "use client";
-import { useI18n } from "@/i18n";
-import { formatRangeDate } from "@/i18n/calendar.ts";
 
 import * as React from "react";
 
-import { subDays } from "date-fns";
+import { format, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
 
 import { Button } from "@/components/ui/button";
@@ -17,9 +15,6 @@ interface DateRangePickerProps {
 }
 
 export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
-  "use no memo";
-  const { locale: swLocale, t } = useI18n();
-
   const [open, setOpen] = React.useState(false);
   const [internalDateRange, setInternalDateRange] = React.useState<DateRange | undefined>(() => {
     const to = new Date();
@@ -27,14 +22,14 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
     return { from, to };
   });
   const dateRange = value ?? internalDateRange;
-  let dateRangeLabel = t("common.selectDate");
+  let dateRangeLabel = "Select date";
 
   if (dateRange?.from) {
-    dateRangeLabel = formatRangeDate(swLocale, dateRange.from);
+    dateRangeLabel = format(dateRange.from, "d MMM yyyy");
   }
 
   if (dateRange?.from && dateRange.to) {
-    dateRangeLabel = `${formatRangeDate(swLocale, dateRange.from)} - ${formatRangeDate(swLocale, dateRange.to)}`;
+    dateRangeLabel = `${format(dateRange.from, "d MMM yyyy")} - ${format(dateRange.to, "d MMM yyyy")}`;
   }
 
   const handleDateChange = (nextValue: DateRange | undefined) => {

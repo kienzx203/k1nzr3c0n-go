@@ -17,7 +17,7 @@ func (s *Server) pgListCommands(w http.ResponseWriter, r *http.Request) {
 
 	records, total, err := s.m.PG().ListCommands(commandTaskFilter(q.Get("task")), keyword, page, size)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"commands": records, "total": total})
@@ -35,7 +35,7 @@ func (s *Server) pgToolStats(w http.ResponseWriter, r *http.Request) {
 	}
 	stats, err := pg.ToolStats(commandTaskFilter(q.Get("task")), q.Get("q"))
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"stats": stats})
@@ -65,7 +65,7 @@ func (s *Server) pgListLLMRecords(w http.ResponseWriter, r *http.Request) {
 
 	records, total, err := s.m.PG().ListLLMRecords(model, session, task, page, size)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"records": records, "total": total})
@@ -88,7 +88,7 @@ func (s *Server) pgTokenByModel(w http.ResponseWriter, r *http.Request) {
 	}
 	models, err := pg.TokenByModel(id)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"models": models})
@@ -107,12 +107,12 @@ func (s *Server) pgUsageStats(w http.ResponseWriter, r *http.Request) {
 	days := atoiDefault(r.URL.Query().Get("days"), 365)
 	byProfile, err := pg.UsageByProfile()
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	daily, err := pg.UsageDaily(days)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"by_profile": byProfile, "daily": daily})
@@ -123,7 +123,7 @@ func (s *Server) pgUsageStats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) pgLLMTasks(w http.ResponseWriter, r *http.Request) {
 	tasks, err := s.m.PG().LLMTasks()
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"tasks": tasks})
@@ -139,7 +139,7 @@ func (s *Server) pgDeleteLLMRecords(w http.ResponseWriter, r *http.Request) {
 	}
 	n, err := s.m.PG().DeleteLLMRecords(task)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"deleted": n})

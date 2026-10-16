@@ -1,38 +1,37 @@
 import { fileURLToPath } from "node:url";
 
-// NEXT_EXPORT=1 next build writes a static web/out directory deployable directly to
-// an nginx web root. Development omits it to retain API proxying and hot reload.
+// 静态导出：`NEXT_EXPORT=1 next build` 产出纯静态目录到 web/out，可直接丢进
+// nginx web 根目录运行。开发(next dev)不设该变量，保留 /api 反代与热更新。
 const isExport = process.env.NEXT_EXPORT === "1";
-// Vercel demo uses mocks throughout, with no backend or API proxy.
+// Vercel demo：整站走 mock，无后端，无需 /api 反代。
 const isMock = process.env.NEXT_PUBLIC_MOCK === "1";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Pin the repository root so the shared locale declaration is resolvable
-  // without letting unrelated parent lockfiles affect root inference.
-  turbopack: { root: fileURLToPath(new URL("..", import.meta.url)) },
+  // 避免父目录的 lockfile 影响根目录推断及资源路径生成。
+  turbopack: { root: fileURLToPath(new URL(".", import.meta.url)) },
   reactCompiler: true,
-  // Allow development HMR resources from LAN IPs; adjust as needed.
-  // Permit IPv4 origins for /_next/* and HMR in development, even as LAN addresses change.
-  // Next prohibits a bare wildcard; segmented *.*.*.* matches IPv4 origins.
+  // 允许从局域网 IP 访问 dev 资源（HMR），按需增删。
+  // dev 阶段放开任意 IPv4 来源访问 /_next/* 与 HMR（局域网 IP 变动也不受影响）。
+  // 注意：Next 出于安全禁止裸 "*"，需用分段通配；"*.*.*.*" 匹配任意 IPv4。
   allowedDevOrigins: ["*.*.*.*"],
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
   },
   ...(isExport
     ? {
-        // Static export has no Node runtime or image optimization; each route emits route/index.html.
+        // 纯静态导出：无 Node 运行时；图片不经优化；每个路由产出 <route>/index.html。
         output: "export",
         images: { unoptimized: true },
         trailingSlash: true,
       }
     : isMock
       ? {
-          // Vercel mock demo needs no backend or API proxy.
+          // Vercel mock demo：无后端，不需要 /api 反代。
           images: { unoptimized: true },
         }
       : {
-          // Development proxies /api/* to Go, default :8787, overridable with AUTOPENTEST_API.
+          // 开发：把 /api/* 反代到 Go 后端（默认 :8787，可用 AUTOPENTEST_API 覆盖）。
           async rewrites() {
             const backend = process.env.AUTOPENTEST_API ?? "http://localhost:8787";
             return [{ source: "/api/:path*", destination: `${backend}/api/:path*` }];

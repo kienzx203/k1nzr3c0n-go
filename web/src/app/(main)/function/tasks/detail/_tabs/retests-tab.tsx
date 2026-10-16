@@ -1,7 +1,5 @@
 "use client";
 
-import { translate as swt } from "@/i18n/runtime";
-import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import Link from "next/link";
@@ -22,13 +20,10 @@ import type { Finding, FindingsPage } from "@/lib/types";
 const PAGE_SIZE = 20;
 
 function findingLabel(finding: Finding) {
-  return finding.name?.trim() || finding.vulnclass.trim() || swt("interface.m0326");
+  return finding.name?.trim() || finding.vulnclass.trim() || "未分类";
 }
 
 export function RetestsTab({ taskId }: { taskId: string }) {
-  "use no memo";
-  const { t: swt, locale: swLocale } = useI18n();
-
   const [page, setPage] = React.useState(1);
   const [data, setData] = React.useState<FindingsPage | null>(null);
   const [selectedId, setSelectedId] = React.useState("");
@@ -78,17 +73,18 @@ export function RetestsTab({ taskId }: { taskId: string }) {
       {error ? (
         <Alert variant="destructive">
           <AlertDescription>
-            {swt("interface.m0681")}{error}
+            加载任务漏洞失败：{error}
             <Button variant="outline" size="sm" onClick={refresh}>
-              {swt("interface.m0682")}</Button>
+              重试
+            </Button>
           </AlertDescription>
         </Alert>
       ) : null}
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]">
         <Card className="min-w-0">
           <CardHeader>
-            <CardTitle>{swt("interface.m0683")}{" "}{data ? ` · ${data.total}` : ""}</CardTitle>
-            <CardDescription>{swt("interface.m0684")}</CardDescription>
+            <CardTitle>选择漏洞{data ? ` · ${data.total}` : ""}</CardTitle>
+            <CardDescription>查看本任务漏洞的复测记录，或发起新的复测。</CardDescription>
           </CardHeader>
           <CardContent className="flex max-h-[32rem] flex-col overflow-y-auto">
             {!loaded && !error ? <Skeleton className="h-24 w-full" /> : null}
@@ -98,7 +94,7 @@ export function RetestsTab({ taskId }: { taskId: string }) {
                 <Button
                   variant={finding.id === selectedId ? "secondary" : "ghost"}
                   className="h-auto w-full shrink-0 flex-col items-start gap-2 whitespace-normal py-3 text-left"
-                  aria-label={swt("interface.m0685", { p0: findingLabel(finding) })}
+                  aria-label={`选择漏洞：${findingLabel(finding)}`}
                   aria-pressed={finding.id === selectedId}
                   onClick={() => setSelectedId(finding.id)}
                 >
@@ -113,8 +109,8 @@ export function RetestsTab({ taskId }: { taskId: string }) {
             {loaded && findings.length === 0 ? (
               <Empty>
                 <EmptyHeader>
-                  <EmptyTitle>{swt("interface.m0686")}</EmptyTitle>
-                  <EmptyDescription>{swt("interface.m0687")}</EmptyDescription>
+                  <EmptyTitle>暂无可复测漏洞</EmptyTitle>
+                  <EmptyDescription>本任务发现漏洞后，可在这里手动发起复测。</EmptyDescription>
                 </EmptyHeader>
               </Empty>
             ) : null}
@@ -124,18 +120,19 @@ export function RetestsTab({ taskId }: { taskId: string }) {
               <Button
                 variant="outline"
                 size="icon-sm"
-                aria-label={swt("interface.m0688")}
+                aria-label="上一页漏洞"
                 disabled={page === 1}
                 onClick={() => setPage(page - 1)}
               >
                 <ChevronLeftIcon />
               </Button>
               <span className="text-muted-foreground text-xs">
-                {swt("interface.m0489")}{" "}{page} / {Math.ceil(data.total / PAGE_SIZE)} {swt("interface.m0490")}</span>
+                第 {page} / {Math.ceil(data.total / PAGE_SIZE)} 页
+              </span>
               <Button
                 variant="outline"
                 size="icon-sm"
-                aria-label={swt("interface.m0689")}
+                aria-label="下一页漏洞"
                 disabled={page * PAGE_SIZE >= data.total}
                 onClick={() => setPage(page + 1)}
               >
@@ -151,7 +148,7 @@ export function RetestsTab({ taskId }: { taskId: string }) {
                 <h2 className="min-w-0 flex-1 break-words font-medium">{findingLabel(selected)}</h2>
                 <Button asChild variant="ghost" size="sm">
                   <Link href={`/function/findings/detail?id=${selected.finding_id || selected.id}`}>
-                    {swt("interface.m0690")}<ArrowUpRightIcon data-icon="inline-end" />
+                    漏洞详情 <ArrowUpRightIcon data-icon="inline-end" />
                   </Link>
                 </Button>
               </div>

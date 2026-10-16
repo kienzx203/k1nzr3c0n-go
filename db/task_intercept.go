@@ -2,11 +2,11 @@ package db
 
 import (
 	"database/sql"
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 )
 
 // TaskInterceptRuleInput is one task-level rule supplied at task creation.
-// Action: 'block' blocks, 'allow' permits (allowlist); empty means 'block'.
+// Action: 'block'=拦截 'allow'=允许(白名单)；空视为 'block'。
 type TaskInterceptRuleInput struct {
 	Enabled bool   `json:"enabled"`
 	Action  string `json:"action"`
@@ -115,7 +115,7 @@ func insertTaskInterceptRules(tx *sql.Tx, taskID int64, rules []TaskInterceptRul
 		if _, err := tx.Exec(`
 INSERT INTO task_intercept_rules(task_id, enabled, action, kind, pattern, note)
 VALUES ($1,$2,$3,$4,$5,$6)`, taskID, r.Enabled, normalizeRuleAction(r.Action), r.Kind, r.Pattern, r.Note); err != nil {
-			return locale.Errorf("insert task intercept rule %q: %w", r.Pattern, err)
+			return fmt.Errorf("insert task intercept rule %q: %w", r.Pattern, err)
 		}
 	}
 	return nil

@@ -6,10 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -85,11 +82,11 @@ func TestShellQuote(t *testing.T) {
 
 // TestExecPython runs a real Python script end-to-end: it must read params from
 // stdin JSON and the mirrored env var, then print — verifying the whole script
-// param-passing path. Skips if no runnable Python is installed.
+// param-passing path. Skips if no python3.
 func TestExecPython(t *testing.T) {
-	interp := detectPython()
-	if interp == "" {
-		t.Skip("Python unavailable")
+	interp, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 unavailable")
 	}
 	code := `import json,sys,os
 a = json.load(sys.stdin)
@@ -160,38 +157,11 @@ func TestRunHTTPTool(t *testing.T) {
 }
 
 func TestDetectPython(t *testing.T) {
-	p := detectPython()
-	if p == "" {
-		t.Skip("Python unavailable")
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 unavailable")
 	}
-	if out, err := exec.Command(p, "-c", "import sys; print(sys.executable)").CombinedOutput(); err != nil {
-		t.Fatalf("detected Python is not runnable: %v: %s", err, out)
-	}
-}
-
-func TestDetectPythonSkipsUnusableInterpreter(t *testing.T) {
-	fallback, err := exec.LookPath("python")
-	if err != nil {
-		t.Skip("python unavailable")
-	}
-	if out, err := exec.Command(fallback, "-c", "import sys; print(sys.executable)").CombinedOutput(); err != nil {
-		t.Fatalf("fallback Python is not runnable: %v: %s", err, out)
-	}
-	brokenDir := t.TempDir()
-	name := "python3"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	if err := os.WriteFile(filepath.Join(brokenDir, name), nil, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", brokenDir+string(os.PathListSeparator)+filepath.Dir(fallback))
-	if got := detectPython(); got != fallback {
-		t.Fatalf("detected %q, want runnable fallback %q", got, fallback)
-	}
-	t.Setenv("PATH", brokenDir)
-	if got := detectPython(); got != "" {
-		t.Fatalf("detected unusable interpreter %q", got)
+	if p := detectPython(); p == "" {
+		t.Fatal("detectPython returned empty despite python3 on PATH")
 	}
 }
 

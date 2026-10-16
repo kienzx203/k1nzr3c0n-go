@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"github.com/Autumn-27/artex/llmnet"
-	"github.com/Autumn-27/artex/locale"
+	"errors"
+	"fmt"
 	"time"
 )
 
@@ -16,7 +16,7 @@ type LLMProfile struct {
 	Name          string  `json:"name"`
 	Format        string  `json:"format"`
 	BaseURL       string  `json:"base_url,omitempty"`
-	Proxy         string  `json:"proxy,omitempty"` // LLM outbound proxy (http/https/socks5); empty uses environment variables.
+	Proxy         string  `json:"proxy,omitempty"` // LLM 出站代理(http/https/socks5);空=用环境变量
 	Model         string  `json:"model"`
 	APIKey        string  `json:"-"` // never serialized to UI
 	APIKeyHint    string  `json:"api_key_hint,omitempty"`
@@ -25,11 +25,11 @@ type LLMProfile struct {
 	// ContextWindowK is the model's context window in K tokens, used to size
 	// compaction thresholds. 0 = use a 200K default; capped at 1000 (1M).
 	ContextWindowK int `json:"context_window_k"`
-	// ThinkingType independently controls thinking.type: empty omits it (default);
-	// "disabled" explicitly disables it and "enabled" enables it, independently of ReasoningEffort.
+	// ThinkingType 独立控制思考「开关」(thinking.type):"" = 不发送(默认);
+	// "disabled" = 显式关闭; "enabled" = 开启. 与 ReasoningEffort 解耦.
 	ThinkingType string `json:"thinking_type"`
-	// ReasoningEffort independently controls reasoning intensity: empty omits it (default);
-	// "low"/"medium"/"high"/"xhigh"/"max" select intensity. See agent.Config.NewProvider.
+	// ReasoningEffort 独立控制思考「强度」:"" = 不发送(默认);
+	// "low"/"medium"/"high"/"xhigh"/"max" = 对应强度. 见 agent.Config.NewProvider.
 	ReasoningEffort string `json:"reasoning_effort"`
 	IsDefault       bool   `json:"is_default"`
 	// Priority orders the failover chain: higher goes first. The ACTIVE profile
@@ -48,9 +48,7 @@ type LLMProfile struct {
 	// the endpoint's own default apply (the historical behaviour). Unlike
 	// ContextWindowK — the model's total capacity, used locally to size compaction
 	// — this value travels with every request.
-	MaxTokens     int    `json:"max_tokens"`
-	KeepAlive     string `json:"keep_alive"`
-	MaxConcurrent int    `json:"llm_max_concurrent"`
+	MaxTokens int `json:"max_tokens"`
 	// MaxTokensField picks the request key carrying MaxTokens, for format
 	// "openai" only: "" = max_tokens (default); "max_completion_tokens" = the
 	// newer key, which OpenAI's reasoning models require and whose budget covers
@@ -70,7 +68,7 @@ type LLMProfile struct {
 }
 
 // RetryOverride is one profile's optional override of the three retry layers
-// that are per-endpoint: connection / empty response / same-provider safety window
+// that are per-endpoint: 建连(connect) / 空响应(empty) / 同 provider 安全窗口
 // (stream). Each rule's zero value means "inherit the global policy"; see
 // RetryRule for the -1 / 0 / >0 semantics.
 type RetryOverride struct {
@@ -82,8 +80,8 @@ type RetryOverride struct {
 // profileCols is the read column list (hint variant, no api key) shared by the
 // list query; profileColsKey is the same with api_key for the single-row loads.
 const profileRetryCols = `COALESCE(retry_connect_attempts,0),COALESCE(retry_connect_interval_ms,0),COALESCE(retry_empty_attempts,0),COALESCE(retry_empty_interval_ms,0),COALESCE(retry_stream_attempts,0),COALESCE(retry_stream_interval_ms,0)`
-const profileCols = `id,name,format,COALESCE(base_url,''),COALESCE(proxy,''),model,COALESCE(api_key_hint,''),rate_per_second,rate_per_minute,context_window_k,COALESCE(reasoning_effort,''),is_default,priority,pool_exclude,COALESCE(thinking_type,''),COALESCE(streaming,true),COALESCE(max_tokens,0),COALESCE(max_tokens_field,''),COALESCE(session_header_key,''),` + profileRetryCols + `,keep_alive,llm_max_concurrent`
-const profileColsKey = `id,name,format,COALESCE(base_url,''),COALESCE(proxy,''),model,COALESCE(api_key,''),rate_per_second,rate_per_minute,context_window_k,COALESCE(reasoning_effort,''),is_default,priority,pool_exclude,COALESCE(thinking_type,''),COALESCE(streaming,true),COALESCE(max_tokens,0),COALESCE(max_tokens_field,''),COALESCE(session_header_key,''),` + profileRetryCols + `,keep_alive,llm_max_concurrent`
+const profileCols = `id,name,format,COALESCE(base_url,''),COALESCE(proxy,''),model,COALESCE(api_key_hint,''),rate_per_second,rate_per_minute,context_window_k,COALESCE(reasoning_effort,''),is_default,priority,pool_exclude,COALESCE(thinking_type,''),COALESCE(streaming,true),COALESCE(max_tokens,0),COALESCE(max_tokens_field,''),COALESCE(session_header_key,''),` + profileRetryCols
+const profileColsKey = `id,name,format,COALESCE(base_url,''),COALESCE(proxy,''),model,COALESCE(api_key,''),rate_per_second,rate_per_minute,context_window_k,COALESCE(reasoning_effort,''),is_default,priority,pool_exclude,COALESCE(thinking_type,''),COALESCE(streaming,true),COALESCE(max_tokens,0),COALESCE(max_tokens_field,''),COALESCE(session_header_key,''),` + profileRetryCols
 
 // scanProfile reads one row in the profileCols / profileColsKey column order. The
 // 7th column lands in APIKeyHint or APIKey depending on which list the caller used.
@@ -93,7 +91,7 @@ func scanProfile(sc interface{ Scan(...any) error }, into *string, p *LLMProfile
 		&p.MaxTokens, &p.MaxTokensField, &p.SessionHeaderKey,
 		&p.Retry.Connect.Attempts, &p.Retry.Connect.IntervalMS,
 		&p.Retry.Empty.Attempts, &p.Retry.Empty.IntervalMS,
-		&p.Retry.Stream.Attempts, &p.Retry.Stream.IntervalMS, &p.KeepAlive, &p.MaxConcurrent)
+		&p.Retry.Stream.Attempts, &p.Retry.Stream.IntervalMS)
 }
 
 func (d *DB) ListProfiles() ([]*LLMProfile, error) {
@@ -135,12 +133,13 @@ func (d *DB) ProfileByID(id int64) (*LLMProfile, error) {
 }
 
 // PoolProfiles returns the failover chain in run order, api keys included: the
-// active profile first, then every usable profile that is not excluded, by
-// priority DESC (id ASC to stay stable). Native Ollama and explicitly local
-// compatibility endpoints need no API key; public cloud profiles still require one.
+// active profile first, then every other keyed profile that isn't excluded, by
+// priority DESC (id ASC to stay stable). Profiles without an api key can't serve
+// a request, so they never enter the chain. The ordering IS the policy — callers
+// walk the slice front to back.
 func (d *DB) PoolProfiles() ([]*LLMProfile, error) {
 	rows, err := d.Query(`SELECT ` + profileColsKey + ` FROM llm_profiles
-WHERE (is_default OR NOT pool_exclude)
+WHERE COALESCE(api_key,'') <> '' AND (is_default OR NOT pool_exclude)
 ORDER BY is_default DESC, priority DESC, id ASC`)
 	if err != nil {
 		return nil, err
@@ -152,9 +151,7 @@ ORDER BY is_default DESC, priority DESC, id ASC`)
 		if err := scanProfile(rows, &p.APIKey, &p); err != nil {
 			return nil, err
 		}
-		if p.APIKey != "" || p.Format == "ollama" || llmnet.IsLocalEndpoint(p.BaseURL) {
-			out = append(out, &p)
-		}
+		out = append(out, &p)
 	}
 	return out, rows.Err()
 }
@@ -168,28 +165,28 @@ func (d *DB) SaveProfile(p *LLMProfile) (int64, error) {
 	r := p.Retry.Clamped()
 	if p.ID == 0 {
 		var id int64
-		err := d.QueryRow(`INSERT INTO llm_profiles(name,format,base_url,proxy,model,api_key,api_key_hint,rate_per_second,rate_per_minute,context_window_k,reasoning_effort,priority,pool_exclude,thinking_type,streaming,max_tokens,max_tokens_field,session_header_key,retry_connect_attempts,retry_connect_interval_ms,retry_empty_attempts,retry_empty_interval_ms,retry_stream_attempts,retry_stream_interval_ms,keep_alive,llm_max_concurrent)
-VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING id`,
+		err := d.QueryRow(`INSERT INTO llm_profiles(name,format,base_url,proxy,model,api_key,api_key_hint,rate_per_second,rate_per_minute,context_window_k,reasoning_effort,priority,pool_exclude,thinking_type,streaming,max_tokens,max_tokens_field,session_header_key,retry_connect_attempts,retry_connect_interval_ms,retry_empty_attempts,retry_empty_interval_ms,retry_stream_attempts,retry_stream_interval_ms)
+VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING id`,
 			p.Name, p.Format, p.BaseURL, p.Proxy, p.Model, p.APIKey, hint, p.RatePerSecond, p.RatePerMinute, p.ContextWindowK, p.ReasoningEffort, p.Priority, p.PoolExclude, p.ThinkingType, p.Streaming, p.MaxTokens, p.MaxTokensField, p.SessionHeaderKey,
-			r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, p.KeepAlive, p.MaxConcurrent).Scan(&id)
+			r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS).Scan(&id)
 		return id, err
 	}
 	if p.APIKey == "" {
-		_, err := d.Exec(`UPDATE llm_profiles SET name=$1,format=$2,api_key=CASE WHEN $2='ollama' AND format<>'ollama' THEN NULL ELSE api_key END,api_key_hint=CASE WHEN $2='ollama' AND format<>'ollama' THEN NULL ELSE api_key_hint END,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,rate_per_second=$6,rate_per_minute=$7,context_window_k=$8,reasoning_effort=$9,priority=$10,pool_exclude=$11,thinking_type=$12,streaming=$13,max_tokens=$14,max_tokens_field=$15,session_header_key=$16,retry_connect_attempts=$17,retry_connect_interval_ms=$18,retry_empty_attempts=$19,retry_empty_interval_ms=$20,retry_stream_attempts=$21,retry_stream_interval_ms=$22,keep_alive=$23,llm_max_concurrent=$24 WHERE id=$25`,
+		_, err := d.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,rate_per_second=$6,rate_per_minute=$7,context_window_k=$8,reasoning_effort=$9,priority=$10,pool_exclude=$11,thinking_type=$12,streaming=$13,max_tokens=$14,max_tokens_field=$15,session_header_key=$16,retry_connect_attempts=$17,retry_connect_interval_ms=$18,retry_empty_attempts=$19,retry_empty_interval_ms=$20,retry_stream_attempts=$21,retry_stream_interval_ms=$22 WHERE id=$23`,
 			p.Name, p.Format, p.BaseURL, p.Proxy, p.Model, p.RatePerSecond, p.RatePerMinute, p.ContextWindowK, p.ReasoningEffort, p.Priority, p.PoolExclude, p.ThinkingType, p.Streaming, p.MaxTokens, p.MaxTokensField, p.SessionHeaderKey,
-			r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, p.KeepAlive, p.MaxConcurrent, p.ID)
+			r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, p.ID)
 		return p.ID, err
 	}
-	_, err := d.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,api_key=$6,api_key_hint=$7,rate_per_second=$8,rate_per_minute=$9,context_window_k=$10,reasoning_effort=$11,priority=$12,pool_exclude=$13,thinking_type=$14,streaming=$15,max_tokens=$16,max_tokens_field=$17,session_header_key=$18,retry_connect_attempts=$19,retry_connect_interval_ms=$20,retry_empty_attempts=$21,retry_empty_interval_ms=$22,retry_stream_attempts=$23,retry_stream_interval_ms=$24,keep_alive=$25,llm_max_concurrent=$26 WHERE id=$27`,
+	_, err := d.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,api_key=$6,api_key_hint=$7,rate_per_second=$8,rate_per_minute=$9,context_window_k=$10,reasoning_effort=$11,priority=$12,pool_exclude=$13,thinking_type=$14,streaming=$15,max_tokens=$16,max_tokens_field=$17,session_header_key=$18,retry_connect_attempts=$19,retry_connect_interval_ms=$20,retry_empty_attempts=$21,retry_empty_interval_ms=$22,retry_stream_attempts=$23,retry_stream_interval_ms=$24 WHERE id=$25`,
 		p.Name, p.Format, p.BaseURL, p.Proxy, p.Model, p.APIKey, hint, p.RatePerSecond, p.RatePerMinute, p.ContextWindowK, p.ReasoningEffort, p.Priority, p.PoolExclude, p.ThinkingType, p.Streaming, p.MaxTokens, p.MaxTokensField, p.SessionHeaderKey,
-		r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, p.KeepAlive, p.MaxConcurrent, p.ID)
+		r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, p.ID)
 	return p.ID, err
 }
 
 var (
-	ErrActiveLLMProfileDelete      = locale.NewError("cannot delete the active LLM profile; activate another profile first")
-	ErrLLMProfileReferencesChanged = locale.NewError("LLM profile references changed while deleting; retry the request")
-	ErrLLMProfileNotFound          = locale.NewError("LLM profile not found")
+	ErrActiveLLMProfileDelete      = errors.New("cannot delete the active LLM profile; activate another profile first")
+	ErrLLMProfileReferencesChanged = errors.New("LLM profile references changed while deleting; retry the request")
+	ErrLLMProfileNotFound          = errors.New("LLM profile not found")
 )
 
 func (d *DB) DeleteProfile(id int64) error {
@@ -217,7 +214,7 @@ func (d *DB) DeleteProfileContext(ctx context.Context, id int64) error {
 			return err
 		}
 	}
-	return locale.Errorf("%w: profile %d", ErrLLMProfileReferencesChanged, id)
+	return fmt.Errorf("%w: profile %d", ErrLLMProfileReferencesChanged, id)
 }
 
 func (d *DB) deleteProfile(ctx context.Context, id int64) (bool, error) {
@@ -448,20 +445,20 @@ type Agent struct {
 	Role             string `json:"role"`
 	Builtin          bool   `json:"builtin"`
 	Enabled          bool   `json:"enabled"`
-	LLMProfileID     *int64 `json:"llm_profile_id"`    // Bound LLM profile; nil follows the task/conversation pin, then global active profile.
-	MaxTurns         int    `json:"max_turns"`         // Maximum turns per run; 0 is unlimited.
-	RunSecs          int    `json:"run_seconds"`       // Worker wall-clock limit per run in seconds; 0 is unlimited.
-	WebSearch        bool   `json:"web_search"`        // Enable web search, gated by the global system switch.
-	InteractiveShell bool   `json:"interactive_shell"` // Enable interactive shell (persistent PTY session tools).
-	WrapupPrompt     string `json:"wrapup_prompt"`     // Settlement prompt for timeout/turn exhaustion; empty uses the built-in default.
-	WrapupMaxTurns   int    `json:"wrapup_max_turns"`  // Settlement stage turn budget; 0 uses the agent-specific built-in default.
-	// Task-timeout settlement prompt/budget, separate from per-run settings; worker/planner only. Empty/0 uses defaults.
+	LLMProfileID     *int64 `json:"llm_profile_id"`    // 绑定的 LLM 配置;nil=跟随任务/会话 pin,再回退全局激活
+	MaxTurns         int    `json:"max_turns"`         // 单次运行最大轮次;0=不限制
+	RunSecs          int    `json:"run_seconds"`       // worker 单次运行墙钟上限(秒);0=不限制
+	WebSearch        bool   `json:"web_search"`        // 是否启用网络搜索(受系统全局开关门控)
+	InteractiveShell bool   `json:"interactive_shell"` // 是否启用交互式 shell(持久 PTY 会话工具族)
+	WrapupPrompt     string `json:"wrapup_prompt"`     // 收尾提示词(超时/步数耗尽时的 settlement 提示);空=用代码内置默认
+	WrapupMaxTurns   int    `json:"wrapup_max_turns"`  // 收尾阶段自身的轮数预算;0=用代码内置默认(按 agent)
+	// 任务级超时收尾词(与 per-run 两套;仅 worker/planner 用);空/0=用代码内置默认。
 	TaskTimeoutWrapupPrompt   string `json:"task_timeout_wrapup_prompt"`
 	TaskTimeoutWrapupMaxTurns int    `json:"task_timeout_wrapup_max_turns"`
-	// P3 trigger post-processing policy (custom agents only):
-	// TriggerRunMode serial|parallel: serial queue or a separate concurrent conversation per trigger.
-	// TriggerMergeMode by_task|all|none: serial only; merge by task, merge all, or do not merge.
-	// TriggerMaxParallel: per-agent concurrency limit in parallel mode; 0 is unlimited.
+	// P3 触发后处理策略(仅自定义 agent 有意义):
+	// TriggerRunMode  serial|parallel — 串行排队 / 每次触发各自并发一个会话
+	// TriggerMergeMode by_task|all|none — 仅 serial 用:同任务合并 / 全部合并 / 不合并
+	// TriggerMaxParallel — 仅 parallel 用的每 agent 并发上限;0=不限
 	TriggerRunMode     string `json:"trigger_run_mode"`
 	TriggerMergeMode   string `json:"trigger_merge_mode"`
 	TriggerMaxParallel int    `json:"trigger_max_parallel"`
@@ -471,7 +468,7 @@ const agentCols = `id,key,name,COALESCE(description,''),role,builtin,enabled,COA
 
 func scanAgent(sc interface{ Scan(...any) error }) (*Agent, error) {
 	var a Agent
-	var prof sql.NullInt64 // llm_profile_id is nullable: NULL when unbound.
+	var prof sql.NullInt64 // llm_profile_id 可空:未绑定时为 NULL
 	err := sc.Scan(&a.ID, &a.Key, &a.Name, &a.Description, &a.Role, &a.Builtin, &a.Enabled, &a.MaxTurns, &a.RunSecs, &a.WebSearch, &a.InteractiveShell, &a.WrapupPrompt, &a.WrapupMaxTurns, &a.TaskTimeoutWrapupPrompt, &a.TaskTimeoutWrapupMaxTurns, &a.TriggerRunMode, &a.TriggerMergeMode, &a.TriggerMaxParallel, &prof)
 	if err == nil && prof.Valid {
 		v := prof.Int64
@@ -511,7 +508,7 @@ func (d *DB) GetAgentByKey(key string) (*Agent, error) {
 // AgentBindingCounts returns per-agent binding counts in a few grouped queries
 // (NO N+1): visible MCP servers and skills keyed by agent id, and bound tools
 // keyed by agent key (tools.agents is a JSONB array of agent keys). Missing keys
-// mean zero. Used to show "MCP N · Skill N · Tools N" on agent cards.
+// mean zero. Used to show "MCP N · Skill N · 工具 N" on the agent cards.
 func (d *DB) AgentBindingCounts() (mcp map[int64]int, skill map[int64]int, tools map[string]int, err error) {
 	mcp, skill, tools = map[int64]int{}, map[int64]int{}, map[string]int{}
 	byID := func(q string, into map[int64]int) error {
@@ -646,7 +643,7 @@ func (d *DB) SetAgentWebSearch(key string, on bool) error {
 }
 
 // SetAgentInteractiveShell toggles whether an agent gets the interactive shell
-// (persistent PTY session) tool family and Bash prompt integration (see interactive-shell design, section 14.2).
+// (持久 PTY 会话) tool family + Bash 提示词联动(见 docs/交互式shell设计.md §14.2).
 func (d *DB) SetAgentInteractiveShell(key string, on bool) error {
 	_, err := d.Exec(`UPDATE agents SET interactive_shell=$1 WHERE key=$2`, on, key)
 	return err
@@ -683,9 +680,9 @@ func (d *DB) SetAgentRunSeconds(key string, runSecs int) error {
 	return err
 }
 
-// SetAgentTriggerBehavior stores an agent's P3 trigger post-processing policy:
-// runMode(serial|parallel) / mergeMode(by_task|all|none) / maxParallel(parallel only; 0 is unlimited).
-// Validate enums against allowlists and fall back on invalid values so bad data cannot misdirect the scheduler pump.
+// SetAgentTriggerBehavior stores an agent's P3 trigger post-processing策略:
+// runMode(serial|parallel) / mergeMode(by_task|all|none) / maxParallel(parallel 用,0=不限)。
+// 枚举做白名单校验,非法值回落默认,避免脏数据把调度 pump 带偏。
 func (d *DB) SetAgentTriggerBehavior(key, runMode, mergeMode string, maxParallel int) error {
 	switch runMode {
 	case "serial", "parallel":
@@ -751,14 +748,14 @@ func (d *DB) SeedPromptIfEmpty(agentID int64, tmpl string) error {
 	if cur.Valid {
 		return nil // already seeded or user-edited → leave it
 	}
-	_, err := d.SavePrompt(agentID, tmpl, locale.Text(locale.ServerDefault(), "Built-in default"), "system")
+	_, err := d.SavePrompt(agentID, tmpl, "内置默认", "system")
 	return err
 }
 
 // ResetPromptToDefault appends the code-default template as a new version and
-// points current at it — the explicit locale.Text(locale.ServerDefault(), "Restore built-in default") action.
+// points current at it — the explicit "恢复为内置默认" action.
 func (d *DB) ResetPromptToDefault(agentID int64, tmpl string) (int, error) {
-	return d.SavePrompt(agentID, tmpl, locale.Text(locale.ServerDefault(), "Restore built-in default"), "system")
+	return d.SavePrompt(agentID, tmpl, "恢复为内置默认", "system")
 }
 
 // SavePrompt appends a new version and points current_prompt_id at it.
@@ -818,7 +815,7 @@ type MCPServer struct {
 	Env       json.RawMessage `json:"env"`
 	URL       string          `json:"url,omitempty"`
 	Enabled   bool            `json:"enabled"`
-	Insecure  bool            `json:"insecure"`        // http: skip TLS cert verification (self-signed servers, issue #108)
+	Insecure  bool            `json:"insecure"` // http: skip TLS cert verification (self-signed servers, issue #108)
 	Tools     []string        `json:"tools,omitempty"` // cached tool names (mcp_tools_cache)
 }
 

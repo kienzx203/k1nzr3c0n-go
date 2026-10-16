@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Autumn-27/artex/locale"
 	"io"
 	"io/fs"
 	"log"
@@ -96,7 +95,7 @@ func stageTaskArchiveFiles(dataDir string, archiveID int64, taskID string, explo
 	journalPath := filepath.Join(root, "journal.json")
 	if raw, err := os.ReadFile(journalPath); err == nil {
 		if err := json.Unmarshal(raw, &stage.journal); err != nil {
-			return nil, locale.Errorf("read task archive staging journal: %w", err)
+			return nil, fmt.Errorf("read task archive staging journal: %w", err)
 		}
 		// The journal is written before the first rename, so its presence does not mean
 		// the payload is complete: a previous round may have failed mid-loop with a
@@ -176,7 +175,7 @@ func (s *taskArchiveFileStage) applyMoves() error {
 			return err
 		}
 		if err := os.Rename(move.Source, destination); err != nil {
-			return locale.Errorf("stage task archive path %s: %w", move.Source, err)
+			return fmt.Errorf("stage task archive path %s: %w", move.Source, err)
 		}
 	}
 	return nil
@@ -197,7 +196,7 @@ func (s *taskArchiveFileStage) rollback() error {
 			continue
 		}
 		if _, err := os.Lstat(move.Source); err == nil {
-			errs = append(errs, locale.Errorf("archive rollback destination exists: %s", move.Source))
+			errs = append(errs, fmt.Errorf("archive rollback destination exists: %s", move.Source))
 			continue
 		} else if !os.IsNotExist(err) {
 			errs = append(errs, err)
@@ -232,7 +231,7 @@ func installTaskArchiveFiles(dataDir, extractedDir, taskID string, archiveID int
 	stage := &taskArchiveRestoreFiles{extracted: extractedDir}
 	numericTaskID, err := strconv.ParseInt(taskID, 10, 64)
 	if err != nil || numericTaskID <= 0 {
-		return nil, locale.Errorf("invalid restore task id %q", taskID)
+		return nil, fmt.Errorf("invalid restore task id %q", taskID)
 	}
 	sources := []restoredArchivePath{}
 	workspace := filepath.Join(extractedDir, "files", "tasks", taskID)
@@ -253,7 +252,7 @@ func installTaskArchiveFiles(dataDir, extractedDir, taskID string, archiveID int
 	}
 	for _, move := range sources {
 		if _, err := os.Lstat(move.Destination); err == nil {
-			return nil, locale.Errorf("restore destination already exists: %s", move.Destination)
+			return nil, fmt.Errorf("restore destination already exists: %s", move.Destination)
 		} else if !os.IsNotExist(err) {
 			return nil, err
 		}
@@ -290,7 +289,7 @@ func (s *taskArchiveRestoreFiles) rollback() error {
 			continue
 		}
 		if _, err := os.Lstat(move.Source); err == nil {
-			errs = append(errs, locale.Errorf("restore rollback source exists: %s", move.Source))
+			errs = append(errs, fmt.Errorf("restore rollback source exists: %s", move.Source))
 			continue
 		} else if !os.IsNotExist(err) {
 			errs = append(errs, err)
@@ -487,7 +486,7 @@ func recoverTaskArchiveDeletePackages(dataDir string, pg *pgdb.DB) error {
 			continue
 		}
 		if _, err := os.Lstat(original); err == nil {
-			errs = append(errs, locale.Errorf("archive delete recovery destination exists: %s", original))
+			errs = append(errs, fmt.Errorf("archive delete recovery destination exists: %s", original))
 			continue
 		} else if !os.IsNotExist(err) {
 			errs = append(errs, err)
@@ -504,7 +503,7 @@ func stageTaskArchivePackageDelete(archivePath string, archiveID int64) (string,
 	staged := archivePath + fmt.Sprintf(".deleting-%d", archiveID)
 	if _, err := os.Lstat(staged); err == nil {
 		if _, originalErr := os.Lstat(archivePath); originalErr == nil {
-			return staged, false, locale.NewError("Both the original archive package and its deletion-stage file exist")
+			return staged, false, errors.New("归档包原文件和删除暂存文件同时存在")
 		} else if !os.IsNotExist(originalErr) {
 			return staged, false, originalErr
 		}
@@ -522,7 +521,7 @@ func stageTaskArchivePackageDelete(archivePath string, archiveID int64) (string,
 
 func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchiveSnapshot) (originalSize, compressedSize int64, checksum string, err error) {
 	if snapshot == nil {
-		return 0, 0, "", locale.NewError("nil task archive snapshot")
+		return 0, 0, "", errors.New("nil task archive snapshot")
 	}
 	if err = os.MkdirAll(filepath.Dir(path), archiveDirMode); err != nil {
 		return 0, 0, "", err
@@ -579,10 +578,10 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 			return err
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			// The archive format supports only regular files and directories; extraction rejects other types.
-			// Symlinks cannot be restored. Skip them without failing the package: inspect with lstat without following targets,
-			// and write no symlink entry. Targets within the tree are still visited and archived independently.
-			log.Printf(locale.Text(locale.ServerDefault(), "[task-archive] Skipping unsupported symlink; other files are unaffected: %s"), current)
+			// 归档格式端到端只支持普通文件与目录（解包端对其它类型直接报错），
+			// 无法还原符号链接。跳过而非整包失败：不读取链接目标(lstat，不越出目录树)，
+			// 也不写入 symlink 条目；链接指向树内时目标文件本身仍会被单独遍历归档。
+			log.Printf("[task-archive] 跳过符号链接（归档不支持，不影响其它文件）：%s", current)
 			return nil
 		}
 		header, err := tar.FileInfoHeader(info, "")
@@ -651,7 +650,7 @@ func extractTaskArchivePackage(path, expectedSHA, destination string) error {
 			return err
 		}
 		if hex.EncodeToString(hasher.Sum(nil)) != strings.ToLower(expectedSHA) {
-			return locale.NewError("task archive checksum mismatch")
+			return errors.New("task archive checksum mismatch")
 		}
 		if _, err := file.Seek(0, io.SeekStart); err != nil {
 			return err
@@ -678,16 +677,16 @@ func extractTaskArchivePackage(path, expectedSHA, destination string) error {
 		}
 		entries++
 		if entries > maxArchiveFiles || header.Size < 0 || total+header.Size > maxArchiveBytes {
-			return locale.NewError("task archive exceeds extraction safety limits")
+			return errors.New("task archive exceeds extraction safety limits")
 		}
 		total += header.Size
 		clean := filepath.Clean(filepath.FromSlash(header.Name))
 		if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			return locale.Errorf("unsafe task archive path %q", header.Name)
+			return fmt.Errorf("unsafe task archive path %q", header.Name)
 		}
 		target := filepath.Join(destination, clean)
 		if relative, err := filepath.Rel(destination, target); err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return locale.Errorf("unsafe task archive target %q", header.Name)
+			return fmt.Errorf("unsafe task archive target %q", header.Name)
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
@@ -708,7 +707,7 @@ func extractTaskArchivePackage(path, expectedSHA, destination string) error {
 				return err
 			}
 		default:
-			return locale.Errorf("unsupported task archive entry type %d", header.Typeflag)
+			return fmt.Errorf("unsupported task archive entry type %d", header.Typeflag)
 		}
 	}
 	return nil
