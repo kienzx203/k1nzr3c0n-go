@@ -130,6 +130,11 @@ func Tools() []ToolDef {
 			}},
 		}},
 		{Type: "function", Function: FunctionSpec{
+			Name:        "list_untested_assets",
+			Description: "Coverage: graph assets that have never appeared in any finding — the untested surface.",
+			Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		}},
+		{Type: "function", Function: FunctionSpec{
 			Name:        "insert_asset",
 			Description: "Add an asset to the graph (idempotent by type+value).",
 			Parameters: map[string]any{"type": "object", "properties": map[string]any{
@@ -360,15 +365,28 @@ func Exec(st *store.Store, r *runner.Runner, call FunctionCall) string {
 		}
 		return okJSON(map[string]any{"total": len(out), "items": out})
 
+	case "list_untested_assets":
+		un, err := st.UntestedAssets(50)
+		if err != nil {
+			return fail(err)
+		}
+		var out []map[string]any
+		for _, a := range un {
+			out = append(out, map[string]any{"type": a.Type, "value": a.Value})
+		}
+		return okJSON(map[string]any{"total": len(out), "items": out})
+
 	case "insert_asset":
 		meta := arg("meta")
 		if meta == "" {
 			meta = "{}"
 		}
-		if err := st.UpsertAsset(&store.Asset{Type: arg("type"), Value: arg("value"), Meta: meta, Source: "agent"}); err != nil {
+		a := store.Asset{Type: arg("type"), Value: arg("value"), Meta: meta, Source: "agent"}
+		if err := st.UpsertAsset(&a); err != nil {
 			return fail(err)
 		}
-		return okJSON(map[string]any{"ok": true, "type": arg("type"), "value": arg("value")})
+		st.EnrichAssetDNS(a)
+		return okJSON(map[string]any{"ok": true, "type": a.Type, "value": a.Value})
 
 	case "list_traffic":
 		items, err := st.ListTraffic(arg("host"), 50)

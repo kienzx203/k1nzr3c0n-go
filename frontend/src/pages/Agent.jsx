@@ -40,6 +40,27 @@ export default function Agent() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: 'GLM', base_url: 'https://api.z.ai/api/coding/paas/v4', api_key: '', model: 'glm-4.7' })
   const [lastTokens, setLastTokens] = useState(null)
+  const [rules, setRules] = useState([])
+  const [audit, setAudit] = useState([])
+  const [showGovernance, setShowGovernance] = useState(false)
+
+  const loadGov = useCallback(async () => {
+    try { setRules(await api.agentRules()) } catch {}
+    try { setAudit(await api.agentAudit(30)) } catch {}
+  }, [])
+  useEffect(() => { loadGov() }, [loadGov])
+
+  async function addRule(e) {
+    e.preventDefault()
+    const tool = e.target.elements.tool.value.trim()
+    const action = e.target.elements.action.value
+    if (!tool) return
+    try { await api.createAgentRule({ tool_pattern: tool, input_pattern: e.target.elements.input.value.trim(), action }); e.target.reset(); loadGov() } catch {}
+  }
+
+  async function removeRule(id) {
+    try { await api.deleteAgentRule(id); loadGov() } catch {}
+  }
   const bottomRef = useRef(null)
 
   const loadConvs = useCallback(async () => {
@@ -199,6 +220,50 @@ export default function Agent() {
           <button className="btn btn-accent flex items-center justify-center gap-1.5" onClick={startAutopilot} disabled={busy || !profiles.length}>
             <Icon d={I.spark} /> {t('agent.autopilot')}
           </button>
+          <button className="btn flex items-center justify-center gap-1.5" onClick={() => { setShowGovernance(v => !v); loadGov() }}>
+            <Icon d={I.gear} /> Governance
+          </button>
+          {showGovernance && (
+            <div className="card p-3 flex flex-col gap-2.5 fade-in overflow-y-auto" style={{ maxHeight: 340 }}>
+              <p className="text-[9.5px] uppercase tracking-wider font-bold" style={{ color: 'var(--text-2)' }}>
+                Agent rules — allow / deny / ask tool-calls
+              </p>
+              <form onSubmit={addRule} className="flex flex-col gap-1.5">
+                <input name="tool" className="input text-[10.5px] font-mono" placeholder="tool, vd: cancel_run (re: cho regex)" />
+                <input name="input" className="input text-[10.5px] font-mono" placeholder="input chứa… (để trống = mọi input)" />
+                <div className="flex gap-1.5">
+                  <select name="action" className="input text-[10.5px] flex-1">
+                    <option value="ask">ask — chờ duyệt</option>
+                    <option value="deny">deny — chặn</option>
+                    <option value="allow">allow — cho qua</option>
+                  </select>
+                  <button className="btn btn-accent text-[10.5px]" type="submit">Add</button>
+                </div>
+              </form>
+              {rules.map(r => (
+                <div key={r.id} className="flex items-center gap-1.5 text-[10px] font-mono">
+                  <span className="badge" style={{
+                    background: r.action === 'deny' ? 'rgba(248,81,73,.12)' : r.action === 'ask' ? 'rgba(240,180,41,.12)' : 'rgba(63,185,80,.12)',
+                    color: r.action === 'deny' ? 'var(--red)' : r.action === 'ask' ? 'var(--amber)' : 'var(--green)' }}>
+                    {r.action}
+                  </span>
+                  <span className="truncate flex-1" title={r.input_pattern}>{r.tool_pattern}{r.input_pattern ? ` · ${r.input_pattern}` : ''}</span>
+                  <button className="opacity-60 hover:opacity-100" onClick={() => removeRule(r.id)}>✕</button>
+                </div>
+              ))}
+              <p className="text-[9.5px] uppercase tracking-wider font-bold mt-1" style={{ color: 'var(--text-2)' }}>
+                Audit — tool-calls gần đây
+              </p>
+              <div className="flex flex-col gap-0.5">
+                {audit.map(a => (
+                  <div key={a.id} className="text-[9.5px] font-mono truncate" style={{ color: a.blocked ? 'var(--red)' : 'var(--text-3)' }}>
+                    {a.blocked ? '⛔' : '⚙'} {a.tool} {String(a.args || '').slice(0, 46)}
+                  </div>
+                ))}
+                {!audit.length && <div className="text-[10px]" style={{ color: 'var(--text-3)' }}>chưa có lượt gọi nào</div>}
+              </div>
+            </div>
+          )}
 
           {showConfig && (
             <form onSubmit={createProfile} className="card flex flex-col gap-2 p-3 fade-in">

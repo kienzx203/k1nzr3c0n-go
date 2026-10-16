@@ -95,6 +95,7 @@ func ingestAssetGraph(st *store.Store, run *store.Run) {
 			continue
 		}
 		_ = st.UpsertAsset(&a)
+		st.EnrichAssetDNS(a)
 	}
 }
 

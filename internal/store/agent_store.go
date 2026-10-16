@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -159,6 +160,22 @@ CREATE TABLE IF NOT EXISTS pending_approvals (
 	decision VARCHAR(10),
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	decided_at DATETIME
+);
+CREATE TABLE IF NOT EXISTS agent_rules (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	tool_pattern VARCHAR(128) NOT NULL,
+	input_pattern VARCHAR(512) NOT NULL DEFAULT '',
+	action VARCHAR(10) NOT NULL DEFAULT 'ask',
+	enabled BOOLEAN DEFAULT 1,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS agent_audit (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	tool VARCHAR(64) NOT NULL,
+	args TEXT NOT NULL DEFAULT '',
+	result TEXT NOT NULL DEFAULT '',
+	blocked INTEGER NOT NULL DEFAULT 0,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS llm_usage (
 	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -727,6 +744,146 @@ func (s *Store) ListPendingApprovals(onlyPending bool) ([]PendingApproval, error
 			if dec.Valid {
 				a.Decision = &dec.String
 			}
+			a.CreatedAt = parseDBTime(ct)
+			out = append(out, a)
+		}
+	}
+	return out, rows.Err()
+}
+
+// AgentRule gates agent tool calls: allow | deny | ask.
+type AgentRule struct {
+	ID           int64  `json:"id"`
+	ToolPattern  string `json:"tool_pattern"`
+	InputPattern string `json:"input_pattern"`
+	Action       string `json:"action"`
+	Enabled      bool   `json:"enabled"`
+}
+
+func (s *Store) ListAgentRules() ([]AgentRule, error) {
+	rows, err := s.db.Query(`SELECT id, tool_pattern, input_pattern, action, enabled FROM agent_rules ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AgentRule
+	for rows.Next() {
+		var r AgentRule
+		if err := rows.Scan(&r.ID, &r.ToolPattern, &r.InputPattern, &r.Action, &r.Enabled); err == nil {
+			out = append(out, r)
+		}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateAgentRule(toolPat, inputPat, action string) error {
+	switch action {
+	case "allow", "deny", "ask":
+	default:
+		action = "ask"
+	}
+	_, err := s.db.Exec(`INSERT INTO agent_rules (tool_pattern, input_pattern, action, enabled, created_at) VALUES (?,?,?,1,?)`,
+		toolPat, inputPat, action, SqlNow())
+	return err
+}
+
+func (s *Store) DeleteAgentRule(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM agent_rules WHERE id=?`, id)
+	return err
+}
+
+// MatchAgentRule returns the first enabled rule matching a tool call.
+func (s *Store) MatchAgentRule(tool, input string) (AgentRule, bool) {
+	rules, err := s.ListAgentRules()
+	if err != nil {
+		return AgentRule{}, false
+	}
+	for _, r := range rules {
+		if !r.Enabled {
+			continue
+		}
+		if !matchPattern(r.ToolPattern, tool) {
+			continue
+		}
+		if r.InputPattern != "" && !matchPattern(r.InputPattern, input) {
+			continue
+		}
+		return r, true
+	}
+	return AgentRule{}, false
+}
+
+// matchPattern: empty matches all; "re:" prefix = regex; else substring.
+func matchPattern(pat, s string) bool {
+	if pat == "" || pat == "*" {
+		return true
+	}
+	if strings.HasPrefix(pat, "re:") {
+		if re, err := regexp.Compile("(?i)" + strings.TrimPrefix(pat, "re:")); err == nil {
+			return re.MatchString(s)
+		}
+		return false
+	}
+	return strings.Contains(strings.ToLower(s), strings.ToLower(pat))
+}
+
+// InsertAgentAudit records one tool call (blocked=1 when a rule denied it).
+func (s *Store) InsertAgentAudit(tool, args, result string, blocked bool) error {
+	b := 0
+	if blocked {
+		b = 1
+	}
+	_, err := s.db.Exec(`INSERT INTO agent_audit (tool, args, result, blocked, created_at) VALUES (?,?,?,?,?)`,
+		tool, truncateStr(args, 2000), truncateStr(result, 2000), b, SqlNow())
+	return err
+}
+
+func (s *Store) ListAgentAudit(limit int) ([]map[string]any, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.Query(`SELECT id, tool, args, result, blocked, created_at FROM agent_audit ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, blocked int64
+		var tool, args, result string
+		var ct any
+		if err := rows.Scan(&id, &tool, &args, &result, &blocked, &ct); err == nil {
+			out = append(out, map[string]any{"id": id, "tool": tool, "args": args, "result": result,
+				"blocked": blocked == 1, "created_at": parseDBTime(ct)})
+		}
+	}
+	return out, rows.Err()
+}
+
+func truncateStr(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
+}
+
+// UntestedAssets lists graph assets never seen in any finding host.
+func (s *Store) UntestedAssets(limit int) ([]Asset, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	rows, err := s.db.Query(`SELECT id, company_id, type, value, meta, source, created_at FROM assets
+		WHERE value NOT IN (SELECT DISTINCT host FROM findings)
+		ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Asset
+	for rows.Next() {
+		var a Asset
+		var ct any
+		if err := rows.Scan(&a.ID, &a.CompanyID, &a.Type, &a.Value, &a.Meta, &a.Source, &ct); err == nil {
 			a.CreatedAt = parseDBTime(ct)
 			out = append(out, a)
 		}

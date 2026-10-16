@@ -96,6 +96,7 @@ func (r *MCPRegistry) ExecMCP(ctx context.Context, call FunctionCall) string {
 // RunTurnMCP is RunTurn with dynamic MCP tools merged in.
 func RunTurnMCP(ctx context.Context, st *store.Store, r *runner.Runner, c *Client,
 	convID int64, userMsg string, cfg LoopConfig) (*LoopResult, error) {
+	_ = c // primary; failover handled inside the round loop
 
 	reg := ConnectEnabled(ctx, st)
 	defer reg.Close()
@@ -110,27 +111,29 @@ func RunTurnMCP(ctx context.Context, st *store.Store, r *runner.Runner, c *Clien
 	if err != nil {
 		return nil, err
 	}
-	msgs := []Message{{Role: "system", Content: SystemPrompt}}
-	for _, m := range history {
-		switch m.Role {
-		case "user", "assistant":
-			mm := Message{Role: m.Role, Content: m.Content}
-			if m.ToolCalls != "" && m.ToolCalls != "[]" {
-				_ = json.Unmarshal([]byte(m.ToolCalls), &mm.ToolCalls)
-			}
-			msgs = append(msgs, mm)
-		case "tool":
-			msgs = append(msgs, Message{Role: "tool", Content: m.Content, ToolCallID: m.ToolCallID})
-		}
-	}
+	msgs := compactedMessages(ctx, c, SystemPrompt, history)
 
 	res := &LoopResult{}
 	baseTools := Tools()
 	mcpTools := reg.ExtraTools()
 	all := append(append([]ToolDef{}, baseTools...), mcpTools...)
 
-	for round := 0; round < cfg.MaxToolRounds; round++ {
+	chat := func() (*Turn, *Usage, error) {
 		turn, usage, err := c.ChatCompletion(ctx, msgs, all)
+		if err == nil || !retryable(err) {
+			return turn, usage, err
+		}
+		// primary failed retryably → try other configured profiles
+		if others := stFailoverProfiles(st, c); len(others) > 0 {
+			if t2, u2, _, err2 := ChatWithFailover(ctx, others, msgs, all); err2 == nil {
+				return t2, u2, nil
+			}
+		}
+		return turn, usage, err
+	}
+
+	for round := 0; round < cfg.MaxToolRounds; round++ {
+		turn, usage, err := chat()
 		if err != nil {
 			return res, err
 		}
@@ -150,10 +153,16 @@ func RunTurnMCP(ctx context.Context, st *store.Store, r *runner.Runner, c *Clien
 
 		for _, tc := range turn.ToolCalls {
 			var out string
-			if strings.HasPrefix(tc.Function.Name, "mcp_") {
+			allow, denyMsg := GateCheck(st, tc.Function.Name, tc.Function.Arguments)
+			if !allow {
+				out = `{"blocked": true, "error": ` + jsonString(denyMsg) + `}`
+				Audit(st, tc.Function.Name, tc.Function.Arguments, out, true)
+			} else if strings.HasPrefix(tc.Function.Name, "mcp_") {
 				out = safeMCP(ctx, reg, tc.Function)
+				Audit(st, tc.Function.Name, tc.Function.Arguments, out, false)
 			} else {
 				out = safeExec(st, r, tc.Function)
+				Audit(st, tc.Function.Name, tc.Function.Arguments, out, false)
 			}
 			res.ToolCalls = append(res.ToolCalls, tc.Function.Name)
 			_ = st.InsertChatMessage(&store.ChatMessage{
@@ -176,4 +185,82 @@ func safeMCP(ctx context.Context, reg *MCPRegistry, fc FunctionCall) (out string
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	return reg.ExecMCP(cctx, fc)
+}
+
+// compactedMessages builds the LLM context. When the history is long
+// (> 60 messages), older turns are summarized by the model itself into one
+// digest note (ScopeWeaver compaction concept, pragmatic form) so multi-hour
+// conversations stay inside the context window.
+func compactedMessages(ctx context.Context, c *Client, system string, history []store.ChatMessage) []Message {
+	const keepRecent = 24
+	const compactThreshold = 60
+
+	build := func(msgs []store.ChatMessage) []Message {
+		out := []Message{{Role: "system", Content: system}}
+		for _, m := range msgs {
+			switch m.Role {
+			case "user", "assistant":
+				mm := Message{Role: m.Role, Content: m.Content}
+				if m.ToolCalls != "" && m.ToolCalls != "[]" {
+					_ = json.Unmarshal([]byte(m.ToolCalls), &mm.ToolCalls)
+				}
+				out = append(out, mm)
+			case "tool":
+				out = append(out, Message{Role: "tool", Content: m.Content, ToolCallID: m.ToolCallID})
+			}
+		}
+		return out
+	}
+
+	if len(history) <= compactThreshold {
+		return build(history)
+	}
+	old, recent := history[:len(history)-keepRecent], history[len(history)-keepRecent:]
+
+	var sb strings.Builder
+	sb.WriteString("Summarize this earlier conversation compactly (key decisions, tools called with outcomes, targets, findings). Keep facts; drop fluff. Reply with the summary only:\n")
+	for _, m := range old {
+		role := m.Role
+		content := m.Content
+		if len(content) > 400 {
+			content = content[:400] + "…"
+		}
+		sb.WriteString(role + ": " + content + "\n")
+	}
+	sumCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	turn, _, err := c.ChatCompletion(sumCtx, []Message{
+		{Role: "system", Content: "You compress pentest-operation chat logs."},
+		{Role: "user", Content: sb.String()},
+	}, nil)
+	digest := "(earlier history unavailable)"
+	if err == nil && strings.TrimSpace(turn.Content) != "" {
+		digest = turn.Content
+	}
+	compacted := []store.ChatMessage{{
+		Role:    "user",
+		Content: "[CONTEXT DIGEST — summary of earlier turns]\n" + digest,
+	}}
+	return build(append(compacted, recent...))
+}
+
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+// stFailoverProfiles lists OTHER configured profiles (primary excluded).
+func stFailoverProfiles(st *store.Store, primary *Client) []ProfileRef {
+	rows, err := st.ListLLMProfiles()
+	if err != nil {
+		return nil
+	}
+	var out []ProfileRef
+	for _, p := range rows {
+		if p.BaseURL == primary.BaseURL && p.Model == primary.Model {
+			continue
+		}
+		out = append(out, ProfileRef{ID: p.ID, BaseURL: p.BaseURL, APIKey: p.APIKey, Model: p.Model, Temp: p.Temperature})
+	}
+	return out
 }

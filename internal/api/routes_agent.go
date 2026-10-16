@@ -273,6 +273,7 @@ func (s *Server) handleGraphAssetCreate(w http.ResponseWriter, r *http.Request) 
 		writeDetail(w, 500, err.Error())
 		return
 	}
+	s.St.EnrichAssetDNS(*a)
 	writeJSON(w, 201, map[string]any{"id": a.ID})
 }
 
@@ -554,6 +555,56 @@ func (s *Server) handleAutopilot(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	writeJSON(w, 202, map[string]any{"status": "started", "goal": body.Goal})
+}
+
+func (s *Server) handleAgentRulesList(w http.ResponseWriter, r *http.Request) {
+	items, err := s.St.ListAgentRules()
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, items)
+}
+
+func (s *Server) handleAgentRulesCreate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ToolPattern  string `json:"tool_pattern"`
+		InputPattern string `json:"input_pattern"`
+		Action       string `json:"action"`
+	}
+	if err := readJSON(r, &body); err != nil || strings.TrimSpace(body.ToolPattern) == "" {
+		writeDetail(w, 422, "tool_pattern is required")
+		return
+	}
+	if err := s.St.CreateAgentRule(strings.TrimSpace(body.ToolPattern), body.InputPattern, body.Action); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 201, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAgentRulesDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := parseID(r.PathValue("id"))
+	_ = s.St.DeleteAgentRule(id)
+	w.WriteHeader(204)
+}
+
+func (s *Server) handleAgentAudit(w http.ResponseWriter, r *http.Request) {
+	items, err := s.St.ListAgentAudit(atoiDefault(r.URL.Query().Get("limit"), 100))
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, items)
+}
+
+func (s *Server) handleUntestedAssets(w http.ResponseWriter, r *http.Request) {
+	items, err := s.St.UntestedAssets(200)
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"total": len(items), "items": items})
 }
 
 func captureAddr() string {
