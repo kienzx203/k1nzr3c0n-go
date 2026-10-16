@@ -32,7 +32,6 @@ import SysToolExec from './pages/sys/SysToolExec.jsx'
 import SysLogs from './pages/sys/SysLogs.jsx'
 import SysSettings from './pages/sys/SysSettings.jsx'
 import CommandPalette from './components/CommandPalette.jsx'
-import StatusFooter from './components/StatusFooter.jsx'
 import { getTheme, applyTheme } from './theme.js'
 import { api } from './api.js'
 
@@ -251,7 +250,6 @@ export default function App() {
         </Routes>
       </main>
 
-      <StatusFooter />
       <CommandPalette />
     </div>
   )

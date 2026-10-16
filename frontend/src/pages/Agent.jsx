@@ -154,7 +154,7 @@ export default function Agent() {
   const noProfile = profiles.length === 0
 
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       {/* page header */}
       <div className="flex items-center gap-2.5 mb-4">
         <span className="p-2 rounded-lg" style={{ background: 'var(--surface-3)', color: 'var(--accent)' }}>
@@ -168,7 +168,7 @@ export default function Agent() {
         </div>
       </div>
 
-      <div className="grid gap-4" style={{ gridTemplateColumns: '240px 1fr', minHeight: 'calc(100vh - 170px)' }}>
+      <div className="grid gap-4" style={{ gridTemplateColumns: '240px 1fr', height: 'calc(100vh - 150px)' }}>
         {/* ── sidebar ── */}
         <div className="flex flex-col gap-2.5 min-w-0">
           <button className="btn btn-primary flex items-center justify-center gap-1.5" onClick={newChat}>

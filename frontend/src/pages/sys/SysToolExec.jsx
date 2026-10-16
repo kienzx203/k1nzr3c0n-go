@@ -9,7 +9,7 @@ export default function SysToolExec() {
   useEffect(() => { const t = setInterval(() => api.agentAudit(150).then(setItems).catch(() => {}), 5000)
     api.agentAudit(150).then(setItems).catch(() => {}); return () => clearInterval(t) }, [])
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="Tool Executions" sub="Every agent tool call — audited, including blocked attempts" />
       <Table head={['#', 'Tool', 'Arguments', 'Result', 'When']}
         rows={(items || []).map(a => [a.id,

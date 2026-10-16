@@ -10,7 +10,7 @@ export default function SysApprovals() {
     api.listApprovals(false).then(setItems).catch(() => {}); return () => clearInterval(t) }, [])
   async function decide(id, d) { try { await api.decideApproval(id, d) } catch {} }
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="Approval Records" sub="Held requests & tool calls — decide pending, review history" />
       <Table head={['#', 'Kind', 'Host / Tool', 'Detail', 'Decision', 'When']}
         rows={(items || []).map(a => [a.id,

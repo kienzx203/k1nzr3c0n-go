@@ -12,7 +12,7 @@ export default function SysNotifications() {
   async function test() { try { await api.notifyTest(); setMsg('Test sent') } catch (e2) { setMsg(e2.message) } }
   if (!n) return null
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="Notifications" sub="Discord/Slack webhook — run results, critical findings, new assets" />
       <Card>
         <form onSubmit={save} className="flex flex-col gap-3" style={{ maxWidth: 520 }}>

@@ -16,7 +16,7 @@ export default function Workspace() {
     await api.workspaceUpload(fd); setBusy(false); load()
   }
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="Workspace" sub="Shared artifacts — browse, upload, download"
         right={<label className="btn btn-primary text-[11px] cursor-pointer">
           {busy ? 'Uploading…' : '+ Upload'}<input type="file" hidden onChange={upload} /></label>} />

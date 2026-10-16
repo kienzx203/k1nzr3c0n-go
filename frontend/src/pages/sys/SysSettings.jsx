@@ -11,7 +11,7 @@ export default function SysSettings() {
   const [msg, setMsg] = useState('')
   useEffect(() => { api.systemVersion().then(setVer).catch(() => {}); api.updateCheck().then(setUpd).catch(() => {}) }, [])
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="System Settings" sub="Version, self-update, backup & data controls" />
       <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
         <Card>

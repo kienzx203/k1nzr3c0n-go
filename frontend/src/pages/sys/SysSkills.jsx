@@ -8,7 +8,7 @@ export default function SysSkills() {
   const [items, setItems] = useState(null)
   useEffect(() => { api.skillsList().then(setItems).catch(() => {}) }, [])
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="Skills" sub="SKILL.md playbooks the agent loads via list_skills / load_skill" />
       <Table head={['Name', 'Description', 'Instructions']}
         rows={(items || []).map(s => [<Badge tone="blue">{s.name}</Badge>,

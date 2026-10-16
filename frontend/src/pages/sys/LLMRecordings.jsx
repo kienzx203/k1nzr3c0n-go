@@ -9,7 +9,7 @@ export default function LLMRecordings() {
   const [totals, setTotals] = useState(null)
   useEffect(() => { api.llmUsageList(200).then(setRows).catch(() => {}); api.llmUsage().then(setTotals).catch(() => {}) }, [])
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="LLM Recordings" sub="Usage ledger — every agent turn metered"
         right={totals ? [<Badge key="t" tone="blue">{totals.turns} turns</Badge>, <Badge key="k" tone="amber">{totals.total_tokens} tokens</Badge>] : []} />
       <Table head={['#', 'Profile', 'Conversation', 'Prompt', 'Completion', 'Total', 'When']}

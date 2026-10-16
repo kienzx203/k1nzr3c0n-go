@@ -13,7 +13,7 @@ export default function SysMCP() {
   async function add(e) { e.preventDefault(); setErr('')
     try { await api.createMCP({ name: form.name, command: form.command, args: form.args.split(/\s+/).filter(Boolean) }); setForm({ name: '', command: '', args: '' }); load() } catch (e2) { setErr(e2.message) } }
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="MCP Servers" sub="External tool servers merged into the agent as mcp_<server>_<tool>" />
       <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 340px' }}>
         <Table head={['#', 'Name', 'Command', 'Enabled', 'Actions']}

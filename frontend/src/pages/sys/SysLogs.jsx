@@ -9,7 +9,7 @@ export default function SysLogs() {
   useEffect(() => { const t = setInterval(() => api.systemLogs(200).then(setItems).catch(() => {}), 5000)
     api.systemLogs(200).then(setItems).catch(() => {}); return () => clearInterval(t) }, [])
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="Logs" sub="Recent activity — agent tool calls and run log tails" />
       <div className="card p-3 overflow-auto" style={{ maxHeight: '70vh' }}>
         {(items || []).items?.map((l, i) => (

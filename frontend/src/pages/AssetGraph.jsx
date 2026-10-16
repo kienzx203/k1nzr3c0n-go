@@ -59,7 +59,7 @@ export default function AssetGraph() {
   const selCompany = companies.find(c => c.id === sel)
 
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <div className="flex items-center gap-2.5 mb-4 flex-wrap">
         <span className="p-2 rounded-lg" style={{ background: 'var(--surface-3)', color: 'var(--green)' }}>
           <Icon d={I.graph} size={17} />

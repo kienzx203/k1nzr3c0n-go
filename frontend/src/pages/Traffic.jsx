@@ -104,7 +104,7 @@ export default function Traffic() {
   const on = !!capture?.enabled
 
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <div className="flex items-center gap-2.5 mb-4 flex-wrap">
         <span className="p-2 rounded-lg" style={{ background: 'var(--surface-3)', color: 'var(--orange)' }}>
           <Icon d={I.wave} size={17} />
