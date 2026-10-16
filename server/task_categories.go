@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -24,18 +24,18 @@ func decodeTaskCategoryRequest(w http.ResponseWriter, r *http.Request) (*taskCat
 	if err := decode(r, &request); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeErr(w, http.StatusRequestEntityTooLarge, "Request body is too large")
+			writeErr(w, http.StatusRequestEntityTooLarge, "请求正文过大")
 		} else {
-			writeError(w, http.StatusBadRequest, err)
+			writeErr(w, http.StatusBadRequest, err.Error())
 		}
 		return nil, false
 	}
 	if request.Name == nil || strings.TrimSpace(*request.Name) == "" {
-		writeErr(w, http.StatusBadRequest, "Category name must not be empty")
+		writeErr(w, http.StatusBadRequest, "分类名称不能为空")
 		return nil, false
 	}
 	if utf8.RuneCountInString(strings.TrimSpace(*request.Name)) > db.MaxTaskCategoryNameRunes {
-		writeErr(w, http.StatusBadRequest, "Category name must be at most 80 characters")
+		writeErr(w, http.StatusBadRequest, "分类名称最多 80 个字符")
 		return nil, false
 	}
 	return &request, true
@@ -44,13 +44,13 @@ func decodeTaskCategoryRequest(w http.ResponseWriter, r *http.Request) (*taskCat
 func writeTaskCategoryError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, db.ErrTaskCategoryInvalid):
-		writeError(w, http.StatusBadRequest, err)
+		writeErr(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, db.ErrTaskCategoryNameConflict):
-		writeErr(w, http.StatusConflict, "Category name already exists")
+		writeErr(w, http.StatusConflict, "分类名称已存在")
 	case errors.Is(err, db.ErrTaskCategoryNotFound), errors.Is(err, db.ErrTaskCategoryTaskNotFound):
-		writeError(w, http.StatusNotFound, err)
+		writeErr(w, http.StatusNotFound, err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, err)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 	}
 }
 
@@ -61,7 +61,7 @@ func (s *Server) pgListTaskCategories(w http.ResponseWriter, _ *http.Request) {
 	}
 	categories, err := pg.ListTaskCategories()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"categories": categories})
@@ -134,7 +134,7 @@ func parseCategoryIDField(w http.ResponseWriter, raw json.RawMessage) (*int64, b
 	}
 	var id int64
 	if err := json.Unmarshal(raw, &id); err != nil || id <= 0 {
-		writeErr(w, http.StatusBadRequest, "Invalid task category ID")
+		writeErr(w, http.StatusBadRequest, "任务分类 id 无效")
 		return nil, false
 	}
 	return &id, true
@@ -151,7 +151,7 @@ func (s *Server) updateTaskCategory(w http.ResponseWriter, r *http.Request) {
 		CategoryID json.RawMessage `json:"category_id"`
 	}
 	if err := decode(r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	categoryID, ok := parseCategoryIDField(w, request.CategoryID)
@@ -187,9 +187,9 @@ func (s *Server) updateTasksCategoryBatch(w http.ResponseWriter, r *http.Request
 	if err := decode(r, &request); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeErr(w, http.StatusRequestEntityTooLarge, "Request body is too large")
+			writeErr(w, http.StatusRequestEntityTooLarge, "请求正文过大")
 		} else {
-			writeError(w, http.StatusBadRequest, err)
+			writeErr(w, http.StatusBadRequest, err.Error())
 		}
 		return
 	}
@@ -199,7 +199,7 @@ func (s *Server) updateTasksCategoryBatch(w http.ResponseWriter, r *http.Request
 	}
 	taskIDs := normalizeBatchTaskIDs(request.TaskIDs)
 	if len(taskIDs) == 0 || len(taskIDs) > db.MaxTaskCategoryBatchSize {
-		writeErr(w, http.StatusBadRequest, locale.Text(responseLanguage(w), "task_ids must contain 1-%d entries", db.MaxTaskCategoryBatchSize))
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("task_ids 数量必须为 1-%d", db.MaxTaskCategoryBatchSize))
 		return
 	}
 	items := make([]batchCategoryItem, 0, len(taskIDs))
@@ -208,12 +208,12 @@ func (s *Server) updateTasksCategoryBatch(w http.ResponseWriter, r *http.Request
 		item := batchCategoryItem{ID: parsed.id}
 		switch {
 		case !parsed.valid:
-			item.Error = locale.Text(responseLanguage(w), "bad task id")
+			item.Error = "bad task id"
 		default:
 			if _, live := s.m.Task(parsed.id); live {
 				pending = append(pending, parsed.id)
 			} else {
-				item.Error = locale.Text(responseLanguage(w), "task not found")
+				item.Error = "task not found"
 			}
 		}
 		items = append(items, item)
@@ -233,7 +233,7 @@ func (s *Server) updateTasksCategoryBatch(w http.ResponseWriter, r *http.Request
 			if updated[items[i].ID] {
 				items[i].OK = true
 			} else {
-				items[i].Error = locale.Text(responseLanguage(w), "task not found")
+				items[i].Error = "task not found"
 			}
 		}
 	}

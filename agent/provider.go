@@ -1,5 +1,5 @@
 // Package agent wires real LLM-driven planner and work agents (on top of the
-// agent-core SDK) to the PostgreSQL graphs. See the architecture design documentation.
+// agent-core SDK) to the dual SQLite graph. See docs/ARTEX-架构设计.md
 // §4.3 (planner) and §4.4 (work agent).
 //
 // Provider configuration is read from the environment so the system runs with
@@ -11,19 +11,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/Autumn-27/artex/locale"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
-	runtimeconfig "github.com/Autumn-27/artex/config"
-	"github.com/Autumn-27/artex/llmnet"
 	"github.com/Autumn-27/artex/llmrec"
-	"github.com/Autumn-27/artex/ollama"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/compaction"
 	"github.com/Autumn-27/norma/llm"
@@ -33,17 +30,10 @@ import (
 
 // Config describes the LLM backend resolved from the environment.
 type Config struct {
-	PolicyResolver func() (bool, []string)
-
-	KeepAlive            string
-	MaxConcurrent        int
-	LocalLLMOnly         bool
-	LocalLLMAllowedCIDRs []string
-	JSONOutput           bool
-	Format               llm.Format
-	BaseURL              string
-	APIKey               string
-	Model                string
+	Format  llm.Format
+	BaseURL string
+	APIKey  string
+	Model   string
 	// Proxy routes all LLM requests through the given proxy URL (http/https/socks5,
 	// optionally with user:pass@ credentials). Empty means direct — it does NOT
 	// fall back to the standard *_PROXY environment variables.
@@ -55,56 +45,56 @@ type Config struct {
 	// ContextWindowK is the model's context window in K tokens (user-configured),
 	// used to size compaction thresholds. 0 = default; see CompactionWindow.
 	ContextWindowK int
-	// ThinkingType independently controls thinking.type:
-	// Empty omits the field for compatibility; disabled explicitly turns it off;
-	// enabled turns it on. It is independent of ReasoningEffort because some endpoints
-	// expose only an effort parameter, so either setting may be used on its own.
+	// ThinkingType 独立控制思考「开关」字段(thinking.type):
+	//   "" = 不发送(默认,兼容不支持该字段的模型); "disabled" = 显式关闭;
+	//   "enabled" = 开启. 与 ReasoningEffort 完全解耦——有些接口没有 thinking 字段、
+	//   只靠强度参数就能激活思考,故两者可各自单独设置.
 	ThinkingType string
-	// ReasoningEffort independently controls reasoning intensity:
-	// Empty omits it; low/medium/high/xhigh/max select the corresponding effort.
-	// OpenAI uses reasoning_effort; Anthropic uses output_config.effort.
+	// ReasoningEffort 独立控制思考「强度」字段:
+	//   "" = 不发送(默认); "low"/"medium"/"high"/"xhigh"/"max" = 对应强度.
+	//   OpenAI 映射为顶层 reasoning_effort;Anthropic 映射为 output_config.effort.
 	ReasoningEffort string
-	// Stream controls profile SSE usage: true (default) streams, false sends
-	// stream:false and gets complete JSON through Provider.Complete. Non-streaming
-	// avoids broken gateway SSE (empty frames or lost reasoning deltas), at the cost
-	// of live progress/token counts. Maps to agentcore.Options.NonStreaming = !Stream.
+	// Stream 控制该 profile 是否使用流式(SSE)接口。true(默认)= 流式;false = 真·
+	// 非流式(发 stream:false,一次性拿完整 JSON,走 Provider.Complete)。非流式可绕开
+	// 某些网关糟糕的 SSE 实现(空帧、思考字段丢帧),代价是失去运行中的实时进度/实时
+	// token 计数。映射为 agentcore.Options.NonStreaming = !Stream。
 	Stream bool
-	// MaxTokens limits output tokens per reply. Zero omits it and uses server defaults.
-	// Unlike ContextWindowK, the local total-capacity/compaction threshold setting,
-	// this value is sent with each request through agentcore.Options.MaxTokens.
+	// MaxTokens 是单次回复的输出上限(token)。0 = 不发送该字段,由服务端默认值决定
+	// (历史行为)。与 ContextWindowK 不同:后者是模型总容量,只在本地用来算压缩阈值,
+	// 不出现在请求里;本值随每次请求发出。映射为 agentcore.Options.MaxTokens。
 	MaxTokens int
-	// MaxTokensField chooses the request field for MaxTokens in openai format:
-	// Empty uses max_tokens; max_completion_tokens selects the newer field.
-	// OpenAI reasoning models reject max_tokens with unsupported_parameter, while
-	// many compatible gateways require it. Let users choose per endpoint; do not infer.
+	// MaxTokensField 选择 MaxTokens 用哪个请求字段名,仅对 format=openai 生效:
+	//   "" = max_tokens(默认); "max_completion_tokens" = 新字段。
+	// OpenAI 推理模型(o 系列/GPT-5)只认后者,收到 max_tokens 会直接报
+	// unsupported_parameter;而多数兼容网关只认前者,故不做自动推断,交由用户按端点选。
 	MaxTokensField string
-	// Nonempty SessionHeaderKey adds a custom HTTP header to each LLM request,
-	// carrying the current session ID (conv-<id>, exp<x>-worker-i<intent>, etc.;
-	// see WorkerSessionID). Some gateways use it for prompt caching/sticky routing.
-	// Empty omits it. transcript.WithSessionID attaches the value to context, and
-	// RoundTripper reads it, so a shared provider can send different session values.
+	// SessionHeaderKey,非空时,让每次 LLM 请求带上一个自定义 HTTP 头,头名为该值、
+	// 头值为【当前会话的 session id】(chat 会话=conv-<id>,worker=exp<x>-worker-i<intent>
+	// 等,见 WorkerSessionID)。用于某些按 session-id 头做提示缓存/粘性路由的网关。
+	// 空 = 不发送。值由 transcript.WithSessionID 挂在请求 context 上,由 RoundTripper
+	// 读取填入,因此同一共享 provider 也能按会话发出不同的头值。
 	SessionHeaderKey string
-	// Retry holds resolved profile -> global -> built-in retry parameters, resolved
-	// by the server. See RetryConfig for layers; zero values use built-in defaults.
+	// Retry 是该配置解析后的重试参数(profile 覆盖 → 全局策略 → 内置默认,由
+	// server 侧解析)。三层的含义见 RetryConfig;零值 = 完全沿用内置默认。
 	Retry RetryConfig
 }
 
-// RetryConfig travels with an LLM profile. Attempts have consistent semantics:
-// zero uses defaults, negative disables retries, positive overrides the count.
-// An interval of zero retains exponential backoff; positive selects a fixed delay.
+// RetryConfig 是随一个 LLM 配置走的重试参数。每层的「次数」统一语义:
+// 0 = 用内置默认次数;负数 = 关闭该层重试;>0 = 用该值。每层的「间隔」:
+// 0 = 用该层原本的指数退避;>0 = 改用这个固定间隔。
 type RetryConfig struct {
-	// ConnectAttempts/ConnectInterval cover pre-stream connection reset/timeout/429/5xx,
-	// mapping to llm.Config.MaxRetries/RetryInterval: default 3, exponential 0.5s to 8s.
+	// ConnectAttempts/ConnectInterval:SDK 建连重试(连接重置/超时/429/5xx,流开始前),
+	// 直接映射为 llm.Config.MaxRetries / RetryInterval。默认 3 次、0.5s 起指数(封顶 8s)。
 	ConnectAttempts int
 	ConnectInterval time.Duration
-	// EmptyAttempts/EmptyInterval cover completed responses without content blocks
-	// in openai format, mapping to EmptyResponseRetries/EmptyResponseInterval.
-	// Defaults: two retries using the same exponential ladder.
+	// EmptyAttempts/EmptyInterval:SDK 空响应重试(完成但无 content block,仅 openai
+	// 格式),映射为 llm.Config.EmptyResponseRetries / EmptyResponseInterval。
+	// 默认 2 次、同一条指数梯度。
 	EmptyAttempts int
 	EmptyInterval time.Duration
-	// StreamAttempts/StreamInterval add a same-provider safe-window retry layer above
-	// the SDK for broken streams/overload/in-stream 429 only before any output is delivered.
-	// server/task_llm.go consumes it; defaults are two retries, exponential 0.5s to 4s.
+	// StreamAttempts/StreamInterval:同 provider 安全窗口重试——本项目在 SDK 之上补的
+	// 一层,只在「还没向调用方交付任何输出」时重放断流/过载/流内 429。SDK 看不到它,
+	// 由 server/task_llm.go 消费。默认 2 次、0.5s 起指数(封顶 4s)。
 	StreamAttempts int
 	StreamInterval time.Duration
 }
@@ -123,18 +113,6 @@ const (
 // a 200K default; otherwise clamped to [32K, 1M] so compaction stays effective.
 func (c Config) CompactionWindow() int {
 	k := c.ContextWindowK
-	if c.Provider() == "ollama" {
-		if k <= 0 {
-			k = 32
-		}
-		if k < 16 {
-			k = 16
-		}
-		if k > maxWindowK {
-			k = maxWindowK
-		}
-		return k * 1024
-	}
 	if k <= 0 {
 		k = defaultWindowK
 	}
@@ -165,48 +143,52 @@ func compactionConfig(windowTokens int) *compaction.Config {
 //	ARTEX_LLM_PROXY    = proxy URL        (optional; http/https/socks5)
 //	ANTHROPIC_API_KEY / OPENAI_API_KEY         = credentials
 func FromEnv() (Config, bool) {
-	file := runtimeconfig.ResolveLLM()
-	prov := file.Provider
+	prov := os.Getenv("ARTEX_LLM_PROVIDER")
+	anthKey := os.Getenv("ANTHROPIC_API_KEY")
+	oaiKey := os.Getenv("OPENAI_API_KEY")
+
 	if prov == "" {
 		switch {
-		case os.Getenv("ANTHROPIC_API_KEY") != "":
+		case anthKey != "":
 			prov = "anthropic"
-		case os.Getenv("OPENAI_API_KEY") != "":
+		case oaiKey != "":
 			prov = "openai"
 		default:
 			return Config{}, false
 		}
 	}
-	c := ConfigFrom(prov, file.Model, file.BaseURL, file.APIKey, file.Proxy)
-	// Native Ollama never falls back to a cloud credential.
-	_, explicitKey := runtimeconfig.LLMEnv("API_KEY")
-	if c.APIKey == "" && !explicitKey {
-		switch c.Provider() {
-		case "ollama":
-			c.APIKey = os.Getenv("OLLAMA_API_KEY")
-		case "anthropic":
-			c.APIKey = os.Getenv("ANTHROPIC_API_KEY")
-		default:
-			c.APIKey = os.Getenv("OPENAI_API_KEY")
+
+	c := Config{
+		BaseURL: os.Getenv("ARTEX_LLM_BASE_URL"),
+		Model:   os.Getenv("ARTEX_LLM_MODEL"),
+		Proxy:   strings.TrimSpace(os.Getenv("ARTEX_LLM_PROXY")),
+		// 默认流式;ARTEX_LLM_STREAM=false/0/off 显式关闭走非流式。
+		Stream: !isFalsy(os.Getenv("ARTEX_LLM_STREAM")),
+	}
+	switch prov {
+	case "openai":
+		c.Format = llm.FormatOpenAI
+		c.APIKey = oaiKey
+		if c.Model == "" {
+			c.Model = "gpt-4o"
+		}
+	case "openai-responses":
+		c.Format = llm.FormatOpenAIResponses
+		c.APIKey = oaiKey
+		if c.Model == "" {
+			c.Model = "gpt-5"
+		}
+	default:
+		c.Format = llm.FormatAnthropic
+		c.APIKey = anthKey
+		if c.Model == "" {
+			c.Model = "claude-opus-4-8"
 		}
 	}
-	if file.Stream != nil {
-		c.Stream = *file.Stream
+	if c.APIKey == "" {
+		return Config{}, false
 	}
-	if file.ContextWindowK != 0 {
-		c.ContextWindowK = file.ContextWindowK
-	}
-	if file.MaxTokens != 0 {
-		c.MaxTokens = file.MaxTokens
-	}
-	if file.KeepAlive != "" {
-		c.KeepAlive = file.KeepAlive
-	}
-	c.MaxConcurrent = file.MaxConcurrent
-	c.ThinkingType = file.ThinkingType
-	c.ReasoningEffort = file.ReasoningEffort
-	c.LocalLLMOnly, c.LocalLLMAllowedCIDRs = runtimeconfig.LocalLLMPolicy()
-	return c, c.Ready()
+	return c, true
 }
 
 // ConfigFrom builds a Config from UI-provided strings (provider defaults to
@@ -219,18 +201,9 @@ func ConfigFrom(provider, model, baseURL, apiKey, proxy string) Config {
 		BaseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		APIKey:  strings.TrimSpace(apiKey),
 		Proxy:   strings.TrimSpace(proxy),
-		Stream:  true, // Streaming defaults on; callers override from the profile.
+		Stream:  true, // 默认流式;调用方按 profile 覆盖
 	}
 	switch strings.TrimSpace(provider) {
-	case "ollama":
-		c.Format = llm.Format("ollama")
-		c.BaseURL = ollama.NormalizeBaseURL(c.BaseURL)
-		c.KeepAlive = ollama.DefaultKeepAlive
-		c.ContextWindowK = 32
-		c.MaxTokens = 4096
-		if c.Model == "" {
-			c.Model = ollama.DefaultModel
-		}
 	case "openai":
 		c.Format = llm.FormatOpenAI
 		// provider appends "/chat/completions"; tolerate a full endpoint URL.
@@ -269,8 +242,6 @@ func isFalsy(s string) bool {
 // Provider returns the short provider name ("anthropic"/"openai").
 func (c Config) Provider() string {
 	switch c.Format {
-	case llm.Format("ollama"):
-		return "ollama"
 	case llm.FormatOpenAI:
 		return "openai"
 	case llm.FormatOpenAIResponses:
@@ -283,23 +254,9 @@ func (c Config) Provider() string {
 // limiter lives on the single provider instance — so planner + all workers +
 // main agent (which share this provider) are bounded by one shared rate limit.
 func (c Config) NewProvider() (llm.Provider, error) {
-	client, err := c.HTTPClient()
+	client, err := quotaAwareHTTPClient(c.Proxy, c.SessionHeaderKey)
 	if err != nil {
 		return nil, err
-	}
-	if c.Provider() == "ollama" {
-		native, err := ollama.NewClient(c.BaseURL, c.APIKey, client)
-		if err != nil {
-			return nil, err
-		}
-		return llm.RateLimited(ollama.NewProvider(native, c.Model, ollama.Options{ContextWindow: c.CompactionWindow(), KeepAlive: c.KeepAlive, ThinkingType: c.ThinkingType, MaxTokens: c.MaxTokens, JSON: c.JSONOutput, ConnectAttempts: c.Retry.ConnectAttempts, ConnectInterval: c.Retry.ConnectInterval, EmptyAttempts: c.Retry.EmptyAttempts, EmptyInterval: c.Retry.EmptyInterval}), llm.RateLimit{PerSecond: c.RatePerSecond, PerMinute: c.RatePerMinute}), nil
-	}
-	// Block SDK environment-key inheritance for deliberately keyless local endpoints.
-	if c.APIKey == "" {
-		if !llmnet.IsLocalEndpoint(c.BaseURL) {
-			return nil, locale.Errorf("llm: API key required for non-local compatible endpoint")
-		}
-		c.APIKey = "scopeweaver-local"
 	}
 	lc := llm.Config{
 		Format:     c.Format,
@@ -308,14 +265,14 @@ func (c Config) NewProvider() (llm.Provider, error) {
 		Model:      c.Model,
 		HTTPClient: client,
 	}
-	// Pass thinking.type and effort independently; empty omits each field.
-	// Either, both, or neither may be sent.
+	// 思考开关与强度两个字段各自透传(空 = 该字段不发送)。二者解耦:
+	// 可只发 thinking.type、只发 effort、都发、或都不发。
 	lc.ThinkingType = c.ThinkingType
 	lc.ReasoningEffort = c.ReasoningEffort
-	// Choose the output-limit field name (empty means max_tokens). Its value comes
-	// from agentcore.Options.MaxTokens per round; the provider only chooses the key.
+	// 输出上限的字段名选择(空 = 用 max_tokens)。上限的「值」不在这里:它每轮随
+	// agentcore.Options.MaxTokens 走,provider 只决定把它塞进哪个键。
 	lc.MaxTokensField = c.MaxTokensField
-	// Pass SDK retry semantics unchanged: counts 0=default/negative=off; interval 0=exponential/positive=fixed.
+	// 重试参数与 SDK 同语义(次数 0=默认/负=关闭,间隔 0=指数退避/>0=固定),原样透传。
 	lc.MaxRetries = c.Retry.ConnectAttempts
 	lc.RetryInterval = c.Retry.ConnectInterval
 	lc.EmptyResponseRetries = c.Retry.EmptyAttempts
@@ -323,14 +280,7 @@ func (c Config) NewProvider() (llm.Provider, error) {
 	if c.RatePerSecond > 0 || c.RatePerMinute > 0 {
 		lc.RateLimit = &llm.RateLimit{PerSecond: c.RatePerSecond, PerMinute: c.RatePerMinute}
 	}
-	provider, err := llm.NewProvider(lc)
-	if err != nil {
-		return nil, err
-	}
-	if c.Model == "glm-5.3" {
-		return glm53Provider{Provider: provider}, nil
-	}
-	return provider, nil
+	return llm.NewProvider(lc)
 }
 
 // IsQuotaExhaustedMessage deliberately recognizes only explicit balance,
@@ -447,45 +397,42 @@ func requestBodySnapshot(req *http.Request) string {
 	return string(b)
 }
 
-// Ready allows keyless native Ollama and explicit local compatible servers.
-func (c Config) Ready() bool {
-	return c.APIKey != "" || c.Provider() == "ollama" || llmnet.IsLocalEndpoint(c.BaseURL)
-}
-
-// HTTPClient is shared by inference, metadata, diagnostics, and judge consumers.
-func (c Config) HTTPClient() (*http.Client, error) {
-	var client *http.Client
-	var err error
-	if c.PolicyResolver != nil {
-		client, err = llmnet.NewClientWithPolicy(c.Proxy, c.PolicyResolver)
-	} else {
-		client, err = llmnet.NewClient(c.Proxy, c.LocalLLMOnly, c.LocalLLMAllowedCIDRs)
-	}
-	if err != nil {
-		return nil, err
-	}
-	client.Transport = quotaAwareTransport{base: client.Transport, sessionHeaderKey: strings.TrimSpace(c.SessionHeaderKey)}
-	return client, nil
-}
-
 func quotaAwareHTTPClient(proxy, sessionHeaderKey string) (*http.Client, error) {
-	return (Config{Proxy: proxy, SessionHeaderKey: sessionHeaderKey}).HTTPClient()
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	proxy = strings.TrimSpace(proxy)
+	if proxy == "" {
+		transport.Proxy = nil // 留空=直连,不回退 HTTP_PROXY/HTTPS_PROXY 环境变量
+	} else {
+		proxyURL, err := url.Parse(proxy)
+		if err != nil {
+			return nil, fmt.Errorf("llm: invalid proxy %q: %w", proxy, err)
+		}
+		switch proxyURL.Scheme {
+		case "http", "https", "socks5":
+		case "":
+			return nil, fmt.Errorf("llm: proxy %q missing scheme (use http://, https:// or socks5://)", proxy)
+		default:
+			return nil, fmt.Errorf("llm: unsupported proxy scheme %q (use http, https or socks5)", proxyURL.Scheme)
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
+	return &http.Client{Transport: quotaAwareTransport{base: transport, sessionHeaderKey: strings.TrimSpace(sessionHeaderKey)}}, nil
 }
 
 // logTestConnection prints the raw HTTP status code(s) and response body of a
-// connection test to the server log, leaving a diagnosable trail when users click Test:
+// connection test to the server log, so "点击测试" leaves a diagnosable trail of
 // exactly what the gateway returned — 401 bodies, quota text, empty frames — not
 // just the collapsed ok/err the UI shows. Bodies are clipped to keep a chatty
 // SSE stream from flooding the log.
 func logTestConnection(c Config, capt *llmrec.Capture) {
 	attempts := capt.Attempts()
 	if len(attempts) == 0 {
-		log.Printf(locale.Text(locale.ServerDefault(), "[llm-test] %s / %s @ %s — no HTTP request sent (configuration or connection failed)"),
+		log.Printf("[llm-test] %s / %s @ %s — 未发出任何 HTTP 请求(配置解析或建连即失败)",
 			c.Provider(), c.Model, c.BaseURL)
 		return
 	}
 	for i, a := range attempts {
-		log.Printf(locale.Text(locale.ServerDefault(), "[llm-test] %s / %s @ %s — attempt %d/%d HTTP %d\nResponse body: %s"),
+		log.Printf("[llm-test] %s / %s @ %s — 尝试 %d/%d HTTP %d\n响应体: %s",
 			c.Provider(), c.Model, c.BaseURL, i+1, len(attempts), a.Status, clipBody(a.Body))
 	}
 }
@@ -495,11 +442,11 @@ func logTestConnection(c Config, capt *llmrec.Capture) {
 func clipBody(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return locale.Text(locale.ServerDefault(), "(empty)")
+		return "(空)"
 	}
 	const max = 4096
 	if len(s) > max {
-		return s[:max] + fmt.Sprintf(locale.Text(locale.ServerDefault(), "…(truncated, %d bytes total)"), len(s))
+		return s[:max] + fmt.Sprintf("…(截断,共 %d 字节)", len(s))
 	}
 	return s
 }
@@ -514,41 +461,41 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	// Capture raw wire status/body for connection diagnostics; decoding into norma
-	// StreamEvents otherwise loses those details. quotaAwareTransport finds this
-	// Capture in context and records every HTTP attempt's status and response body.
+	// 抓取原始 wire 报文:连接测试最需要看到的就是网关到底回了什么(状态码+响应体),
+	// 而 norma 把响应解码成 StreamEvent 后这些就没了。quotaAwareTransport 会在
+	// context 里找到这个 Capture 并填入每次 HTTP 尝试的状态码与 body。
 	ctx, capt := llmrec.NewCapture(ctx)
 	defer logTestConnection(c, capt)
-	// Connection tests bypass the agentcore session loop, which normally attaches
-	// session IDs. Endpoints configured with SessionHeaderKey may require one,
-	// such as opencode zen's x-opencode-session header (400 MissingSessionID if absent).
-	// Attach a one-time random ID so tests use the same header path as real chat.
-	// Endpoints without SessionHeaderKey ignore it, with no side effects.
+	// 连接测试是一条单发路径,不经过 agentcore 的会话循环,因此没人往 context 上挂
+	// session id。对配了 SessionHeaderKey 的端点(如 opencode zen 强制要求
+	// x-opencode-session 头,缺了直接 400 MissingSessionID),这会导致"对话正常、
+	// 点击测试却 400"的落差。这里补挂一个一次性随机 session id,让测试与真实对话走同
+	// 一套发头逻辑;未配 SessionHeaderKey 的端点不读它,无副作用。
 	ctx = transcript.WithSessionID(ctx, "conntest-"+transcript.NewSessionID())
 	start := time.Now()
-	// Give MaxTokens enough room: reasoning models can spend thousands of tokens
-	// before answering even a simple ping. A tiny budget stops during reasoning,
-	// yielding finish=length and confusing interruption/resume indications despite
-	// transport success. A sufficient budget lets the model emit OK and stop cleanly.
-	// Keep EscalateMaxTokens false to avoid wasteful retry/resume loops after truncation.
+	// MaxTokens 要给足：推理模型(如 deepseek-v4-pro)在给出答案前会先产出一大段
+	// 思考(实测对一句 "ping" 也能烧 ~2900 token)。若只给 32,模型会一直卡在"思考阶段"
+	// 就撞到输出上限(finish=length)、被截断,连接测试虽仍算通(err=nil)但显示成
+	// "已中断/length/resume" 一团糟。给足预算让它把 OK 干净吐完(finish=stop)。
+	// EscalateMaxTokens 保持 false:不因截断而抬额重试,避免 resume 循环空烧。
 	reply, err := agentcore.Run(ctx, agentcore.Options{
 		Provider:       prov,
-		SystemPrompt:   []string{locale.Text(locale.FromContext(ctx), "This is a connection test. Output exactly the two characters OK, with no reasoning, explanation, or other content.")},
+		SystemPrompt:   []string{"你是连接测试。直接输出两个字符 OK 即可，不要思考、不要解释、不要别的。"},
 		PermissionMode: acperm.ModeBypass,
 		MaxTurns:       1,
 		MaxTokens:      8192,
-		NonStreaming:   !c.Stream, // Test using this profile's actual streaming/non-streaming mode.
+		NonStreaming:   !c.Stream, // 用该 profile 的真实收发模式做连接测试
 	}, "ping")
 	lat := time.Since(start)
 	if err != nil {
 		return lat, "", err
 	}
-	// err==nil alone is insufficient: a successful request may still return no text
-	// due to reasoning exhaustion, safety filtering, or a compatibility layer dropping
-	// content. Treat missing visible text as failure, matching unusable chat behavior.
+	// err==nil 还不够：请求通了但模型一个字都不吐的情况真实存在(思考把预算烧光、
+	// 正文被安全策略吞掉、兼容层把 content 丢了)。这种配置在会话里就是"不回话",
+	// 测试却报成功——正是本项要消除的落差。没有可见正文一律判失败。
 	reply = strings.TrimSpace(reply)
 	if reply == "" {
-		return lat, "", locale.Errorf("Model returned no content (request succeeded, but no text was returned)")
+		return lat, "", fmt.Errorf("模型无回复内容（请求已通，但未返回任何文本）")
 	}
 	return lat, reply, nil
 }

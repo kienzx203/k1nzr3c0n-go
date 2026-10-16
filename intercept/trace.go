@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/Autumn-27/artex/locale"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -148,7 +147,7 @@ func (t *Trace) Finish() {
 	t.mu.Unlock()
 	for _, c := range calls {
 		if c.complete != nil {
-			c.complete("unknown", locale.Text(locale.ServerDefault(), "Execution ended without a tool result"), false)
+			c.complete("unknown", "执行结束但未收到工具结果", false)
 		}
 	}
 }

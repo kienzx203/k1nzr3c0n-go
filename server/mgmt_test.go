@@ -2,25 +2,24 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-func newMgmtFixture(t *testing.T) *Server {
-	t.Helper()
-	m := backportTestManager(t)
-	td := t.TempDir()
-	// The test context stops background consumers before the manager's cleanup
-	// closes its database; no notifier may claim another fixture's deliveries.
-	return New(t.Context(), m, td, td, td)
-}
-
 // TestMgmtAPI exercises the PostgreSQL-backed management API through the real mux.
 func TestMgmtAPI(t *testing.T) {
-	s := newMgmtFixture(t)
-	m := s.m
+	m, err := NewManager(t.TempDir(), "")
+	if err != nil {
+		t.Skipf("database unavailable (%v) — skipping management API test", err)
+	}
+	if m.pg == nil {
+		t.Skip("postgres unavailable — skipping management API test")
+	}
+	td := t.TempDir()
+	s := New(context.Background(), m, td, td, td)
 	h := s.Handler()
 	tok, err := signJWT(s.jwtKey)
 	if err != nil {

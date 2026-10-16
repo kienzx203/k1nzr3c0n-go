@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 	"io"
 	"net/url"
 	"sort"
@@ -39,13 +39,13 @@ const (
 )
 
 var (
-	ErrTaskArchiveNotFound       = locale.NewError("task archive not found")
-	ErrTaskArchiveIneligible     = locale.NewError("task must be paused or terminal before archiving")
-	ErrTaskArchiveQueued         = locale.NewError("queued task must be paused before archiving")
-	ErrTaskArchiveDependent      = locale.NewError("task is inherited by a live task")
-	ErrTaskArchiveState          = locale.NewError("task archive state does not allow this operation")
-	ErrTaskArchiveDeleteBlocked  = locale.NewError("task archive is required by another archive")
-	ErrTaskArchiveFormatMismatch = locale.NewError("task archive format is not supported")
+	ErrTaskArchiveNotFound       = errors.New("task archive not found")
+	ErrTaskArchiveIneligible     = errors.New("task must be paused or terminal before archiving")
+	ErrTaskArchiveQueued         = errors.New("queued task must be paused before archiving")
+	ErrTaskArchiveDependent      = errors.New("task is inherited by a live task")
+	ErrTaskArchiveState          = errors.New("task archive state does not allow this operation")
+	ErrTaskArchiveDeleteBlocked  = errors.New("task archive is required by another archive")
+	ErrTaskArchiveFormatMismatch = errors.New("task archive format is not supported")
 )
 
 // TaskArchive is the compact PostgreSQL record retained while a task is cold.
@@ -253,7 +253,7 @@ WHERE relation.source_task_id=$1
   AND (pending.id IS NULL OR pending.state NOT IN ('archive_queued','archiving'))
 LIMIT 1`, taskID).Scan(&dependent)
 	if err == nil {
-		return nil, locale.Errorf("%w: task %d", ErrTaskArchiveDependent, dependent)
+		return nil, fmt.Errorf("%w: task %d", ErrTaskArchiveDependent, dependent)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -306,7 +306,7 @@ VALUES ($1,$2,'queued',0,'','[]',$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
 		return nil, err
 	}
 	if item.State != ArchiveQueued && item.State != ArchiveFailed {
-		return nil, locale.Errorf("%w: current state %s", ErrTaskArchiveState, item.State)
+		return nil, fmt.Errorf("%w: current state %s", ErrTaskArchiveState, item.State)
 	}
 	return item, tx.Commit()
 }
@@ -338,7 +338,7 @@ func (d *DB) QueueTaskArchiveDelete(id int64) (*TaskArchive, error) {
 	err = tx.QueryRow(`SELECT task_id FROM task_archives
 WHERE id<>$1 AND $2=ANY(source_task_ids) AND state NOT IN ('delete_queued','deleting') LIMIT 1`, id, taskID).Scan(&dependent)
 	if err == nil {
-		return nil, locale.Errorf("%w: task %d", ErrTaskArchiveDeleteBlocked, dependent)
+		return nil, fmt.Errorf("%w: task %d", ErrTaskArchiveDeleteBlocked, dependent)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -361,8 +361,8 @@ func (d *DB) RecoverTaskArchiveJobs() error {
 	                  WHEN 'restoring' THEN 'restore_queued'
 	                  WHEN 'deleting' THEN 'delete_queued' ELSE state END,
 	 phase='interrupted',
-	 error=CASE WHEN state='archiving' THEN $1 ELSE '' END
-	WHERE state IN ('archiving','restoring','deleting')`, locale.Text(locale.ServerDefault(), "The previous archive process exited unexpectedly; retry manually"))
+	 error=CASE WHEN state='archiving' THEN '上次归档进程异常退出，请手动重试' ELSE '' END
+	WHERE state IN ('archiving','restoring','deleting')`)
 	return err
 }
 
@@ -426,7 +426,7 @@ FROM task_archives archive JOIN tasks task ON task.id=archive.task_id WHERE arch
 func (d *DB) FailTaskArchiveJob(id int64, activeState string, cause error) error {
 	failed := map[string]string{Archiving: ArchiveFailed, Restoring: RestoreFailed, Deleting: DeleteFailed}[activeState]
 	if failed == "" {
-		return locale.Errorf("unknown active archive state %q", activeState)
+		return fmt.Errorf("unknown active archive state %q", activeState)
 	}
 	message := "unknown archive failure"
 	if cause != nil {
@@ -548,7 +548,7 @@ func (d *DB) SnapshotTaskArchive(taskID int64) (*TaskArchiveSnapshot, error) {
 // PostgreSQL snapshot.
 func (d *DB) SnapshotTaskArchiveWithLLMRecords(taskID int64, llmRecords io.Writer) (*TaskArchiveSnapshot, error) {
 	if llmRecords == nil {
-		return nil, locale.NewError("nil LLM record archive writer")
+		return nil, errors.New("nil LLM record archive writer")
 	}
 	return d.snapshotTaskArchive(taskID, llmRecords)
 }
@@ -604,7 +604,7 @@ func (d *DB) snapshotTaskArchive(taskID int64, llmRecords io.Writer) (*TaskArchi
 		if query.name == "llm_records" && llmRecords != nil {
 			count, err := streamArchiveRows(tx, llmRecords, query.query, query.args...)
 			if err != nil {
-				return nil, locale.Errorf("snapshot %s: %w", query.name, err)
+				return nil, fmt.Errorf("snapshot %s: %w", query.name, err)
 			}
 			tables[query.name] = json.RawMessage("[]")
 			counts[query.name] = count
@@ -613,7 +613,7 @@ func (d *DB) snapshotTaskArchive(taskID int64, llmRecords io.Writer) (*TaskArchi
 		}
 		raw, count, err := queryArchiveRows(tx, query.query, query.args...)
 		if err != nil {
-			return nil, locale.Errorf("snapshot %s: %w", query.name, err)
+			return nil, fmt.Errorf("snapshot %s: %w", query.name, err)
 		}
 		tables[query.name] = raw
 		counts[query.name] = count

@@ -2,17 +2,8 @@ package server
 
 import (
 	"encoding/json"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/locale"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"net/http"
-	"net/http/httptest"
-	"strconv"
-	"strings"
 	"testing"
-	"unicode"
 )
 
 func TestConversationListRunningState(t *testing.T) {
@@ -69,108 +60,4 @@ func TestConversationListRunningState(t *testing.T) {
 	clear(s.chatBusy)
 	s.chatMu.Unlock()
 	check(map[int64]bool{ids[0]: false, ids[1]: false, ids[2]: false})
-}
-
-func TestConversationLocalizedDefaultsAndRawTitles(t *testing.T) {
-	s, _ := newRetestServer(t)
-	for _, lang := range []locale.Lang{locale.En, locale.Ko} {
-		for _, title := range []string{"", "Raw user title"} {
-			raw, _ := json.Marshal(map[string]string{"agent_key": db.FindingRetestAgentKey, "title": title})
-			req := httptest.NewRequest(http.MethodPost, "/api/conversations?lang="+string(lang), strings.NewReader(string(raw)))
-			rec := httptest.NewRecorder()
-			withLocale(http.HandlerFunc(s.pgCreateConversation)).ServeHTTP(rec, req)
-			if rec.Code != 200 {
-				t.Fatalf("Create %s: %d %s", lang, rec.Code, rec.Body)
-			}
-			var c db.Conversation
-			if err := json.Unmarshal(rec.Body.Bytes(), &c); err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = s.m.pg.DeleteConversation(c.ID) })
-			want := title
-			if want == "" {
-				want = locale.Text(lang, "New conversation")
-			}
-			if c.Title != want {
-				t.Fatalf("%s title=%q want=%q", lang, c.Title, want)
-			}
-		}
-	}
-	for _, title := range []string{"", locale.Text(locale.En, "New conversation"), locale.Text(locale.Ko, "New conversation")} {
-		if !isDefaultConversationTitle(title) {
-			t.Fatalf("Built-in default not recognized: %q", title)
-		}
-	}
-	if isDefaultConversationTitle("Raw user title") {
-		t.Fatal("Custom title treated as a default")
-	}
-}
-
-func TestConversationCatalogCoverage(t *testing.T) {
-	seen := map[string]bool{}
-	for _, path := range []string{"conversations.go", "side_questions.go", "scheduler.go", "triggers.go"} {
-		f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			pkg, ok := sel.X.(*ast.Ident)
-			if !ok || pkg.Name != "locale" {
-				return true
-			}
-			index := 0
-			switch sel.Sel.Name {
-			case "Text":
-				index = 1
-			case "Errorf", "NewError":
-			default:
-				return true
-			}
-			lit, ok := call.Args[index].(*ast.BasicLit)
-			if !ok {
-				return true
-			}
-			key, err := strconv.Unquote(lit.Value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			seen[key] = true
-			en, ok := locale.Lookup(locale.En, key)
-			if !ok || en != key {
-				t.Errorf("Missing English template %q", key)
-			}
-			ko, ok := locale.Lookup(locale.Ko, key)
-			if !ok || !strings.ContainsFunc(ko, func(r rune) bool { return unicode.Is(unicode.Hangul, r) }) {
-				t.Errorf("Missing Korean template %q", key)
-			}
-			return true
-		})
-	}
-	t.Logf("Verified %d conversation/trigger/side-question templates", len(seen))
-}
-
-func TestConversationBroadcastAndLogPreserveRawText(t *testing.T) {
-	b := NewBroadcaster()
-	ch, unsubscribe := b.Subscribe("raw-task-id")
-	defer unsubscribe()
-	a := db.Activity{Kind: "text", Worker: "raw-worker", Summary: "New conversation", Detail: "Raw unmodified transcript"}
-	b.Publish("raw-task-id", a)
-	got := <-ch
-	if got.Kind != a.Kind || got.Worker != a.Worker || got.Summary != a.Summary || got.Detail != a.Detail {
-		t.Fatalf("Broadcast altered raw activity: %+v", got)
-	}
-	for _, tc := range []struct{ text, level string }{{"[test] operation failed", "error"}, {"[test] 작업 실패", "error"}, {"[test] retry later", "warn"}, {"[test] 재시도", "warn"}, {"[test] raw transcript", "info"}} {
-		line := parseLog(tc.text)
-		if line.Level != tc.level || line.Text != tc.text || line.Tag != "test" {
-			t.Fatalf("Log language/identity changed: %+v", line)
-		}
-	}
 }

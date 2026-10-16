@@ -3,7 +3,7 @@ package db
 import (
 	"database/sql"
 	"errors"
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -18,10 +18,10 @@ const MaxTaskCategoryNameRunes = 80
 const MaxTaskCategoryBatchSize = 100
 
 var (
-	ErrTaskCategoryInvalid      = locale.NewError("invalid task category")
-	ErrTaskCategoryNameConflict = locale.NewError("task category name already exists")
-	ErrTaskCategoryNotFound     = locale.NewError("task category not found")
-	ErrTaskCategoryTaskNotFound = locale.NewError("task not found")
+	ErrTaskCategoryInvalid      = errors.New("invalid task category")
+	ErrTaskCategoryNameConflict = errors.New("task category name already exists")
+	ErrTaskCategoryNotFound     = errors.New("task category not found")
+	ErrTaskCategoryTaskNotFound = errors.New("task not found")
 )
 
 // TaskCategory is a globally reusable task grouping label.
@@ -47,10 +47,10 @@ func scanTaskCategory(row interface{ Scan(...any) error }) (TaskCategory, error)
 func normalizeTaskCategoryName(name string) (string, string, error) {
 	name = strings.Join(strings.Fields(name), " ")
 	if name == "" {
-		return "", "", locale.Errorf("%w: name is required", ErrTaskCategoryInvalid)
+		return "", "", fmt.Errorf("%w: name is required", ErrTaskCategoryInvalid)
 	}
 	if utf8.RuneCountInString(name) > MaxTaskCategoryNameRunes {
-		return "", "", locale.Errorf("%w: name exceeds %d characters", ErrTaskCategoryInvalid, MaxTaskCategoryNameRunes)
+		return "", "", fmt.Errorf("%w: name exceeds %d characters", ErrTaskCategoryInvalid, MaxTaskCategoryNameRunes)
 	}
 	return name, strings.ToLower(name), nil
 }
@@ -174,7 +174,7 @@ func (d *DB) SetTaskCategory(taskID int64, categoryID *int64) (*TaskCategory, er
 		return nil, nil
 	}
 	if *categoryID <= 0 {
-		return nil, locale.Errorf("%w: category id must be positive", ErrTaskCategoryInvalid)
+		return nil, fmt.Errorf("%w: category id must be positive", ErrTaskCategoryInvalid)
 	}
 	category, err := scanTaskCategory(d.QueryRow(`
 WITH selected AS (
@@ -211,18 +211,18 @@ FROM selected, updated`, taskID, *categoryID))
 // whose task_count already reflects this move.
 func (d *DB) SetTasksCategory(taskIDs []int64, categoryID *int64) ([]int64, *TaskCategory, error) {
 	if len(taskIDs) == 0 {
-		return nil, nil, locale.Errorf("%w: task ids are required", ErrTaskCategoryInvalid)
+		return nil, nil, fmt.Errorf("%w: task ids are required", ErrTaskCategoryInvalid)
 	}
 	if len(taskIDs) > MaxTaskCategoryBatchSize {
-		return nil, nil, locale.Errorf("%w: at most %d tasks per request", ErrTaskCategoryInvalid, MaxTaskCategoryBatchSize)
+		return nil, nil, fmt.Errorf("%w: at most %d tasks per request", ErrTaskCategoryInvalid, MaxTaskCategoryBatchSize)
 	}
 	for _, id := range taskIDs {
 		if id <= 0 {
-			return nil, nil, locale.Errorf("%w: task id must be positive", ErrTaskCategoryInvalid)
+			return nil, nil, fmt.Errorf("%w: task id must be positive", ErrTaskCategoryInvalid)
 		}
 	}
 	if categoryID != nil && *categoryID <= 0 {
-		return nil, nil, locale.Errorf("%w: category id must be positive", ErrTaskCategoryInvalid)
+		return nil, nil, fmt.Errorf("%w: category id must be positive", ErrTaskCategoryInvalid)
 	}
 	tx, err := d.Begin()
 	if err != nil {

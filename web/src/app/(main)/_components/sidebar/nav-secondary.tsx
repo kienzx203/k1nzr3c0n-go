@@ -1,5 +1,4 @@
 "use client";
-import { useI18n } from "@/i18n";
 
 import type * as React from "react";
 
@@ -23,9 +22,6 @@ export function NavSecondary({
     icon: LucideIcon;
   }[];
 } & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
-  "use no memo";
-  const { locale: swLocale } = useI18n();
-
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>

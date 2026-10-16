@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -48,14 +48,14 @@ WHERE archive.id=$1 FOR UPDATE OF archive,task`, archiveID).Scan(&taskID, &expID
 		return err
 	}
 	if state != Archiving || taskID != snapshot.TaskID || expID != snapshot.ExplorationID {
-		return locale.Errorf("%w: archive snapshot identity/state mismatch", ErrTaskArchiveState)
+		return fmt.Errorf("%w: archive snapshot identity/state mismatch", ErrTaskArchiveState)
 	}
 	var dependent int64
 	err = tx.QueryRow(`SELECT child.id FROM task_relations relation
 JOIN tasks child ON child.id=relation.task_id AND child.deleted_at IS NULL
 WHERE relation.source_task_id=$1 LIMIT 1`, taskID).Scan(&dependent)
 	if err == nil {
-		return locale.Errorf("%w: task %d", ErrTaskArchiveDependent, dependent)
+		return fmt.Errorf("%w: task %d", ErrTaskArchiveDependent, dependent)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err
@@ -153,7 +153,7 @@ func (d *DB) RestoreTaskArchiveWithLLMRecords(
 	llmRecords io.Reader,
 ) ([]string, error) {
 	if llmRecords == nil {
-		return nil, locale.NewError("nil streamed LLM record reader")
+		return nil, errors.New("nil streamed LLM record reader")
 	}
 	return d.restoreTaskArchive(archiveID, snapshot, remainingTimeoutSeconds, llmRecords)
 }
@@ -171,10 +171,10 @@ func (d *DB) restoreTaskArchive(
 	if (len(snapshot.StreamedTables) > 0 && snapshot.FormatVersion < 2) ||
 		len(snapshot.StreamedTables) > 1 ||
 		(len(snapshot.StreamedTables) == 1 && streamedLLMRecords != TaskArchiveLLMRecordsPath) {
-		return nil, locale.Errorf("%w: unsupported streamed table metadata", ErrTaskArchiveFormatMismatch)
+		return nil, fmt.Errorf("%w: unsupported streamed table metadata", ErrTaskArchiveFormatMismatch)
 	}
 	if streamedLLMRecords != "" && llmRecords == nil {
-		return nil, locale.Errorf("%w: streamed LLM records are missing", ErrTaskArchiveFormatMismatch)
+		return nil, fmt.Errorf("%w: streamed LLM records are missing", ErrTaskArchiveFormatMismatch)
 	}
 	tx, err := d.Begin()
 	if err != nil {
@@ -192,7 +192,7 @@ WHERE archive.id=$1 FOR UPDATE OF archive,task`, archiveID).Scan(&taskID, &expID
 		return nil, err
 	}
 	if state != Restoring || taskID != snapshot.TaskID || expID != snapshot.ExplorationID {
-		return nil, locale.Errorf("%w: restore snapshot identity/state mismatch", ErrTaskArchiveState)
+		return nil, fmt.Errorf("%w: restore snapshot identity/state mismatch", ErrTaskArchiveState)
 	}
 	warnings := []string{}
 	assetMap, assetWarnings, err := restoreArchiveAssets(tx, taskID, snapshot.Tables["assets"])
@@ -205,24 +205,24 @@ WHERE archive.id=$1 FOR UPDATE OF archive,task`, archiveID).Scan(&taskID, &expID
 	// when the current instance still owns them; never recreate categories/profiles.
 	taskRows, err := decodeArchiveRows(snapshot.Tables["tasks"])
 	if err != nil || len(taskRows) != 1 {
-		return nil, locale.Errorf("restore task row: expected one row: %w", err)
+		return nil, fmt.Errorf("restore task row: expected one row: %w", err)
 	}
 	taskRow := taskRows[0]
 	categoryID, _ := jsonInt64(taskRow["category_id"])
 	if categoryID > 0 && !rowExists(tx, "task_categories", categoryID) {
 		taskRow["category_id"] = nil
-		warnings = append(warnings, locale.Text(locale.ServerDefault(), "Task category %d was deleted; restored as uncategorized", categoryID))
+		warnings = append(warnings, fmt.Sprintf("任务分类 %d 已删除，已恢复为未分类", categoryID))
 	}
 	companyID, _ := jsonInt64(taskRow["company_id"])
 	if companyID > 0 && !rowExists(tx, "companies", companyID) {
 		taskRow["company_id"] = nil
-		warnings = append(warnings, locale.Text(locale.ServerDefault(), "Task company %d was deleted; company link skipped", companyID))
+		warnings = append(warnings, fmt.Sprintf("任务企业 %d 已删除，企业关联已跳过", companyID))
 	}
 	for _, key := range []string{"llm_profile_id", "active_llm_profile_id"} {
 		profileID, _ := jsonInt64(taskRow[key])
 		if profileID > 0 && !rowExists(tx, "llm_profiles", profileID) {
 			taskRow[key] = nil
-			warnings = append(warnings, locale.Text(locale.ServerDefault(), "LLM profile %d was deleted and removed from task configuration", profileID))
+			warnings = append(warnings, fmt.Sprintf("LLM 配置 %d 已删除，已从任务配置中移除", profileID))
 		}
 	}
 	if err := restoreExplorationStub(tx, snapshot.Tables["explorations"], expID); err != nil {
@@ -244,7 +244,7 @@ WHERE archive.id=$1 FOR UPDATE OF archive,task`, archiveID).Scan(&taskID, &expID
 	// so an ID conflict signals external corruption and must stop the restore.
 	for _, table := range []string{"exploration_nodes", "exploration_edges", "exploration_anchors", "task_constraints", "activity"} {
 		if err := insertArchiveRows(tx, table, remappedTables[table]); err != nil {
-			return nil, locale.Errorf("restore %s: %w", table, err)
+			return nil, fmt.Errorf("restore %s: %w", table, err)
 		}
 	}
 	if warning, err := restoreTaskRelations(tx, taskID, remappedTables["task_relations"]); err != nil {
@@ -254,7 +254,7 @@ WHERE archive.id=$1 FOR UPDATE OF archive,task`, archiveID).Scan(&taskID, &expID
 	}
 	for _, table := range []string{"side_question_sessions", "side_question_requests"} {
 		if err := insertArchiveRows(tx, table, remappedTables[table]); err != nil {
-			return nil, locale.Errorf("restore %s: %w", table, err)
+			return nil, fmt.Errorf("restore %s: %w", table, err)
 		}
 	}
 	if warning, err := restoreTaskScopes(tx, remappedTables["task_scope"]); err != nil {
@@ -269,26 +269,26 @@ WHERE archive.id=$1 FOR UPDATE OF archive,task`, archiveID).Scan(&taskID, &expID
 	}
 	for _, table := range []string{"task_asset_links", "findings"} {
 		if err := insertArchiveRows(tx, table, remappedTables[table]); err != nil {
-			return nil, locale.Errorf("restore %s: %w", table, err)
+			return nil, fmt.Errorf("restore %s: %w", table, err)
 		}
 	}
 	if err := restoreFindingTrafficTx(tx, snapshot); err != nil {
-		return nil, locale.Errorf("restore finding traffic: %w", err)
+		return nil, fmt.Errorf("restore finding traffic: %w", err)
 	}
 	if streamedLLMRecords != "" {
 		count, err := insertArchiveJSONSequenceRows(tx, "llm_records", llmRecords)
 		if err != nil {
-			return nil, locale.Errorf("restore llm_records: %w", err)
+			return nil, fmt.Errorf("restore llm_records: %w", err)
 		}
 		if expected := snapshot.DataCounts["llm_records"]; count != expected {
-			return nil, locale.Errorf("restore llm_records: row count %d does not match manifest %d", count, expected)
+			return nil, fmt.Errorf("restore llm_records: row count %d does not match manifest %d", count, expected)
 		}
 	} else if err := insertArchiveRows(tx, "llm_records", remappedTables["llm_records"]); err != nil {
-		return nil, locale.Errorf("restore llm_records: %w", err)
+		return nil, fmt.Errorf("restore llm_records: %w", err)
 	}
 	for _, table := range []string{"llm_usage", "skill_usage", "tool_usage"} {
 		if err := insertArchiveRows(tx, table, remappedTables[table]); err != nil {
-			return nil, locale.Errorf("restore %s: %w", table, err)
+			return nil, fmt.Errorf("restore %s: %w", table, err)
 		}
 	}
 	if err := restoreInterceptRows(tx, remappedTables["intercept_pending"]); err != nil {
@@ -391,7 +391,7 @@ func insertArchiveRows(tx *sql.Tx, table string, raw json.RawMessage) error {
 		"side_question_sessions": true, "side_question_requests": true,
 	}
 	if !allowed[table] {
-		return locale.Errorf("archive restore table %q is not allowed", table)
+		return fmt.Errorf("archive restore table %q is not allowed", table)
 	}
 	if rawRowCount(raw) == 0 {
 		return nil
@@ -402,7 +402,7 @@ func insertArchiveRows(tx *sql.Tx, table string, raw json.RawMessage) error {
 
 func insertArchiveJSONSequenceRows(tx *sql.Tx, table string, reader io.Reader) (int64, error) {
 	if table != "llm_records" {
-		return 0, locale.Errorf("archive streamed restore table %q is not allowed", table)
+		return 0, fmt.Errorf("archive streamed restore table %q is not allowed", table)
 	}
 	statement, err := tx.Prepare(`INSERT INTO llm_records SELECT * FROM json_populate_record(NULL::llm_records,$1::json)`)
 	if err != nil {
@@ -420,7 +420,7 @@ func insertArchiveJSONSequenceRows(tx *sql.Tx, table string, reader io.Reader) (
 		}
 		trimmed := bytes.TrimSpace(raw)
 		if len(trimmed) == 0 || trimmed[0] != '{' {
-			return 0, locale.NewError("streamed archive row must be a JSON object")
+			return 0, errors.New("streamed archive row must be a JSON object")
 		}
 		if _, err := statement.Exec(string(trimmed)); err != nil {
 			return 0, err
@@ -440,12 +440,12 @@ func restoreArchiveAssets(tx *sql.Tx, taskID int64, raw json.RawMessage) (map[in
 	for _, row := range rows {
 		oldID, ok := jsonInt64(row["id"])
 		if !ok || oldID <= 0 {
-			return nil, nil, locale.NewError("archived asset has invalid id")
+			return nil, nil, errors.New("archived asset has invalid id")
 		}
 		if companyID, ok := jsonInt64(row["company_id"]); ok && companyID > 0 && !rowExists(tx, "companies", companyID) {
 			row["company_id"] = nil
 			row["company_source"] = "explicit"
-			warnings = append(warnings, locale.Text(locale.ServerDefault(), "Company for asset %d (company %d) was deleted; restored without company ownership", oldID, companyID))
+			warnings = append(warnings, fmt.Sprintf("资产 %d 的企业 %d 已删除，已恢复为未归属", oldID, companyID))
 		}
 		if existing, found, err := findArchiveAssetNaturalID(tx, row); err != nil {
 			return nil, nil, err
@@ -462,7 +462,7 @@ func restoreArchiveAssets(tx *sql.Tx, taskID int64, raw json.RawMessage) (map[in
 				return nil, nil, err
 			}
 			row["id"] = candidate
-			warnings = append(warnings, locale.Text(locale.ServerDefault(), "Asset ID %d is occupied; restored as %d", oldID, candidate))
+			warnings = append(warnings, fmt.Sprintf("资产 ID %d 已被占用，恢复为 %d", oldID, candidate))
 		}
 		row["task_ids"] = mergeJSONTaskID(row["task_ids"], taskID)
 		assetRaw, _ := json.Marshal(row)
@@ -474,7 +474,7 @@ func restoreArchiveAssets(tx *sql.Tx, taskID int64, raw json.RawMessage) (map[in
 		if inserted == 0 {
 			existing, found, findErr := findArchiveAssetNaturalID(tx, row)
 			if findErr != nil || !found {
-				return nil, nil, errors.Join(findErr, locale.Errorf("could not restore asset %d", oldID))
+				return nil, nil, errors.Join(findErr, fmt.Errorf("could not restore asset %d", oldID))
 			}
 			candidate = existing
 			if _, err := tx.Exec(`UPDATE assets SET task_ids=CASE WHEN $1=ANY(task_ids) THEN task_ids ELSE array_append(task_ids,$1) END WHERE id=$2`, taskID, existing); err != nil {
@@ -534,7 +534,7 @@ func findArchiveAssetNaturalID(tx *sql.Tx, row map[string]any) (int64, bool, err
 	case "endpoint":
 		query, args = `SELECT id FROM assets WHERE type='endpoint' AND url=$1 AND method=$2`, []any{stringValue("url"), stringValue("method")}
 	default:
-		return 0, false, locale.Errorf("unsupported archived asset type %q", typeName)
+		return 0, false, fmt.Errorf("unsupported archived asset type %q", typeName)
 	}
 	var id int64
 	err := tx.QueryRow(query, args...).Scan(&id)
@@ -603,7 +603,7 @@ func restoreTaskRelations(tx *sql.Tx, taskID int64, raw json.RawMessage) ([]stri
 	for _, row := range rows {
 		sourceID, ok := jsonInt64(row["source_task_id"])
 		if !ok || !liveTaskExists(tx, sourceID) {
-			warnings = append(warnings, locale.Text(locale.ServerDefault(), "Source task %d is unavailable; inheritance link skipped", sourceID))
+			warnings = append(warnings, fmt.Sprintf("来源任务 %d 不可用，继承关系已跳过", sourceID))
 			continue
 		}
 		created, _ := row["created_at"].(string)
@@ -623,7 +623,7 @@ func restoreTaskScopes(tx *sql.Tx, raw json.RawMessage) ([]string, error) {
 	kept := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		if companyID, ok := jsonInt64(row["company_id"]); ok && companyID > 0 && !rowExists(tx, "companies", companyID) {
-			warnings = append(warnings, locale.Text(locale.ServerDefault(), "Company %d was deleted; linked scope skipped", companyID))
+			warnings = append(warnings, fmt.Sprintf("企业 %d 已删除，关联范围已跳过", companyID))
 			continue
 		}
 		kept = append(kept, row)
@@ -646,7 +646,7 @@ func restoreTaskLLMProfiles(tx *sql.Tx, raw json.RawMessage) ([]string, error) {
 	for _, row := range rows {
 		profileID, ok := jsonInt64(row["profile_id"])
 		if !ok || !rowExists(tx, "llm_profiles", profileID) {
-			warnings = append(warnings, locale.Text(locale.ServerDefault(), "LLM profile %d was deleted; chain entry skipped", profileID))
+			warnings = append(warnings, fmt.Sprintf("LLM 配置 %d 已删除，配置链项已跳过", profileID))
 			continue
 		}
 		taskID, _ := jsonInt64(row["task_id"])
@@ -677,18 +677,18 @@ func restoreInterceptRows(tx *sql.Tx, raw json.RawMessage) error {
 			source = "unknown"
 			if row["rule_id"] != nil {
 				source = "rule"
-			} else if reason, _ := row["reason"].(string); isModelInterceptReason(reason) {
+			} else if reason, _ := row["reason"].(string); strings.HasPrefix(reason, "[模型]") {
 				source = "model"
 			}
 			row["decision_source"] = source
 		}
 		if status, _ := row["status"].(string); status == "pending" {
 			row["status"] = "timeout"
-			row["reason"] = "Approval timed out while the task was archived"
+			row["reason"] = "任务归档期间审批已超时"
 			row["decided_at"] = time.Now().UTC()
 			if audit, ok := row["audit"].(map[string]any); ok {
 				audit["effective_action"] = "deny"
-				audit["decision_reason"] = "Approval timed out while the task was archived"
+				audit["decision_reason"] = "任务归档期间审批已超时"
 				audit["execution_status"] = "not_executed"
 			}
 		} else if audit, ok := row["audit"].(map[string]any); ok && audit["execution_status"] == "awaiting_result" {
@@ -756,7 +756,7 @@ WHERE archive.id=$1 FOR UPDATE OF archive,task`, archiveID).Scan(&taskID, &expID
 	var dependent int64
 	err = tx.QueryRow(`SELECT task_id FROM task_archives WHERE id<>$1 AND $2=ANY(source_task_ids) LIMIT 1`, archiveID, taskID).Scan(&dependent)
 	if err == nil {
-		return locale.Errorf("%w: task %d", ErrTaskArchiveDeleteBlocked, dependent)
+		return fmt.Errorf("%w: task %d", ErrTaskArchiveDeleteBlocked, dependent)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err

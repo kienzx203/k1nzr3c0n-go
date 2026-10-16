@@ -6,9 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -17,13 +14,10 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode"
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/locale"
 	"github.com/Autumn-27/artex/traffic"
-	actool "github.com/Autumn-27/norma/tool"
 )
 
 func trafficEvidenceServer(t *testing.T) (*Server, *db.RecordedFinding, func(string, string, string) *httptest.ResponseRecorder) {
@@ -358,7 +352,7 @@ func TestFindingTrafficArchiveV3RoundTripAndRetry(t *testing.T) {
 	}
 	// The read tool enforces task visibility too.
 	result, err := s.toolGetFindingTraffic().Call(agent.WithRunInfo(ctx, agent.RunInfo{TaskID: sid}), json.RawMessage(fmt.Sprintf(`{"finding_id":"%d"}`, f.FindingID)), nil)
-	if err != nil || !strings.Contains(result.Flatten(), "cannot read") {
+	if err != nil || !strings.Contains(result.Flatten(), "不可读取") {
 		t.Fatal(result, err)
 	}
 }
@@ -479,145 +473,4 @@ func TestFindingTrafficUTF8SegmentsAndInheritedWrites(t *testing.T) {
 			t.Fatal("export omitted evidence ID", format)
 		}
 	}
-}
-
-func TestFindingToolLanguagesPreserveSchemaAndCanonicalDefaults(t *testing.T) {
-	old := locale.ServerDefault()
-	defer locale.SetServerDefault(old)
-	locale.SetServerDefault(locale.Ko)
-	s := &Server{}
-	en := append([]actool.CoreTool{s.toolGetFindingTraffic(), s.toolBindFindingTraffic()}, s.findingRetestTools()...)
-	ko := append([]actool.CoreTool{s.toolGetFindingTraffic(locale.Ko), s.toolBindFindingTraffic(locale.Ko)}, s.findingRetestTools(locale.Ko)...)
-	for i, tool := range en {
-		translated := ko[i]
-		if tool.Name() != translated.Name() {
-			t.Fatal("Tool machine name changed")
-		}
-		if strings.ContainsFunc(tool.Description(), func(r rune) bool { return unicode.Is(unicode.Hangul, r) }) {
-			t.Fatalf("Default seed metadata is not English: %s", tool.Name())
-		}
-		if !strings.ContainsFunc(translated.Description(), func(r rune) bool { return unicode.Is(unicode.Hangul, r) }) {
-			t.Fatalf("Missing Korean tool metadata: %s", tool.Name())
-		}
-		left, right := tool.InputSchema(), translated.InputSchema()
-		a, _ := json.Marshal(left["required"])
-		b, _ := json.Marshal(right["required"])
-		if !bytes.Equal(a, b) {
-			t.Fatalf("Required fields changed for %s", tool.Name())
-		}
-		lp, _ := left["properties"].(map[string]any)
-		rp, _ := right["properties"].(map[string]any)
-		if len(lp) != len(rp) {
-			t.Fatalf("Schema keys changed for %s", tool.Name())
-		}
-		for key := range lp {
-			if _, ok := rp[key]; !ok {
-				t.Fatalf("Lost machine key %s", key)
-			}
-		}
-	}
-	// Metadata language must not override an individual run's output preference.
-	result, err := s.toolGetFindingTraffic(locale.En).Call(locale.WithLang(context.Background(), locale.Ko), json.RawMessage(`{"finding_id":0}`), nil)
-	if err != nil || !result.IsError || !strings.Contains(result.Flatten(), "독립 취약점 레코드 ID") {
-		t.Fatalf("Tool callback ignored run locale: %s %v", result.Flatten(), err)
-	}
-}
-
-func TestFindingLocalizedEvidencePreservesRawBytes(t *testing.T) {
-	s, f, req := trafficEvidenceServer(t)
-	binary := []byte{0, 255, 12, 13, 65, 66}
-	text := []byte("New conversation: raw evidence stays unchanged")
-	seedServerEvidenceFlow(t, s, "localized-binary", binary)
-	seedServerEvidenceFlow(t, s, "localized-text", text)
-	list, err := s.evidenceStore().Bind(context.Background(), f.FindingID, []db.TrafficRef{{TrafficID: "localized-binary"}, {TrafficID: "localized-text"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, lang := range []locale.Lang{locale.En, locale.Ko} {
-		for i, raw := range [][]byte{binary, text} {
-			binding := list.Bindings[i]
-			preview, err := readEvidencePreview(s.evidenceStore(), binding.Snapshot, "response", 0, 8192, lang)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if i == 0 {
-				label := "Binary body"
-				if lang == locale.Ko {
-					label = "바이너리 본문"
-				}
-				if !preview.Binary || !strings.Contains(preview.Content, label) {
-					t.Fatalf("Binary preview language mismatch: %+v", preview)
-				}
-			} else if preview.Binary || preview.Content != string(raw) {
-				t.Fatalf("Raw text evidence changed: %+v", preview)
-			}
-			path := fmt.Sprintf("/api/exploration/findings/%d/traffic/%d/body?side=response&download=1&lang=%s", f.FindingID, binding.ID, lang)
-			response := req("GET", path, "")
-			if response.Code != 200 || !bytes.Equal(response.Body.Bytes(), raw) {
-				t.Fatalf("%s download changed evidence bytes: %d %q", lang, response.Code, response.Body.Bytes())
-			}
-		}
-	}
-	bad := req("GET", fmt.Sprintf("/api/exploration/findings/%d/traffic/%d/body?side=response&offset=-1&lang=ko", f.FindingID, list.Bindings[0].ID), "")
-	if bad.Code != 422 || !strings.Contains(bad.Body.String(), "음수일 수 없습니다") {
-		t.Fatalf("Localized preview validation: %d %s", bad.Code, bad.Body)
-	}
-}
-
-func TestFindingCatalogCoverage(t *testing.T) {
-	paths, err := filepath.Glob("finding*.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	seen := map[string]bool{}
-	for _, path := range paths {
-		if strings.HasSuffix(path, "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			pkg, ok := sel.X.(*ast.Ident)
-			if !ok || pkg.Name != "locale" {
-				return true
-			}
-			index := 0
-			switch sel.Sel.Name {
-			case "Text":
-				index = 1
-			case "Errorf", "NewError":
-			default:
-				return true
-			}
-			lit, ok := call.Args[index].(*ast.BasicLit)
-			if !ok {
-				return true
-			}
-			key, err := strconv.Unquote(lit.Value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			seen[key] = true
-			en, ok := locale.Lookup(locale.En, key)
-			if !ok || en != key {
-				t.Errorf("Missing English template %q", key)
-			}
-			ko, ok := locale.Lookup(locale.Ko, key)
-			if !ok || !strings.ContainsFunc(ko, func(r rune) bool { return unicode.Is(unicode.Hangul, r) }) {
-				t.Errorf("Missing Korean template %q", key)
-			}
-			return true
-		})
-	}
-	t.Logf("Verified %d finding templates", len(seen))
 }

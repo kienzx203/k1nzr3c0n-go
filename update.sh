@@ -1,45 +1,82 @@
 #!/usr/bin/env bash
-# ScopeWeaver update: rebuild the local Docker image or native binary.
-# Startup applies the idempotent database schema. Back up data before upgrading.
+# ARTEX 更新脚本：① Docker 更新（拉新镜像重建）  ② 本地编译更新（重建二进制）
+# 与 install.sh 对应：install 负责首次落地，update 负责升级到新版本。
+# DB 迁移无需手动执行——artex 每次启动都会幂等重跑 schema.sql（含 ADD COLUMN/CREATE
+# INDEX IF NOT EXISTS），所以“重启即迁移”。数据（pgdata 卷、./data、./skills）不受影响。
 set -euo pipefail
 cd "$(cd "$(dirname "$0")" && pwd)"
-LANG_SEL="${SCOPEWEAVER_LANGUAGE:-${ARTEX_LANGUAGE:-en}}"
-case "$LANG_SEL" in ko|ko_*|ko-*|KO) LANG_SEL=ko ;; *) LANG_SEL=en ;; esac
-msg(){ if [ "$LANG_SEL" = ko ]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
-info(){ printf '%s\n' "$*"; }
-die(){ printf '%s\n' "$*" >&2; exit 1; }
-ask(){ local p="$1" d="${2:-}" a; read -rp "$p${d:+ [$d]}: " a; echo "${a:-$d}"; }
+
+info(){ printf '\033[36m[*]\033[0m %s\n' "$*"; }
+ok(){   printf '\033[32m[+]\033[0m %s\n' "$*"; }
+warn(){ printf '\033[33m[!]\033[0m %s\n' "$*"; }
+die(){  printf '\033[31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
+ask(){  local p="$1" d="${2:-}" a; read -rp "$p${d:+ [$d]}: " a; echo "${a:-$d}"; }
+
+# ── 可选：同步仓库到最新代码（compose/脚本/本地编译源码都靠它更新）───────
 sync_repo(){
-  [ -d .git ] && command -v git >/dev/null 2>&1 || { info "$(msg 'Not a Git checkout; using current files' 'Git 작업 사본이 아니므로 현재 파일을 사용합니다')"; return; }
-  [ "$(ask "$(msg 'Fetch current code with git pull --ff-only? (y/n)' 'git pull --ff-only로 최신 코드를 가져올까요? (y/n)')" y)" = y ] || return
-  git pull --ff-only || die "$(msg 'Git cannot fast-forward. Resolve local changes or divergent history, then retry.' 'Git fast-forward 실패. 로컬 변경 또는 분기된 기록을 정리한 뒤 다시 시도하세요.')"
-}
-update_docker(){
-  command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 || die "$(msg 'Install Docker and Docker Compose first' 'Docker와 Docker Compose를 먼저 설치하세요')"
-  [ -f .env ] || die "$(msg 'Missing .env; run ./install.sh first' '.env가 없습니다. ./install.sh를 먼저 실행하세요')"
-  info "$(msg 'Building ScopeWeaver from this checkout…' '현재 소스로 ScopeWeaver를 빌드합니다…')"
-  docker compose build scopeweaver
-  docker compose up -d scopeweaver
-  info "$(msg 'Updated: http://localhost:8787. Logs: docker compose logs -f scopeweaver' '업데이트 완료: http://localhost:8787. 로그: docker compose logs -f scopeweaver')"
-}
-update_local(){
-  command -v go >/dev/null 2>&1 || die "$(msg 'Go 1.26 or later required: https://go.dev/dl/' 'Go 1.26 이상 필요: https://go.dev/dl/')"
-  if command -v npm >/dev/null 2>&1; then
-    (cd web && npm ci && npm run build:static)
-    mkdir -p server/webui/dist
-    cp -R web/out/. server/webui/dist/
-    CGO_ENABLED=0 go build -tags embedui -trimpath -o scopeweaver ./cmd/artex
-  else
-    info "$(msg 'npm unavailable: building backend only; run the frontend separately' 'npm이 없어 백엔드만 빌드합니다. 프런트엔드는 별도로 실행하세요')"
-    CGO_ENABLED=0 go build -o scopeweaver ./cmd/artex
+  [ -d .git ] && command -v git >/dev/null 2>&1 || { warn "非 git 工作副本，跳过 git pull"; return; }
+  [ "$(ask '拉取最新代码 (git pull --ff-only)? (y/n)' y)" = y ] || return
+  if ! git pull --ff-only; then
+    warn "git pull 未能快进（本地有改动或分支分叉）——请手动处理后重试，本次沿用当前代码"
   fi
-  info "$(msg 'Built ./scopeweaver. Restart the running process to apply the update.' './scopeweaver 빌드 완료. 실행 중인 프로세스를 재시작하여 적용하세요.')"
 }
-echo "ScopeWeaver"
-echo "1) $(msg 'Rebuild Docker deployment' 'Docker 배포 다시 빌드')"
-echo "2) $(msg 'Rebuild local binary' '로컬 바이너리 다시 빌드')"
-case "$(ask "$(msg 'Choose' '선택')" 1)" in
+
+# ── ① Docker 更新 ───────────────────────────────
+update_docker(){
+  command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 \
+    || die "未检测到 docker / docker compose，请先用 ./install.sh 安装部署"
+  [ -f .env ] || die "未找到 .env，请先运行 ./install.sh 完成首次部署"
+
+  # 可选：升级到指定版本 tag（不填则沿用 .env 中的 ARTEX_TAG，缺省为 latest）
+  local tag; tag="$(ask '目标镜像 tag（回车沿用 .env / latest）' '')"
+  if [ -n "$tag" ]; then
+    if grep -q '^ARTEX_TAG=' .env; then
+      sed -i.bak "s|^ARTEX_TAG=.*|ARTEX_TAG=${tag}|" .env && rm -f .env.bak
+    else
+      printf '\nARTEX_TAG=%s\n' "$tag" >> .env
+    fi
+    ok "已将 ARTEX_TAG 设为 ${tag}"
+  fi
+
+  # 只动 artex：postgres 是固定的 16-alpine，不需要跟着升级（拉它纯属浪费带宽，
+  # 且大版本变动还会有兼容风险）。artex 声明了 depends_on postgres，所以带服务名
+  # up 时若 pg 没起会自动拉起，已在跑的则原样保留、不重建。
+  info "拉取新镜像（仅 artex）…"
+  docker compose pull artex
+  info "重建并启动（artex 重启时自动迁移 schema）…"
+  docker compose up -d artex
+  ok "更新完成 → http://localhost:8787"
+  info "查看日志：docker compose logs -f artex"
+  info "清理旧镜像（可选）：docker image prune -f"
+}
+
+# ── ② 本地编译更新 ──────────────────────────────
+update_local(){
+  command -v go >/dev/null 2>&1 || die "未检测到 Go（>=1.26）：https://go.dev/dl/"
+  [ -f config.json ] || warn "未找到 config.json——若首次部署请改用 ./install.sh"
+  ok "Go: $(go version)"
+
+  if command -v npm >/dev/null 2>&1; then
+    info "重建前端静态产物…"
+    ( cd web && npm ci && npm run build:static )
+    rm -rf server/webui/dist && cp -r web/out server/webui/dist
+    info "重新编译内嵌单二进制…"
+    CGO_ENABLED=0 go build -tags embedui -trimpath -o artex ./cmd/artex
+  else
+    warn "未检测到 npm：编译**不内嵌前端**的后端（前端需另跑 npm run dev）"
+    CGO_ENABLED=0 go build -o artex ./cmd/artex
+  fi
+  ok "编译完成 → ./artex"
+  warn "请重启正在运行的 artex 进程以生效（重启时会自动迁移 schema）"
+}
+
+echo "=============================="
+echo "  ARTEX 更新"
+echo "  1) Docker 更新（拉新镜像重建）"
+echo "  2) 本地更新（go 重新编译）"
+echo "=============================="
+case "$(ask '选择' 1)" in
   1) sync_repo; update_docker ;;
   2) sync_repo; update_local ;;
-  *) die "$(msg 'Invalid choice' '잘못된 선택')" ;;
+  *) die "无效选择" ;;
 esac

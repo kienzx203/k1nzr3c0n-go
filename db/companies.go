@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/Autumn-27/artex/locale"
 	"log"
 	"net"
 	"strings"
@@ -12,7 +11,7 @@ import (
 )
 
 // =====================================================================
-// Company entity layer.
+// 公司主体层
 // =====================================================================
 
 // Company is a row in the companies table.
@@ -48,13 +47,13 @@ type ScopeRule struct {
 type CompanyStore struct{ db *DB }
 
 var (
-	ErrCompanyNameConflict = locale.NewError("company name already exists")
-	ErrCompanyNotFound     = locale.NewError("company not found")
+	ErrCompanyNameConflict = errors.New("company name already exists")
+	ErrCompanyNotFound     = errors.New("company not found")
 )
 
 const (
-	// Company scope has no rule-count limit: individual IP/domain entries can number in the thousands,
-	// and a cap would force users to split companies. The server's maxCompanyMutationBodyBytes still bounds requests.
+	// 企业范围不限制规则条数:逐个 IP / 域名录入的范围动辄上千条,封顶只会逼用户
+	// 拆成多个企业。请求体大小(server 侧 maxCompanyMutationBodyBytes)仍然兜底。
 	//
 	// Raw and normalized textual scope payloads are bounded by Unicode rune
 	// count so multi-byte input is treated consistently by the API and DB layer.
@@ -64,35 +63,19 @@ const (
 
 // CompanyScopeValidationError identifies a client-correctable scope error.
 // Storage and transaction failures are returned as ordinary errors instead.
-type CompanyScopeValidationError struct {
-	Message string
-	cause   error
-}
-
-func newCompanyScopeValidationError(template string, args ...any) *CompanyScopeValidationError {
-	cause := locale.Errorf(template, args...)
-	return &CompanyScopeValidationError{Message: cause.Error(), cause: cause}
-}
-
-// MessageForLanguage renders only the retained built-in template and raw arguments.
-func (e *CompanyScopeValidationError) MessageForLanguage(lang locale.Lang) string {
-	if e.cause == nil {
-		return e.Message
-	}
-	return locale.ErrorMessage(lang, e.cause)
-}
+type CompanyScopeValidationError struct{ Message string }
 
 func (e *CompanyScopeValidationError) Error() string { return e.Message }
 
 // ValidateCompanyScopeInputBounds applies request-wide limits before parsing.
 // Store methods call it again so non-HTTP callers cannot bypass the limits.
-// Limit each rule's length, not the number of rules.
+// 只约束单条规则的长度,不限制条数。
 func ValidateCompanyScopeInputBounds(inputs []ScopeInput) error {
 	for i, input := range inputs {
 		if utf8.RuneCountInString(input.Value) > MaxCompanyScopeRawRunes {
-			return newCompanyScopeValidationError(
-				"Company scope rule %d has an input value longer than %d characters", i+1, MaxCompanyScopeRawRunes,
-			)
+			return &CompanyScopeValidationError{Message: fmt.Sprintf(
+				"企业范围第 %d 条原始值过长: 最多 %d 个字符", i+1, MaxCompanyScopeRawRunes,
+			)}
 		}
 	}
 	return nil
@@ -389,7 +372,7 @@ func (s *CompanyStore) AddScopeInputsChecked(companyID int64, inputs []ScopeInpu
 	if needsAttribution {
 		warning, err := recomputeAttributionTx(tx)
 		if err != nil {
-			return 0, 0, invalid, errors, locale.Errorf("Recalculate company ownership: %w", err)
+			return 0, 0, invalid, errors, fmt.Errorf("重新计算企业归属失败: %w", err)
 		}
 		logAttributionWarning(warning)
 	}
@@ -405,7 +388,7 @@ func parseScopeInputs(inputs []ScopeInput) (rules []ParsedScope, invalid int, va
 		rule, err := ParseScopeInput(input)
 		if err != nil {
 			invalid++
-			validationErrors = append(validationErrors, fmt.Sprintf("%s: %s", input.Value, locale.ErrorMessage(locale.ServerDefault(), err)))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: %v", input.Value, err))
 			continue
 		}
 		rules = append(rules, rule)
@@ -416,14 +399,14 @@ func parseScopeInputs(inputs []ScopeInput) (rules []ParsedScope, invalid int, va
 func validateParsedScopeBounds(rules []ParsedScope) error {
 	for i, rule := range rules {
 		if utf8.RuneCountInString(rule.Raw) > MaxCompanyScopeRawRunes {
-			return newCompanyScopeValidationError(
-				"Company scope rule %d has an input value longer than %d characters", i+1, MaxCompanyScopeRawRunes,
-			)
+			return &CompanyScopeValidationError{Message: fmt.Sprintf(
+				"企业范围第 %d 条原始值过长: 最多 %d 个字符", i+1, MaxCompanyScopeRawRunes,
+			)}
 		}
 		if utf8.RuneCountInString(rule.Value) > MaxCompanyScopeValueRunes {
-			return newCompanyScopeValidationError(
-				"Company scope rule %d has a normalized value longer than %d characters", i+1, MaxCompanyScopeValueRunes,
-			)
+			return &CompanyScopeValidationError{Message: fmt.Sprintf(
+				"企业范围第 %d 条规范化值过长: 最多 %d 个字符", i+1, MaxCompanyScopeValueRunes,
+			)}
 		}
 	}
 	return nil
@@ -487,7 +470,7 @@ VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (company_id, kind, value) WHERE kind IN ('icp','keyword') DO NOTHING`,
 			companyID, rule.Kind, rule.Value, rule.Raw, reason)
 	default:
-		return false, locale.Errorf("unsupported company scope kind %q", rule.Kind)
+		return false, fmt.Errorf("unsupported company scope kind %q", rule.Kind)
 	}
 	if err != nil {
 		return false, err
@@ -648,12 +631,12 @@ LIMIT $1`, malformedIPAssetsSampled)
 	if total == 0 {
 		return "", nil
 	}
-	warning := locale.Text(locale.ServerDefault(),
-		"%d assets have invalid IP fields and were skipped for IP/CIDR scope matching (network rules will not assign these assets to a company): %s",
-		total, strings.Join(samples, ", "),
+	warning := fmt.Sprintf(
+		"%d 条资产的 ip 字段不是合法 IP，已跳过 IP/CIDR 范围匹配（这些资产不会被网段规则归属到企业）：%s",
+		total, strings.Join(samples, "、"),
 	)
 	if total > len(samples) {
-		warning += locale.Text(locale.ServerDefault(), " and %d more", total)
+		warning += fmt.Sprintf(" 等 %d 条", total)
 	}
 	return warning, nil
 }
@@ -686,9 +669,9 @@ func (s *CompanyStore) UpdateScopeInputsChecked(companyID int64, inputs []ScopeI
 	}
 	rules, invalid, errs := parseScopeInputs(inputs)
 	if invalid > 0 {
-		return 0, invalid, errs, newCompanyScopeValidationError(
-			"Company scope contains %d invalid rules; the existing scope was preserved", invalid,
-		)
+		return 0, invalid, errs, &CompanyScopeValidationError{Message: fmt.Sprintf(
+			"企业范围包含 %d 条无效规则，未覆盖原有范围", invalid,
+		)}
 	}
 	if err := validateParsedScopeBounds(rules); err != nil {
 		return 0, invalid, errs, err
@@ -715,7 +698,7 @@ func (s *CompanyStore) UpdateScopeInputsChecked(companyID int64, inputs []ScopeI
 	// detach scope-derived assets or expose a lower-precedence company match.
 	warning, err := recomputeAttributionTx(tx)
 	if err != nil {
-		return 0, invalid, errs, locale.Errorf("Recalculate company ownership: %w", err)
+		return 0, invalid, errs, fmt.Errorf("重新计算企业归属失败: %w", err)
 	}
 	logAttributionWarning(warning)
 	if err := tx.Commit(); err != nil {

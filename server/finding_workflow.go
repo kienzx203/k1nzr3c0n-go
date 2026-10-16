@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"strconv"
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/locale"
 	"github.com/Autumn-27/artex/traffic"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -23,7 +24,7 @@ func (s *Server) seedFindingWorkflowTools() {
 			// Log and leave the flag unset so the next startup retries; do not
 			// return, or a transient error here would also skip the reporter
 			// migration below — the two are independent.
-			log.Printf(locale.Text(locale.ServerDefault(), "[evidence] upgrade traffic_search description: %v"), err)
+			log.Printf("[evidence] upgrade traffic_search description: %v", err)
 		} else {
 			_ = s.m.pg.SetSetting(hostSearchDescriptionFlag, "true")
 		}
@@ -35,7 +36,7 @@ func (s *Server) seedFindingWorkflowTools() {
 	for _, key := range []string{"report_finding", "add_hint", "add_task_hint"} {
 		row, err := s.m.pg.GetTool(key)
 		if err != nil {
-			log.Printf(locale.Text(locale.ServerDefault(), "[evidence] load %s: %v"), key, err)
+			log.Printf("[evidence] load %s: %v", key, err)
 			return
 		}
 		if row == nil || !row.System {
@@ -43,21 +44,21 @@ func (s *Server) seedFindingWorkflowTools() {
 		}
 		var schema map[string]any
 		if err := json.Unmarshal(row.Schema, &schema); err != nil {
-			log.Printf(locale.Text(locale.ServerDefault(), "[evidence] invalid schema for %s: %v"), key, err)
+			log.Printf("[evidence] invalid schema for %s: %v", key, err)
 			return
 		}
 		if schema == nil {
-			log.Printf(locale.Text(locale.ServerDefault(), "[evidence] missing object schema for %s"), key)
+			log.Printf("[evidence] missing object schema for %s", key)
 			return
 		}
 		props := objectProperty(schema, "properties")
 		if key == "report_finding" {
 			if _, exists := props["evidence_hint_id"]; !exists {
-				props["evidence_hint_id"] = map[string]any{"type": "integer", "description": locale.Text(locale.En, "Optional hint ID for this finding in the current task; bind its saved traffic_refs as well. Omit when no hint exists.")}
+				props["evidence_hint_id"] = map[string]any{"type": "integer", "description": "可选：本任务中对应此漏洞的 hint ID；读取该提示保存的 traffic_refs 一并绑定，无提示时省略"}
 			}
 		} else {
 			if _, exists := props["traffic_refs"]; !exists {
-				props["traffic_refs"] = agent.HintTrafficSchema(locale.En)
+				props["traffic_refs"] = agent.HintTrafficSchema()
 			}
 			hints := objectProperty(props, "hints")
 			if _, exists := hints["type"]; !exists {
@@ -68,7 +69,7 @@ func (s *Server) seedFindingWorkflowTools() {
 				items["type"] = "object"
 			}
 			itemProps := objectProperty(items, "properties")
-			for name, value := range map[string]any{"text": strParam(locale.Text(locale.En, "Hint text")), "asset_ids": map[string]any{"type": "array", "items": map[string]any{"type": "integer"}}, "traffic_refs": agent.HintTrafficSchema(locale.En)} {
+			for name, value := range map[string]any{"text": strParam("提示内容"), "asset_ids": map[string]any{"type": "array", "items": map[string]any{"type": "integer"}}, "traffic_refs": agent.HintTrafficSchema()} {
 				if _, exists := itemProps[name]; !exists {
 					itemProps[name] = value
 				}
@@ -77,7 +78,7 @@ func (s *Server) seedFindingWorkflowTools() {
 		raw, _ := json.Marshal(schema)
 		result, err := s.m.pg.Exec(`UPDATE tools SET schema=$2::jsonb,updated_at=now() WHERE key=$1 AND system AND schema=$3::jsonb`, key, string(raw), string(row.Schema))
 		if err != nil {
-			log.Printf(locale.Text(locale.ServerDefault(), "[evidence] upgrade %s: %v"), key, err)
+			log.Printf("[evidence] upgrade %s: %v", key, err)
 			return
 		}
 		if n, _ := result.RowsAffected(); n != 1 {
@@ -116,66 +117,56 @@ func objectProperty(parent map[string]any, key string) map[string]any {
 
 func (s *Server) agentFindingTrafficAccess(ctx context.Context, id int64, write bool) error {
 	if id <= 0 {
-		return locale.NewError("finding_id must be an independent finding record ID, not an exploration node ID")
+		return errors.New("finding_id 必须为独立漏洞记录 ID；不是探索节点 ID")
 	}
 	f, err := s.m.pg.GetFinding(id)
 	if err != nil {
 		return err
 	}
 	if f == nil {
-		return locale.Errorf("%w: finding_id=%d. Evidence tools require the independent finding record ID from the finding_id field of list_task_findings / get_task_node_detail; do not pass id / finding_node_id", db.ErrFindingNotFound, id)
+		return fmt.Errorf("%w：finding_id=%d。证据工具使用独立漏洞记录 ID，请从 list_task_findings / get_task_node_detail 的 finding_id 字段读取；不要传 id / finding_node_id", db.ErrFindingNotFound, id)
 	}
 	if ri := agent.RunInfoFrom(ctx); ri.TaskID > 0 {
 		task := s.m.ResolveTask(strconv.FormatInt(ri.TaskID, 10))
 		if task == nil {
-			return locale.NewError("Task does not exist")
+			return errors.New("任务不存在")
 		}
 		_, inherited, allowed := findingProvenanceInTask(task, f.TaskID)
 		if !allowed {
-			return locale.NewError("The current task cannot read this finding")
+			return errors.New("当前任务不可读取该漏洞")
 		}
 		if write && inherited {
-			return locale.NewError("Inherited finding traffic evidence is read-only; edit it in the source task")
+			return errors.New("继承漏洞的流量证据只读，请到来源任务修改")
 		}
 	}
 	return nil
 }
 
-func (s *Server) toolBindFindingTraffic(langs ...locale.Lang) actool.CoreTool {
-	lang := findingToolLanguage(langs)
-	return wrTool("bind_finding_traffic", locale.Text(lang, "Bind verified real HTTP traffic to an existing finding. finding_id is the independent finding record ID, not the exploration node ID. All references in a batch succeed or fail together; duplicate references preserve existing notes. Binding marks an existing report as needing an update. Do not probe again merely to capture packets or create duplicate findings."),
-		objSchema(map[string]any{"finding_id": strParam(locale.Text(lang, "Independent finding record ID from the finding_id field of list_task_findings / get_task_node_detail")), "traffic_refs": agent.HintTrafficSchema(lang)}, "finding_id", "traffic_refs"),
+func (s *Server) toolBindFindingTraffic() actool.CoreTool {
+	return wrTool("bind_finding_traffic", "为已登记漏洞补绑经核实的真实 HTTP 流量。finding_id 使用独立漏洞记录 ID；不要传探索节点 ID。同批引用全部成功或全部失败，重复引用不覆盖已有说明。补绑会使已有报告标记待更新；不要为补包重新探测或重复创建漏洞。",
+		objSchema(map[string]any{"finding_id": strParam("独立漏洞记录 ID，从 list_task_findings / get_task_node_detail 的 finding_id 字段读取"), "traffic_refs": agent.HintTrafficSchema()}, "finding_id", "traffic_refs"),
 		func(ctx context.Context, raw json.RawMessage) (actool.Result, error) {
 			if !s.m.pg.GetBool(settingAgentTrafficBinding, false) {
-				return actool.Errorf(locale.Text(locale.FromContext(ctx), "Automatic agent traffic binding is disabled; enable it in system settings or bind manually on the page.")), nil
+				return actool.Errorf("Agent 自动绑定流量已关闭；请在系统设置开启，或使用页面人工绑定。"), nil
 			}
 			var args struct {
 				FindingID json.RawMessage `json:"finding_id"`
 				Refs      []db.TrafficRef `json:"traffic_refs"`
 			}
 			if err := json.Unmarshal(raw, &args); err != nil {
-				return actool.Errorf(locale.ErrorMessage(locale.FromContext(ctx), err)), nil
+				return actool.Errorf(err.Error()), nil
 			}
 			id := parseProfileID(args.FindingID)
 			if err := s.agentFindingTrafficAccess(ctx, id, true); err != nil {
-				return actool.Errorf(locale.ErrorMessage(locale.FromContext(ctx), err)), nil
+				return actool.Errorf(err.Error()), nil
 			}
 			if len(args.Refs) == 0 {
-				return actool.Errorf(locale.Text(locale.FromContext(ctx), "Binding requires at least one verified traffic_refs entry; do not call this tool when no traffic is available")), nil
+				return actool.Errorf("补绑需要至少一条已核实的 traffic_refs；无流量无需调用此工具"), nil
 			}
 			list, err := s.evidenceStore().Bind(ctx, id, args.Refs)
 			if err != nil {
-				return actool.Errorf(locale.ErrorMessage(locale.FromContext(ctx), err)), nil
+				return actool.Errorf(err.Error()), nil
 			}
 			return jsonResult(trafficSummary(list))
 		})
-}
-
-// findingToolLanguage keeps database seed metadata canonical English while callers
-// may explicitly request localized descriptions and schemas.
-func findingToolLanguage(langs []locale.Lang) locale.Lang {
-	if len(langs) > 0 {
-		return locale.Resolve(langs[0])
-	}
-	return locale.En
 }

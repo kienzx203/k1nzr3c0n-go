@@ -3,7 +3,7 @@ package db
 import (
 	"database/sql"
 	"errors"
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 	"net"
 	"strings"
 	"unicode/utf8"
@@ -13,13 +13,13 @@ const (
 	MaxTaskAssetMutationCount = 100
 	MaxTaskAssetSummaryRunes  = 500
 	defaultTaskAssetSource    = "system"
-	manualTaskScopeSummary    = "Manually added by the user on the test-assets page"
+	manualTaskScopeSummary    = "用户在测试资产页手工新增"
 )
 
 var (
-	ErrTaskAssetInvalid       = locale.NewError("invalid task asset association")
-	ErrTaskAssetTaskNotFound  = locale.NewError("task not found")
-	ErrTaskAssetAssetNotFound = locale.NewError("asset not found")
+	ErrTaskAssetInvalid       = errors.New("invalid task asset association")
+	ErrTaskAssetTaskNotFound  = errors.New("task not found")
+	ErrTaskAssetAssetNotFound = errors.New("asset not found")
 )
 
 // TaskAssetMutation summarizes one attach request. Attached counts newly added
@@ -56,13 +56,13 @@ type IntentAsset struct {
 
 func normalizeTaskAssetIDs(ids []int64) ([]int64, error) {
 	if len(ids) == 0 {
-		return nil, locale.Errorf("%w: asset_ids is required", ErrTaskAssetInvalid)
+		return nil, fmt.Errorf("%w: asset_ids is required", ErrTaskAssetInvalid)
 	}
 	seen := make(map[int64]struct{}, len(ids))
 	normalized := make([]int64, 0, len(ids))
 	for _, id := range ids {
 		if id <= 0 {
-			return nil, locale.Errorf("%w: asset id must be positive", ErrTaskAssetInvalid)
+			return nil, fmt.Errorf("%w: asset id must be positive", ErrTaskAssetInvalid)
 		}
 		if _, ok := seen[id]; ok {
 			continue
@@ -70,7 +70,7 @@ func normalizeTaskAssetIDs(ids []int64) ([]int64, error) {
 		seen[id] = struct{}{}
 		normalized = append(normalized, id)
 		if len(normalized) > MaxTaskAssetMutationCount {
-			return nil, locale.Errorf("%w: at most %d assets per request", ErrTaskAssetInvalid, MaxTaskAssetMutationCount)
+			return nil, fmt.Errorf("%w: at most %d assets per request", ErrTaskAssetInvalid, MaxTaskAssetMutationCount)
 		}
 	}
 	return normalized, nil
@@ -83,7 +83,7 @@ func normalizeTaskAssetSource(source, summary string) (string, string, error) {
 	}
 	summary = strings.TrimSpace(summary)
 	if utf8.RuneCountInString(summary) > MaxTaskAssetSummaryRunes {
-		return "", "", locale.Errorf("%w: source summary exceeds %d characters", ErrTaskAssetInvalid, MaxTaskAssetSummaryRunes)
+		return "", "", fmt.Errorf("%w: source summary exceeds %d characters", ErrTaskAssetInvalid, MaxTaskAssetSummaryRunes)
 	}
 	return source, summary, nil
 }
@@ -92,7 +92,7 @@ func normalizeTaskAssetSource(source, summary string) (string, string, error) {
 // existing task association. It never creates or deletes an asset.
 func (s *AssetStore) SetTaskAssetSource(taskID, assetID int64, source, summary string, sourceNodeID *int64) error {
 	if taskID <= 0 || assetID <= 0 {
-		return locale.Errorf("%w: task and asset ids must be positive", ErrTaskAssetInvalid)
+		return fmt.Errorf("%w: task and asset ids must be positive", ErrTaskAssetInvalid)
 	}
 	source, summary, err := normalizeTaskAssetSource(source, summary)
 	if err != nil {
@@ -122,7 +122,7 @@ SET source=EXCLUDED.source,
 		return err
 	}
 	if rows == 0 {
-		return locale.Errorf("%w: task or asset association does not exist", ErrTaskAssetInvalid)
+		return fmt.Errorf("%w: task or asset association does not exist", ErrTaskAssetInvalid)
 	}
 	return nil
 }
@@ -133,24 +133,24 @@ SET source=EXCLUDED.source,
 func (s *AssetStore) RegisterTaskAssetScopes(taskID int64, inputs []ScopeInput) (TaskAssetScopeMutation, error) {
 	mutation := TaskAssetScopeMutation{Requested: len(inputs)}
 	if taskID <= 0 {
-		return mutation, locale.Errorf("%w: task id must be positive", ErrTaskAssetInvalid)
+		return mutation, fmt.Errorf("%w: task id must be positive", ErrTaskAssetInvalid)
 	}
 	if len(inputs) == 0 {
-		return mutation, locale.Errorf("%w: scope is required", ErrTaskAssetInvalid)
+		return mutation, fmt.Errorf("%w: scope is required", ErrTaskAssetInvalid)
 	}
 	if err := ValidateCompanyScopeInputBounds(inputs); err != nil {
-		return mutation, locale.Errorf("%w: %v", ErrTaskAssetInvalid, err)
+		return mutation, fmt.Errorf("%w: %v", ErrTaskAssetInvalid, err)
 	}
 	parsed := make([]ParsedScope, 0, len(inputs))
 	for index, input := range inputs {
 		rule, err := ParseScopeInput(input)
 		if err != nil {
-			return mutation, locale.Errorf("%w: scope entry %d is invalid: %v", ErrTaskAssetInvalid, index+1, err)
+			return mutation, fmt.Errorf("%w: 第 %d 条范围无效: %v", ErrTaskAssetInvalid, index+1, err)
 		}
 		parsed = append(parsed, rule)
 	}
 	if err := validateParsedScopeBounds(parsed); err != nil {
-		return mutation, locale.Errorf("%w: %v", ErrTaskAssetInvalid, err)
+		return mutation, fmt.Errorf("%w: %v", ErrTaskAssetInvalid, err)
 	}
 
 	tx, err := s.db.Begin()
@@ -174,7 +174,7 @@ func (s *AssetStore) RegisterTaskAssetScopes(taskID int64, inputs []ScopeInput) 
 		taskScope := TaskScope{
 			TaskID: taskID,
 			Source: "manual",
-			Reason: locale.Text(locale.ServerDefault(), manualTaskScopeSummary),
+			Reason: manualTaskScopeSummary,
 		}
 		var assetID int64
 		switch rule.Kind {
@@ -201,7 +201,7 @@ func (s *AssetStore) RegisterTaskAssetScopes(taskID int64, inputs []ScopeInput) 
 			taskScope.Net = rule.Net
 			ip, _, parseErr := net.ParseCIDR(rule.Net)
 			if parseErr != nil {
-				return mutation, locale.Errorf("%w: invalid IP: %s", ErrTaskAssetInvalid, rule.Raw)
+				return mutation, fmt.Errorf("%w: 无效 IP: %s", ErrTaskAssetInvalid, rule.Raw)
 			}
 			ipValue := ip.String()
 			var alreadyLinked bool
@@ -226,7 +226,7 @@ func (s *AssetStore) RegisterTaskAssetScopes(taskID int64, inputs []ScopeInput) 
 			taskScope.Kind = rule.Kind
 			taskScope.Value = rule.Value
 		default:
-			return mutation, locale.Errorf("%w: unsupported scope kind %q", ErrTaskAssetInvalid, rule.Kind)
+			return mutation, fmt.Errorf("%w: unsupported scope kind %q", ErrTaskAssetInvalid, rule.Kind)
 		}
 
 		if assetID > 0 {
@@ -263,7 +263,7 @@ func (s *AssetStore) AttachAssetsToTask(taskID int64, assetIDs []int64, sourceSu
 		return mutation, err
 	}
 	if sourceSummary == "" {
-		return mutation, locale.Errorf("%w: source_summary is required", ErrTaskAssetInvalid)
+		return mutation, fmt.Errorf("%w: source_summary is required", ErrTaskAssetInvalid)
 	}
 	mutation.Requested = len(assetIDs)
 	tx, err := s.db.Begin()
@@ -315,7 +315,7 @@ SET source='manual', source_summary=EXCLUDED.source_summary, source_node_id=NULL
 // exploration anchors remain available for historical blackboard auditing.
 func (s *AssetStore) DetachAssetFromTask(taskID, assetID int64) (bool, error) {
 	if taskID <= 0 || assetID <= 0 {
-		return false, locale.Errorf("%w: task and asset ids must be positive", ErrTaskAssetInvalid)
+		return false, fmt.Errorf("%w: task and asset ids must be positive", ErrTaskAssetInvalid)
 	}
 	var detachedID int64
 	err := s.db.QueryRow(`
@@ -394,7 +394,7 @@ SELECT intent.id, asset.id, asset.type,
          ELSE '#' || asset.id::text
        END,
        COALESCE(link.source,'anchor'),
-       COALESCE(NULLIF(link.source_summary,''), 'Intent anchored this asset on the blackboard'),
+       COALESCE(NULLIF(link.source_summary,''), '意图在黑板中锚定该资产'),
        link.source_node_id, context.task_id, context.inherited
 FROM context
 JOIN exploration_nodes intent ON intent.exploration_id=context.exploration_id AND intent.kind='intent'

@@ -3,8 +3,8 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/Autumn-27/artex/locale"
 	"net"
 	"net/url"
 	"sort"
@@ -12,7 +12,7 @@ import (
 )
 
 // =====================================================================
-// Unified asset table.
+// 统一资产表
 // =====================================================================
 
 // Asset is a row in the assets table.
@@ -255,7 +255,7 @@ type UpsertRootDomainReq struct {
 func (s *AssetStore) UpsertRootDomain(req UpsertRootDomainReq) (int64, error) {
 	domain := DomainKey(req.Domain)
 	if domain == "" {
-		return 0, locale.Errorf("domain is required")
+		return 0, fmt.Errorf("domain is required")
 	}
 	if s.tx == nil {
 		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
@@ -304,7 +304,7 @@ RETURNING id`, domain, icpVal, companyID, taskIDs).Scan(&id)
 // ErrAssetIPInvalid marks a non-address value in an asset's ip field. Both
 // insert_assets and the asset API report it per item with the item index, so one
 // bad entry never costs the rest of the batch.
-var ErrAssetIPInvalid = locale.NewError("invalid asset ip")
+var ErrAssetIPInvalid = errors.New("invalid asset ip")
 
 // ValidateAssetIP keeps hostnames out of assets.ip. Network attribution casts
 // that column to inet (see try_inet in schema.sql), so a hostname stored here is
@@ -316,9 +316,9 @@ func ValidateAssetIP(value string) error {
 	if value == "" || net.ParseIP(value) != nil {
 		return nil
 	}
-	return locale.Errorf(
-		"%w: ip must be an IPv4/IPv6 address; received %q. For a hostname, use type=subdomain and the domain field; "+
-			"to register an address, resolve its A/AAAA record first and use the resolved address in ip",
+	return fmt.Errorf(
+		"%w: ip 必须是 IPv4/IPv6 地址，收到 %q。若这是主机名，请改用 type=subdomain 并填 domain 字段；"+
+			"若确实要登记地址，请先解析出 A/AAAA 记录，再用解析出的地址填 ip",
 		ErrAssetIPInvalid, value)
 }
 
@@ -337,7 +337,7 @@ type UpsertIPReq struct {
 // UpsertIP idempotently inserts or merges an IP asset.
 func (s *AssetStore) UpsertIP(req UpsertIPReq) (int64, error) {
 	if req.IP == "" {
-		return 0, locale.Errorf("ip is required")
+		return 0, fmt.Errorf("ip is required")
 	}
 	if err := ValidateAssetIP(req.IP); err != nil {
 		return 0, err
@@ -453,7 +453,7 @@ type UpsertSubdomainReq struct {
 func (s *AssetStore) UpsertSubdomain(req UpsertSubdomainReq) (id int64, err error) {
 	domain := DomainKey(req.Domain)
 	if domain == "" {
-		return 0, locale.Errorf("domain is required")
+		return 0, fmt.Errorf("domain is required")
 	}
 	if s.tx == nil {
 		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
@@ -567,7 +567,7 @@ type UpsertAppReq struct {
 // UpsertApp idempotently inserts or merges an app asset.
 func (s *AssetStore) UpsertApp(req UpsertAppReq) (int64, error) {
 	if req.Name == "" {
-		return 0, locale.Errorf("app name is required")
+		return 0, fmt.Errorf("app name is required")
 	}
 	if s.tx == nil {
 		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
@@ -682,7 +682,7 @@ type UpsertHTTPServiceReq struct {
 // service_name, and root_domain are auto-extracted from URL.
 func (s *AssetStore) UpsertHTTPService(req UpsertHTTPServiceReq) (int64, error) {
 	if req.URL == "" {
-		return 0, locale.Errorf("url is required")
+		return 0, fmt.Errorf("url is required")
 	}
 	if err := ValidateAssetIP(req.IP); err != nil {
 		return 0, err
@@ -819,16 +819,16 @@ type UpsertOtherServiceReq struct {
 // UpsertOtherService inserts or merges a non-HTTP service asset.
 func (s *AssetStore) UpsertOtherService(req UpsertOtherServiceReq) (int64, error) {
 	if req.Domain == "" && req.IP == "" {
-		return 0, locale.Errorf("domain or ip is required")
+		return 0, fmt.Errorf("domain or ip is required")
 	}
 	if err := ValidateAssetIP(req.IP); err != nil {
 		return 0, err
 	}
 	if req.Port == 0 {
-		return 0, locale.Errorf("port is required")
+		return 0, fmt.Errorf("port is required")
 	}
 	if req.ServiceName == "" {
-		return 0, locale.Errorf("service_name is required")
+		return 0, fmt.Errorf("service_name is required")
 	}
 	if s.tx == nil {
 		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
@@ -962,10 +962,10 @@ type UpsertEndpointReq struct {
 // are auto-extracted from the URL.
 func (s *AssetStore) UpsertEndpoint(req UpsertEndpointReq) (int64, error) {
 	if req.URL == "" {
-		return 0, locale.Errorf("url is required")
+		return 0, fmt.Errorf("url is required")
 	}
 	if req.Method == "" {
-		return 0, locale.Errorf("method is required")
+		return 0, fmt.Errorf("method is required")
 	}
 	if err := ValidateAssetIP(req.IP); err != nil {
 		return 0, err
@@ -1394,96 +1394,6 @@ func (s *AssetStore) DeleteByCompanyID(companyID int64) (int64, error) {
 	return res.RowsAffected()
 }
 
-// AssetExportFilter carries the optional filtered-scope conditions for
-// ListAssetsForExport. Only one of DSL / CompanyID / TaskID drives the query,
-// mirroring the branch selection in the listAssets handler: DSL wins, then
-// company_id, then task_id, then the default root_domain view.
-type AssetExportFilter struct {
-	Type      string
-	TaskID    int64
-	CompanyID int64
-	DSL       string
-}
-
-// ListAssetsForExport exports assets without pagination, mirroring
-// ListFindingsForExport. Nonempty ids exports precisely the selected assets and
-// ignores filter; empty ids exports by filter (current filters/all). One
-// unpaginated query per scope; no row cap (findings has none either).
-func (s *AssetStore) ListAssetsForExport(f AssetExportFilter, ids []int64) ([]*Asset, error) {
-	if len(ids) > 0 {
-		return s.GetByIDs(ids)
-	}
-	if f.DSL != "" {
-		return s.queryDSLForExport(f)
-	}
-	return s.queryPlainForExport(f)
-}
-
-// queryDSLForExport is QueryDSL without LIMIT/OFFSET: same WHERE builder, same
-// type/task scoping, same per-task source hydration.
-func (s *AssetStore) queryDSLForExport(f AssetExportFilter) ([]*Asset, error) {
-	node, err := ParseDSL(f.DSL)
-	if err != nil {
-		return nil, err
-	}
-	where, args, err := buildDSLWhere(node)
-	if err != nil {
-		return nil, err
-	}
-	if f.Type != "" {
-		args = append(args, f.Type)
-		where += fmt.Sprintf(" AND type = $%d", len(args))
-	}
-	if f.TaskID > 0 {
-		args = append(args, f.TaskID)
-		where += fmt.Sprintf(" AND $%d = ANY(task_ids)", len(args))
-	}
-	q := assetSelectCols + " WHERE " + where + " ORDER BY last_seen DESC, id DESC"
-	rows, err := s.db.Query(q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	assets, err := scanAssets(rows)
-	if err != nil {
-		return nil, err
-	}
-	if f.TaskID > 0 {
-		if err := s.hydrateTaskAssetSources(f.TaskID, assets); err != nil {
-			return nil, err
-		}
-	}
-	return assets, nil
-}
-
-// queryPlainForExport mirrors the non-DSL branch of listAssets: company_id wins,
-// then task_id, then the type-or-all view. Unlike QueryByType (a UI-paging
-// helper that clamps limit<=0 to 50 and forces a type), the final branch is a
-// genuinely unbounded export query: optional type filter only, no LIMIT, and no
-// root_domain default — an empty Type means every type (scope=all).
-func (s *AssetStore) queryPlainForExport(f AssetExportFilter) ([]*Asset, error) {
-	switch {
-	case f.CompanyID > 0:
-		return s.QueryByCompany(f.CompanyID, f.Type, 0, 0)
-	case f.TaskID > 0:
-		return s.QueryByTask(f.TaskID, f.Type, 0, 0)
-	default:
-		q := assetSelectCols
-		var args []any
-		if f.Type != "" {
-			args = append(args, f.Type)
-			q += fmt.Sprintf(" WHERE type = $%d", len(args))
-		}
-		q += " ORDER BY last_seen DESC, id DESC"
-		rows, err := s.db.Query(q, args...)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		return scanAssets(rows)
-	}
-}
-
 // DeleteByHost hard-deletes every asset whose host exactly matches the given value:
 // root_domain / subdomain / service / endpoint (they carry the host in domain or
 // root_domain) plus an ip asset and its services/endpoints (ip column). The host is
@@ -1495,7 +1405,7 @@ func (s *AssetStore) queryPlainForExport(f AssetExportFilter) ([]*Asset, error) 
 func (s *AssetStore) DeleteByHost(host string) (map[string]int64, error) {
 	h := DomainKey(host)
 	if h == "" {
-		return nil, locale.Errorf("host is required")
+		return nil, fmt.Errorf("host is required")
 	}
 	rows, err := s.db.Query(`
 DELETE FROM assets

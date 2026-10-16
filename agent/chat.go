@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"github.com/Autumn-27/artex/locale"
 	"os"
 	"path/filepath"
 	"time"
@@ -24,7 +23,6 @@ import (
 // LS/Glob/Grep) plus whatever skills/MCP the key is made visible; NO pentest
 // graph/task context is injected (that stays exclusive to MainAgent).
 type ChatAgent struct {
-	nativeOllamaFn func() bool
 	prov           llm.Provider
 	model          string
 	workDir        string
@@ -38,9 +36,6 @@ type ChatAgent struct {
 	noaEnabledFn   func() bool  // resolver: use experimental noa compaction? (nil = off)
 	maxTokensFn    func() int   // resolver: per-reply output cap (nil/0 = send no cap)
 }
-
-// SetNativeOllamaResolver resolves whether the current run uses native Ollama.
-func (c *ChatAgent) SetNativeOllamaResolver(fn func() bool) { c.nativeOllamaFn = fn }
 
 func NewChatAgent(prov llm.Provider, model, workDir string, tx *transcript.Store, window int) *ChatAgent {
 	return &ChatAgent{prov: prov, model: model, workDir: workDir, tx: tx, window: window}
@@ -81,15 +76,15 @@ func (c *ChatAgent) SetGuard(g *guard.Guard) { c.guard = g }
 
 // chatWorkDirSpec returns a working-directory notice appended to every chat
 // agent's system prompt. Mirrors artifactSpec but without pentest-specific
-// wording such as payload or captured response bodies would be odd in a general assistant.
-func chatWorkDirSpec(workDir string, langs ...locale.Lang) string {
-	return locale.Text(locale.First(langs), "\n\n**File output rules**: Write all files to the working directory ") + workDir + locale.Text(locale.First(langs), " (the default CWD; use relative paths or this absolute path). Do not write to /tmp or other absolute paths.")
+// wording ("payload", "抓响应体") that would be odd in a general assistant.
+func chatWorkDirSpec(workDir string) string {
+	return "\n\n**文件输出规约**：需要写文件时，一律写到工作目录 " + workDir + "（这是默认 CWD，相对路径即落在这里，也可用该绝对路径）——不要写 /tmp 或其他绝对路径。"
 }
 
 // chatSystem renders the DB-managed prompt body for agentKey. Custom agents have
 // no per-key in-code default, so DefaultAssistantPrompt is the render fallback.
-func chatSystem(agentKey, dataDir, workDir string, langs ...locale.Lang) string {
-	return renderSystem(agentKey, DefaultAssistantPrompt, chatVars{DataDir: dataDir, Now: nowStr()}, langs...) + chatWorkDirSpec(workDir, langs...)
+func chatSystem(agentKey, dataDir, workDir string) string {
+	return renderSystem(agentKey, DefaultAssistantPrompt, chatVars{DataDir: dataDir, Now: nowStr()}) + chatWorkDirSpec(workDir)
 }
 
 // chatVars carries the runtime variables a custom agent's prompt may reference.
@@ -128,20 +123,20 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	tools, def, cleanup := AugmentTools(ctx, agentKey, base)
 	defer cleanup()
 
-	system, boundary := deferredSystem(chatSystem(agentKey, c.workDir, sessionWorkDir, locale.FromContext(ctx)), def)
+	system, boundary := deferredSystem(chatSystem(agentKey, c.workDir, sessionWorkDir), def)
 	opts := agentcore.Options{
 		Provider:        c.prov,
-		SystemPrompt:    append(system, outputLanguageInstruction(locale.FromContext(ctx))),
+		SystemPrompt:    system,
 		DynamicBoundary: boundary,
 		Tools:           tools,
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,
-		EnableWebFetch:  true, // Route through capture proxy and trust its CA for re-signed HTTPS certificates.
+		EnableWebFetch:  true, // 走记录代理留痕；载入代理 CA 验证 MITM 重签的 HTTPS 证书
 		WebFetchProxy:   c.proxyAddr,
 		WebFetchCACert:  c.proxyCACert,
-		// Optional web search: ddgs needs no key, brave-free needs BraveKey, tavily needs TavilyKey.
-		// WebSearchProxy is an independent egress proxy, unrelated to capture MITM; empty means direct.
+		// 联网搜索(可选)。ddgs 无需 key；brave-free 需 BraveKey；tavily 需 TavilyKey。
+		// WebSearchProxy 是独立出口代理(http/https/socks5)，与记录流量的 MITM 代理无关；空则直连。
 		EnableWebSearch:       ws.Enabled,
 		WebSearchBackend:      ws.Backend,
 		BraveSearchAPIKey:     ws.BraveKey,
@@ -150,20 +145,20 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		DeepSeekSearchAPIKey:  ws.DeepSeekAPIKey,
 		DeepSeekSearchModel:   ws.DeepSeekModel,
 		WebSearchProxy:        ws.Proxy,
-		BashEnv:               proxyEnv(c.proxyAddr, c.proxyCACert), // Bash subprocesses inherit the proxy and trusted CA.
+		BashEnv:               proxyEnv(c.proxyAddr, c.proxyCACert), // Bash 子命令默认走代理+信任 CA
 		WorkingDir:            sessionWorkDir,
 		MaxTurns:              maxTurns,
 		MaxDuration:           maxDuration,
 		Compaction:            compactionConfig(c.window),
 		Todos:                 actool.NewTodoStore(),
 		// large tool output spills to cmd-output/ under the session dir.
-		// Use the SDK's default 30000-character tool.Capture limit.
+		// 截断上限用 SDK 默认(tool.Capture 的 30000 字符)。
 		ToolOutputDir: filepath.Join(sessionWorkDir, "cmd-output"),
-		// At the step budget, SDK settlement produces a summary. Prompt and turn budget
-		// are editable per agent; empty/0 uses the generic ten-turn default.
-		Settlement:   wrapupSettlement(agentKey, nil, locale.FromContext(ctx)),
-		NonStreaming: c.nonStreaming(), // Non-streaming profiles use Provider.Complete.
-		MaxTokens:    c.maxTokens(),    // 0 omits the limit and uses the server default.
+		// 命中预算(步数)→ SDK 跑收尾:输出一句总结。Prompt 与收尾轮数按本 agent key 后台可编辑
+		// (自定义 agent 各自一份;留空/0 用通用默认:10 轮)。
+		Settlement:   wrapupSettlement(agentKey, nil),
+		NonStreaming: c.nonStreaming(), // 该 profile 选非流式时走 Provider.Complete
+		MaxTokens:    c.maxTokens(),    // 0 = 不发上限,由服务端默认值决定
 	}
 	if c.guard != nil {
 		opts.Hooks = c.guard.Hooks()
@@ -172,9 +167,7 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		opts.Transcript = c.tx
 		opts.SessionID = sessionID
 	}
-	// Experimental noa compaction stores persistent archives under <workDir>/noa/<SessionID>.
-	secureWebSearch(&opts, ws.PolicyResolver)
-	applyRuntimePolicy(&opts, RuntimePolicy{NativeOllama: c.nativeOllamaFn != nil && c.nativeOllamaFn(), ContextWindow: c.window})
+	// 实验功能:开启后由 noa 接管上下文压缩(归档集中在 <workDir>/noa/<SessionID> 下,持久)。
 	enableNoa(&opts, c.noaEnabledFn, c.workDir, "chat-"+sessionID, noaWarn("chat-"+sessionID))
 	ctx = attachSideCapture(ctx, &opts)
 	s := agentcore.NewSession(opts)

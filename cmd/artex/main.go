@@ -1,4 +1,4 @@
-// Command artex runs the K1nzr3c0n backend: the PostgreSQL graph stores,
+// Command artex runs the ARTEX backend: the dual SQLite graph stores,
 // the event-driven exploration engine, and the JSON HTTP API consumed by the
 // shadcn/ui frontend.
 package main
@@ -7,7 +7,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/Autumn-27/artex/locale"
 	"log"
 	"net/http"
 	"os"
@@ -19,7 +18,6 @@ import (
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/config"
-	"github.com/Autumn-27/artex/k1z"
 	"github.com/Autumn-27/artex/selfupdate"
 	"github.com/Autumn-27/artex/server"
 )
@@ -29,14 +27,18 @@ import (
 var version = "dev"
 
 const banner = `
-  K1nzr3c0n
+    _    ____ _____ _______  __
+   / \  |  _ \_   _| ____\ \/ /
+  / _ \ | |_) || | |  _|  \  /
+ / ___ \|  _ < | | | |___ /  \
+/_/   \_\_| \_\|_| |_____/_/\_\
 `
 
 // printBanner writes the startup banner + version/runtime info to stdout.
 func printBanner(addr string) {
 	fmt.Print(banner)
-	fmt.Println(locale.Text(locale.ServerDefault(), "  Autonomous AI penetration-testing system"))
-	fmt.Printf(locale.Text(locale.ServerDefault(), "  Version %s  ·  %s/%s  ·  %s  ·  Listening on %s\n\n"),
+	fmt.Println("  AI 自主渗透测试系统")
+	fmt.Printf("  版本 %s  ·  %s/%s  ·  %s  ·  监听 %s\n\n",
 		version, runtime.GOOS, runtime.GOARCH, runtime.Version(), addr)
 }
 
@@ -45,8 +47,6 @@ func printBanner(addr string) {
 // whether to relaunch us (see selfupdate.ExitRestart) — so the body has to live
 // in a function that can *return* rather than os.Exit past its own defers.
 func main() {
-	lang, _ := locale.FromEnv(os.Getenv)
-	locale.SetServerDefault(lang)
 	os.Exit(run())
 }
 
@@ -85,9 +85,9 @@ func run() int {
 		cfgPath = abs
 	}
 	if _, e := os.Stat(cfgPath); e == nil {
-		log.Printf(locale.Text(locale.ServerDefault(), "[config] Configuration file: %s"), cfgPath)
+		log.Printf("[config] 配置文件: %s", cfgPath)
 	} else {
-		log.Printf(locale.Text(locale.ServerDefault(), "[config] Configuration file: %s (not found; using ARTEX_PG_DSN only)"), cfgPath)
+		log.Printf("[config] 配置文件: %s (不存在 — 将仅尝试环境变量 ARTEX_PG_DSN)", cfgPath)
 	}
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -111,27 +111,16 @@ func run() int {
 	if abs, err := filepath.Abs(skillDir); err == nil {
 		skillDir = abs
 	}
-	log.Printf(locale.Text(locale.ServerDefault(), "[config] Skill directory: %s"), skillDir)
+	log.Printf("[config] skill 目录: %s", skillDir)
 	srv := server.New(ctx, mgr, skillDir, *dataDir, config.BaseDir())
-
-	// Mount k1nzr3c0n's workflow-runner backend under /api/v1/* + /ws/* (its own
-	// SQLite store + runner); K1nzr3c0n owns everything else.
-	k1zHandler, k1zShutdown, k1zErr := k1z.BuildHandler(ctx)
-	if k1zErr != nil {
-		log.Printf("[k1z] workflow-runner unavailable: %v", k1zErr)
-	} else {
-		log.Printf("[k1z] workflow-runner mounted at /api/v1/* + /ws/*")
-		defer k1zShutdown()
-	}
-
 	httpSrv := &http.Server{
 		Addr:              *addr,
-		Handler:           k1z.Mount(srv.Handler(), k1zHandler),
+		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	go func() {
-		log.Printf("K1nzr3c0n %s backend listening on %s (data=%s, workers=%d)", version, *addr, *dataDir, mgr.Workers())
+		log.Printf("ARTEX %s backend listening on %s (data=%s, workers=%d)", version, *addr, *dataDir, mgr.Workers())
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("serve: %v", err)
 		}

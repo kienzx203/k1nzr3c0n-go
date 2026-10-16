@@ -7,7 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -32,10 +32,10 @@ func New(pg *db.DB, tr *traffic.Traffic, dir string) *Store {
 
 func hashPath(dir, hash string) (string, error) {
 	if len(hash) != 64 {
-		return "", locale.NewError("invalid evidence hash")
+		return "", errors.New("invalid evidence hash")
 	}
 	if _, err := hex.DecodeString(hash); err != nil || strings.ToLower(hash) != hash {
-		return "", locale.NewError("invalid evidence hash")
+		return "", errors.New("invalid evidence hash")
 	}
 	return filepath.Join(dir, "blobs", hash[:2], hash+".bin"), nil
 }
@@ -52,7 +52,7 @@ func verifyFile(path, hash string, length int64) error {
 		return err
 	}
 	if n != length || hex.EncodeToString(h.Sum(nil)) != hash {
-		return locale.Errorf("Evidence body verification failed: %s", hash)
+		return fmt.Errorf("证据正文校验失败: %s", hash)
 	}
 	return nil
 }
@@ -76,10 +76,10 @@ func (s *Store) writeBody(r io.Reader, expectedLength int64, expectedHash string
 	}
 	hash = hex.EncodeToString(h.Sum(nil))
 	if n != expectedLength {
-		return "", locale.Errorf("Incomplete body: expected %d bytes, read %d bytes", expectedLength, n)
+		return "", fmt.Errorf("正文不完整: 预期 %d 字节，读取 %d 字节", expectedLength, n)
 	}
 	if expectedHash != "" && expectedHash != hash {
-		return "", locale.NewError("Raw traffic body hash mismatch")
+		return "", errors.New("原始流量正文哈希不匹配")
 	}
 	if err = f.Sync(); err != nil {
 		return "", err
@@ -104,10 +104,15 @@ func (s *Store) writeBody(r io.Reader, expectedLength int64, expectedHash string
 	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", err
 	}
-	if err = commitBodyFile(f.Name(), path); err != nil {
+	if err = os.Rename(f.Name(), path); err != nil {
 		return "", err
 	}
-	return hash, nil
+	d, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return "", err
+	}
+	defer d.Close()
+	return hash, d.Sync()
 }
 
 // StageFindingsExport freezes bindings/report versions and makes private body
@@ -244,7 +249,7 @@ func (s *Store) OpenBody(snapshot db.TrafficEvidenceSnapshot, side string) (*os.
 	if side == "response" {
 		hash, length = snapshot.RespHash, snapshot.RespLen
 	} else if side != "request" {
-		return nil, 0, locale.NewError("side must be request or response")
+		return nil, 0, errors.New("side 必须为 request 或 response")
 	}
 	path, err := hashPath(s.Dir, hash)
 	if err != nil {
@@ -312,7 +317,7 @@ func (s *Store) WithInstalledSnapshots(ctx context.Context, snapshots []db.Traff
 	return s.DB.WithEvidenceTx(ctx, func(*sql.Tx) error {
 		for _, v := range snapshots {
 			if v.ID != db.TrafficSnapshotID(v) {
-				return locale.NewError("Archived evidence snapshot metadata hash mismatch")
+				return errors.New("归档证据快照元数据哈希不匹配")
 			}
 			for _, body := range []struct {
 				hash   string

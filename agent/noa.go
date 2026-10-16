@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"github.com/Autumn-27/artex/locale"
 	"log"
 	"path/filepath"
 
@@ -15,26 +14,20 @@ func noaWarn(session string) func(string) {
 	return func(msg string) { log.Printf("[noa] %s: %s", session, msg) }
 }
 
-// noa is norma v0.4.0's model-driven context compaction, exposed as an experimental
-// setting. It is mutually exclusive with built-in compaction. noaadapter.Enable
-// installs the Compactor, Compress tool, and three persistent prompt blocks.
-// Without Enable, ordinary compaction remains active. Each agent's noaEnabledFn
-// is read once per run, so changes affect subsequent runs without rebuilding agents.
+// noa 是 norma v0.4.0 引入的「模型驱动上下文压缩」机制,作为平台实验功能由用户在
+// 系统设置中开关。它与内置 compaction 互斥:noaadapter.Enable 是唯一入口,一次挂上
+// 上下文接管器(Compactor)、Compress 工具与三段常驻提示词,不调用 Enable 即为关闭
+// (内置 compaction 照常工作)。开关由每个 agent 注入的 noaEnabledFn 解析,每 run 读
+// 一次,故切换只影响之后启动的 run,无需重建 agent。
 
-// enableNoa adds noa to opts when its resolver enables it. archiveRoot is the
-// persistent global workDir; archives share <workDir>/noa instead of task/intent dirs.
-// The globally unique sessionID names each archive subdirectory without collisions.
+// enableNoa 在解析器报告开启时把 noa 接入 opts。archiveRoot 是压缩原文的持久化基目录
+// (取全局 workDir,各 agent 统一落在 <workDir>/noa 下,不随任务/意图目录分散),sessionID
+// 命名其下的归档子目录(全局唯一,故同一基目录内不冲突)。
 //
-// As an experiment, setup failure must not interrupt tasks: warn and retain built-in compaction.
-// On success clear opts.Compaction to avoid the warning about two context managers.
+// noa 是实验功能:接入失败不得中断真实任务。发生错误时经 onWarn 上报并回退内置压缩。
+// 启用成功时清掉 opts.Compaction,避免 agentcore 因「两个上下文管理器同时设置」告警。
 func enableNoa(opts *agentcore.Options, enabled func() bool, archiveRoot, sessionID string, onWarn func(string)) {
 	if enabled == nil || !enabled() {
-		return
-	}
-	if _, local := opts.Compactor.(*localCompactor); local {
-		if onWarn != nil {
-			onWarn("Native Ollama contexts up to 64K retain the 75% compaction policy; experimental noa is skipped")
-		}
 		return
 	}
 	if opts.OnWarn == nil {
@@ -46,10 +39,10 @@ func enableNoa(opts *agentcore.Options, enabled func() bool, archiveRoot, sessio
 		OnWarn:         onWarn,
 	}); err != nil {
 		if onWarn != nil {
-			onWarn(locale.Text(locale.ServerDefault(), "Could not enable noa compaction; falling back to built-in compaction: ") + err.Error())
+			onWarn("noa 压缩启用失败,回退内置压缩:" + err.Error())
 		}
 		return
 	}
-	// Compactor supersedes Compaction; explicitly clear the latter to avoid repeated warnings.
+	// Compactor 覆盖 Compaction,但两者并存时 agentcore 每次会告警;明确清掉。
 	opts.Compaction = nil
 }

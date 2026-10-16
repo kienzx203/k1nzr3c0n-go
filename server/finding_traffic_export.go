@@ -12,20 +12,19 @@ import (
 
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/evidence"
-	"github.com/Autumn-27/artex/locale"
 	"github.com/Autumn-27/artex/report"
 )
 
-func writeFindingsEvidenceZip(out io.Writer, findings []*db.DBFinding, stage string, now time.Time, langs ...locale.Lang) error {
+func writeFindingsEvidenceZip(out io.Writer, findings []*db.DBFinding, stage string, now time.Time) error {
 	zw := zip.NewWriter(out)
-	if err := writeFindingsZipEntries(zw, findings, stage, now, langs...); err != nil {
+	if err := writeFindingsZipEntries(zw, findings, stage, now); err != nil {
 		zw.Close()
 		return err
 	}
 	return zw.Close()
 }
 
-func writeFindingsZipEntries(zw *zip.Writer, findings []*db.DBFinding, stage string, now time.Time, langs ...locale.Lang) error {
+func writeFindingsZipEntries(zw *zip.Writer, findings []*db.DBFinding, stage string, now time.Time) error {
 	store := evidence.New(nil, nil, stage) // private export copy; not subject to GC
 	used := map[string]int{}
 	for _, f := range findings {
@@ -39,7 +38,7 @@ func writeFindingsZipEntries(zw *zip.Writer, findings []*db.DBFinding, stage str
 		if err != nil {
 			return err
 		}
-		if _, err = io.WriteString(w, report.SingleFindingMarkdown(f, now, locale.First(langs))); err != nil {
+		if _, err = io.WriteString(w, report.SingleFindingMarkdown(f, now)); err != nil {
 			return err
 		}
 		for _, b := range f.TrafficBindings {
@@ -90,12 +89,12 @@ func writeFindingsZipEntries(zw *zip.Writer, findings []*db.DBFinding, stage str
 	return nil
 }
 
-func buildFindingsEvidenceZip(path string, findings []*db.DBFinding, stage string, now time.Time, langs ...locale.Lang) error {
+func buildFindingsEvidenceZip(path string, findings []*db.DBFinding, stage string, now time.Time) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
-	writeErr := writeFindingsEvidenceZip(f, findings, stage, now, langs...)
+	writeErr := writeFindingsEvidenceZip(f, findings, stage, now)
 	syncErr := f.Sync()
 	closeErr := f.Close()
 	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {

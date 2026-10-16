@@ -1,10 +1,9 @@
 package server
 
 import (
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 	"net/http"
 
-	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -19,13 +18,8 @@ type taskLLMResolution struct {
 }
 
 func (s *Server) resolutionFromProfile(p *db.LLMProfile, source string) taskLLMResolution {
-	return s.resolutionFromProfileForLanguage(p, source, locale.ServerDefault())
-}
-
-// Only built-in availability reasons are localized; profile names and model IDs remain untouched.
-func (s *Server) resolutionFromProfileForLanguage(p *db.LLMProfile, source string, lang locale.Lang) taskLLMResolution {
 	if p == nil {
-		return taskLLMResolution{Source: source, Reason: locale.Text(lang, "LLM profile not found")}
+		return taskLLMResolution{Source: source, Reason: "LLM 配置不存在"}
 	}
 	id := p.ID
 	result := taskLLMResolution{
@@ -35,12 +29,12 @@ func (s *Server) resolutionFromProfileForLanguage(p *db.LLMProfile, source strin
 		Model:     p.Model,
 		Source:    source,
 	}
-	if !agent.ConfigFrom(p.Format, p.Model, p.BaseURL, p.APIKey, p.Proxy).Ready() {
-		result.Reason = locale.Text(lang, "LLM profile has no API key")
+	if p.APIKey == "" {
+		result.Reason = "LLM 配置未设置 API Key"
 		return result
 	}
 	if _, _, ok := s.providerForProfile(p.ID); !ok {
-		result.Reason = locale.Text(lang, "LLM profile format or parameters are invalid")
+		result.Reason = "LLM 配置格式或参数无效"
 		return result
 	}
 	result.Available = true
@@ -51,24 +45,20 @@ func (s *Server) resolutionFromProfileForLanguage(p *db.LLMProfile, source strin
 // role Agent binding -> explicit task chain -> active/global environment config.
 // Database failures are returned rather than represented as an unavailable model.
 func (s *Server) resolveTaskRoleLLM(t *Task, agentKey string) (taskLLMResolution, error) {
-	return s.resolveTaskRoleLLMForLanguage(t, agentKey, locale.ServerDefault())
-}
-
-func (s *Server) resolveTaskRoleLLMForLanguage(t *Task, agentKey string, lang locale.Lang) (taskLLMResolution, error) {
 	if s == nil || s.m == nil || s.m.pg == nil {
-		return taskLLMResolution{}, locale.Errorf("database unavailable")
+		return taskLLMResolution{}, fmt.Errorf("database unavailable")
 	}
 	a, err := s.m.pg.GetAgentByKey(agentKey)
 	if err != nil {
-		return taskLLMResolution{}, locale.Errorf("load agent %q: %w", agentKey, err)
+		return taskLLMResolution{}, fmt.Errorf("load agent %q: %w", agentKey, err)
 	}
 	if a != nil && a.LLMProfileID != nil {
 		p, err := s.m.pg.ProfileByID(*a.LLMProfileID)
 		if err != nil {
-			return taskLLMResolution{}, locale.Errorf("load agent LLM profile: %w", err)
+			return taskLLMResolution{}, fmt.Errorf("load agent LLM profile: %w", err)
 		}
 		if p != nil {
-			resolved := s.resolutionFromProfileForLanguage(p, "agent_binding", lang)
+			resolved := s.resolutionFromProfile(p, "agent_binding")
 			if resolved.Available {
 				return resolved, nil
 			}
@@ -77,20 +67,20 @@ func (s *Server) resolveTaskRoleLLMForLanguage(t *Task, agentKey string, lang lo
 	state := t.llmStateSnapshot()
 	if len(state.ProfileIDs) > 0 {
 		if state.ActiveID == nil {
-			return taskLLMResolution{Source: "task_chain", Reason: locale.Text(lang, "The task LLM profile chain has exhausted its quota")}, nil
+			return taskLLMResolution{Source: "task_chain", Reason: "任务 LLM 配置链额度已耗尽"}, nil
 		}
 		p, err := s.m.pg.ProfileByID(*state.ActiveID)
 		if err != nil {
-			return taskLLMResolution{}, locale.Errorf("load task LLM profile: %w", err)
+			return taskLLMResolution{}, fmt.Errorf("load task LLM profile: %w", err)
 		}
-		return s.resolutionFromProfileForLanguage(p, "task_chain", lang), nil
+		return s.resolutionFromProfile(p, "task_chain"), nil
 	}
 	p, err := s.m.pg.ActiveProfile()
 	if err != nil {
-		return taskLLMResolution{}, locale.Errorf("load global LLM profile: %w", err)
+		return taskLLMResolution{}, fmt.Errorf("load global LLM profile: %w", err)
 	}
 	if p != nil {
-		resolved := s.resolutionFromProfileForLanguage(p, "global_profile", lang)
+		resolved := s.resolutionFromProfile(p, "global_profile")
 		if resolved.Available {
 			return resolved, nil
 		}
@@ -100,14 +90,14 @@ func (s *Server) resolveTaskRoleLLMForLanguage(t *Task, agentKey string, lang lo
 	s.cfgMu.Unlock()
 	if on {
 		if name == "" {
-			name = locale.Text(lang, "Global configuration")
+			name = "全局配置"
 		}
 		return taskLLMResolution{
 			Name: name, Format: cfg.Provider(), Model: cfg.Model,
 			Source: "environment", Available: true,
 		}, nil
 	}
-	return taskLLMResolution{Source: "global", Reason: locale.Text(lang, "No LLM profile is available")}, nil
+	return taskLLMResolution{Source: "global", Reason: "没有可用的 LLM 配置"}, nil
 }
 
 func (s *Server) taskLLMResolutionHandler(w http.ResponseWriter, r *http.Request) {
@@ -122,9 +112,9 @@ func (s *Server) taskLLMResolutionHandler(w http.ResponseWriter, r *http.Request
 		"planner":   "planner",
 		"worker":    "worker",
 	} {
-		resolved, err := s.resolveTaskRoleLLMForLanguage(t, agentKey, responseLanguage(w))
+		resolved, err := s.resolveTaskRoleLLM(t, agentKey)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
+			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		roles[responseKey] = resolved

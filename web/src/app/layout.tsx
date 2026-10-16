@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 
 import type { Metadata } from "next";
 
-import { LocaleProvider } from "@/i18n";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { APP_CONFIG } from "@/config/app-config";
@@ -38,7 +37,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <ThemeBootScript />
       </head>
       <body className={`${fontVars} min-h-screen antialiased`}>
-        <LocaleProvider><TooltipProvider>
+        <TooltipProvider>
           <PreferencesStoreProvider
             themeMode={theme_mode}
             themePreset={theme_preset}
@@ -49,7 +48,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
             {children}
             <Toaster />
           </PreferencesStoreProvider>
-        </TooltipProvider></LocaleProvider>
+        </TooltipProvider>
       </body>
     </html>
   );

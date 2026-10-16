@@ -13,11 +13,11 @@ const maxTaskAssetRequestBytes = 512 << 10
 func writeTaskAssetError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, db.ErrTaskAssetInvalid):
-		writeError(w, http.StatusBadRequest, err)
+		writeErr(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, db.ErrTaskAssetTaskNotFound), errors.Is(err, db.ErrTaskAssetAssetNotFound):
-		writeError(w, http.StatusNotFound, err)
+		writeErr(w, http.StatusNotFound, err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, err)
+		writeErr(w, http.StatusInternalServerError, err.Error())
 	}
 }
 
@@ -36,16 +36,16 @@ func (s *Server) attachTaskAssets(w http.ResponseWriter, r *http.Request) {
 	if err := decode(r, &request); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeErr(w, http.StatusRequestEntityTooLarge, "Request body is too large")
+			writeErr(w, http.StatusRequestEntityTooLarge, "请求正文过大")
 		} else {
-			writeError(w, http.StatusBadRequest, err)
+			writeErr(w, http.StatusBadRequest, err.Error())
 		}
 		return
 	}
 	request.SourceSummary = strings.TrimSpace(request.SourceSummary)
 	taskID, _ := parseTaskID(task.ID)
 	if request.Scope != nil && len(request.AssetIDs) > 0 {
-		writeErr(w, http.StatusBadRequest, "scope and asset_ids cannot be submitted together")
+		writeErr(w, http.StatusBadRequest, "scope 与 asset_ids 不能同时提交")
 		return
 	}
 	if request.Scope != nil {

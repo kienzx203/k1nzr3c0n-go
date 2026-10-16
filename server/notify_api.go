@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Autumn-27/artex/locale"
 	"net/http"
 	"strings"
 	"time"
@@ -13,14 +12,14 @@ import (
 	"github.com/Autumn-27/artex/notify"
 )
 
-// Notification HTTP endpoints are all behind requireAuth in Handler, matching
-// other management endpoints.
+// 本文件是推送功能的 HTTP 接口。全部路由挂在 requireAuth 之后（见 Handler()），
+// 与其它管理接口一致。
 
-// notifyChannelDTO is the public channel representation.
+// notifyChannelDTO 是渠道的对外表述。
 //
-// Config is masked: credential values begin with notify.MaskedPrefix.
-// Returning a masked value unchanged means preserve the stored secret,
-// as implemented by notify.MergeConfig.
+// Config 是**掩码后**的配置：凭据字段被替换成 notify.MaskedPrefix 开头的值。
+// 前端把掩码值原样提交回来即表示「这个字段没改」，服务端据此保留库中原值
+// （见 notify.MergeConfig）。
 type notifyChannelDTO struct {
 	ID         int64          `json:"id"`
 	Name       string         `json:"name"`
@@ -32,12 +31,12 @@ type notifyChannelDTO struct {
 	RatePerMin int            `json:"rate_per_min"`
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
-	// SecretKeys tells the frontend which fields need password inputs and unchanged-value hints.
-	// Each channel declares them; the frontend does not hard-code channel-specific secret rules.
+	// SecretKeys 告知前端哪些字段是凭据，据此渲染密码框与「留空即不改」的提示。
+	// 由渠道自己声明（notify.Channel.SecretKeys），前端不硬编码渠道知识。
 	SecretKeys []string `json:"secret_keys"`
 }
 
-// notifyDeliveryDTO is the public delivery-history representation.
+// notifyDeliveryDTO 是投递历史的对外表述。
 type notifyDeliveryDTO struct {
 	ID          int64      `json:"id"`
 	FindingID   int64      `json:"finding_id,string"`
@@ -52,7 +51,7 @@ type notifyDeliveryDTO struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	SentAt      *time.Time `json:"sent_at,omitempty"`
 	NextAttempt time.Time  `json:"next_attempt_at"`
-	// Title/summary lets history identify the notification without expanding it.
+	// 消息标题摘要，让历史列表不必展开就能看出这条推的是什么。
 	Title    string `json:"title"`
 	Severity string `json:"severity"`
 }
@@ -110,8 +109,8 @@ func toNotifyDeliveryDTO(dl *db.NotificationDelivery) notifyDeliveryDTO {
 	return dto
 }
 
-// notifyMeta returns static metadata and global settings together, avoiding
-// multiple requests merely to render a selector.
+// notifyMeta 返回通知页需要的静态元数据与全局设置，一次请求拿全，
+// 避免前端为了渲染一个下拉框发三次请求。
 func (s *Server) notifyMeta(w http.ResponseWriter, r *http.Request) {
 	pg := s.pg(w)
 	if pg == nil {
@@ -130,7 +129,7 @@ func (s *Server) notifyMeta(w http.ResponseWriter, r *http.Request) {
 	digest, _, _ := pg.GetSetting(settingNotifyDigestMinutes)
 	stats, err := pg.NotificationStatsSnapshot(r.Context())
 	if err != nil {
-		writeNotifyError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{
@@ -152,7 +151,7 @@ func (s *Server) notifyListChannels(w http.ResponseWriter, r *http.Request) {
 	}
 	channels, err := pg.ListNotificationChannels(r.Context())
 	if err != nil {
-		writeNotifyError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	out := make([]notifyChannelDTO, 0, len(channels))
@@ -162,10 +161,10 @@ func (s *Server) notifyListChannels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"channels": out})
 }
 
-// notifyChannelRequest is the create/update request body.
+// notifyChannelRequest 是新建/更新渠道的请求体。
 //
-// Pointer fields distinguish omission from an explicit zero value; PATCH-like
-// updates must preserve stored values when a field is omitted.
+// 全部业务字段用指针，以便区分「没传」与「传了零值」：PATCH 语义下，
+// 没传的字段必须保留库中原值。
 type notifyChannelRequest struct {
 	Name       *string        `json:"name"`
 	Kind       *string        `json:"kind"`
@@ -183,11 +182,11 @@ func (s *Server) notifyCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	var req notifyChannelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "Request body is not valid JSON: ")+err.Error())
+		writeErr(w, 400, "请求体不是合法 JSON: "+err.Error())
 		return
 	}
 	if req.Kind == nil || !notify.ValidKind(*req.Kind) {
-		writeErr(w, 400, fmt.Sprintf(locale.Text(responseLanguage(w), "Invalid channel kind; choose: %s"), strings.Join(notify.Kinds(), " / ")))
+		writeErr(w, 400, fmt.Sprintf("渠道类型无效，可选：%s", strings.Join(notify.Kinds(), " / ")))
 		return
 	}
 	name := ""
@@ -195,12 +194,12 @@ func (s *Server) notifyCreateChannel(w http.ResponseWriter, r *http.Request) {
 		name = strings.TrimSpace(*req.Name)
 	}
 	if name == "" {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "Channel name is required"))
+		writeErr(w, 400, "缺少渠道名称")
 		return
 	}
 	channel, _ := notify.Get(*req.Kind)
 	if err := channel.Validate(req.Config); err != nil {
-		writeNotifyError(w, 400, err)
+		writeErr(w, 400, err.Error())
 		return
 	}
 	ch := &db.NotificationChannel{
@@ -212,30 +211,30 @@ func (s *Server) notifyCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Mode != nil {
 		if !db.ValidNotifyMode(*req.Mode) {
-			writeErr(w, 400, locale.Text(responseLanguage(w), "Invalid delivery mode; choose realtime or digest"))
+			writeErr(w, 400, "推送模式无效，可选：realtime / digest")
 			return
 		}
 		ch.Mode = *req.Mode
 	}
 	if req.RatePerMin != nil {
-		// Honor explicit values, including zero, which validly means unlimited.
+		// 显式给值就照用——包括 0，它表示「不限流」，是合法配置。
 		if *req.RatePerMin < 0 {
-			writeErr(w, 400, locale.Text(responseLanguage(w), "Rate limit cannot be negative"))
+			writeErr(w, 400, "限流值不能为负")
 			return
 		}
 		ch.RatePerMin = *req.RatePerMin
 	}
-	// Apply channel defaults only when the field is omitted. Resolve this here,
-	// where omission can be distinguished from explicit zero, not in the database.
-	// Treating zero as missing there would make unlimited-rate configuration impossible.
+	// 只有「字段缺省」才套用渠道默认值。默认值必须在这里决定而不是在 db 层：
+	// 只有请求体能区分「没传这个字段」与「显式传了 0」，而两者的含义完全不同
+	// （前者=用默认，后者=不限流）。db 层把 0 也当未指定，会让不限流配置不可达。
 	if req.RatePerMin == nil {
 		ch.RatePerMin = channel.DefaultRatePerMin()
 	}
 	if req.Filter != nil {
-		// Validate constrained filters such as min_severity at write time. A typo must
-		// fail validation rather than silently disabling filtering and sending everything.
+		// 写入时校验取值受限的过滤字段（如 min_severity）。详见 notify.Filter.Validate：
+		// 门槛打错字会让过滤器静默失效变成全推，必须在入口拦掉。
 		if err := req.Filter.Validate(); err != nil {
-			writeNotifyError(w, 400, err)
+			writeErr(w, 400, err.Error())
 			return
 		}
 		raw, _ := json.Marshal(req.Filter)
@@ -246,7 +245,7 @@ func (s *Server) notifyCreateChannel(w http.ResponseWriter, r *http.Request) {
 
 	id, err := pg.SaveNotificationChannel(r.Context(), ch)
 	if err != nil {
-		writeNotifyError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"id": id})
@@ -259,7 +258,7 @@ func (s *Server) notifyUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	id, ok := pathInt(r, "id")
 	if !ok {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "Invalid channel ID"))
+		writeErr(w, 400, "渠道 id 无效")
 		return
 	}
 	current, err := pg.NotificationChannelByID(r.Context(), id)
@@ -269,15 +268,15 @@ func (s *Server) notifyUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	var req notifyChannelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "Request body is not valid JSON: ")+err.Error())
+		writeErr(w, 400, "请求体不是合法 JSON: "+err.Error())
 		return
 	}
 
-	// Changing kind replaces its credential configuration; never merge another kind's old fields.
+	// kind 允许修改，但改类型意味着凭据字段整套替换，不能与旧配置合并。
 	kind := current.Kind
 	if req.Kind != nil {
 		if !notify.ValidKind(*req.Kind) {
-			writeErr(w, 400, fmt.Sprintf(locale.Text(responseLanguage(w), "Invalid channel kind; choose: %s"), strings.Join(notify.Kinds(), " / ")))
+			writeErr(w, 400, fmt.Sprintf("渠道类型无效，可选：%s", strings.Join(notify.Kinds(), " / ")))
 			return
 		}
 		kind = *req.Kind
@@ -293,15 +292,15 @@ func (s *Server) notifyUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	if stored == nil {
 		stored = map[string]any{}
 	}
-	// PrepareConfigUpdate requires an explicit credential decision when destination changes,
-	// preventing a URL-only edit from forwarding stored credentials to a new destination.
+	// 用 PrepareConfigUpdate 而不是裸的 MergeConfig：目标地址变更时必须让操作者
+	// 对凭据字段重新表态，否则「只改地址、凭据沿用」会把库里的真凭据发到新地址。
 	merged, err := notify.PrepareConfigUpdate(kind, stored, req.Config)
 	if err != nil {
-		writeNotifyError(w, 400, err)
+		writeErr(w, 400, err.Error())
 		return
 	}
 	if err := channel.Validate(merged); err != nil {
-		writeNotifyError(w, 400, err)
+		writeErr(w, 400, err.Error())
 		return
 	}
 	rawCfg, _ := json.Marshal(merged)
@@ -318,7 +317,7 @@ func (s *Server) notifyUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name != nil {
 		if ch.Name = strings.TrimSpace(*req.Name); ch.Name == "" {
-			writeErr(w, 400, locale.Text(responseLanguage(w), "Channel name cannot be empty"))
+			writeErr(w, 400, "渠道名称不能为空")
 			return
 		}
 	}
@@ -327,49 +326,49 @@ func (s *Server) notifyUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Mode != nil {
 		if !db.ValidNotifyMode(*req.Mode) {
-			writeErr(w, 400, locale.Text(responseLanguage(w), "Invalid delivery mode; choose realtime or digest"))
+			writeErr(w, 400, "推送模式无效，可选：realtime / digest")
 			return
 		}
 		ch.Mode = *req.Mode
 	}
 	if req.RatePerMin != nil {
 		if *req.RatePerMin < 0 {
-			writeErr(w, 400, locale.Text(responseLanguage(w), "Rate limit cannot be negative"))
+			writeErr(w, 400, "限流值不能为负")
 			return
 		}
 		ch.RatePerMin = *req.RatePerMin
 	}
 	if req.Filter != nil {
 		if err := req.Filter.Validate(); err != nil {
-			writeNotifyError(w, 400, err)
+			writeErr(w, 400, err.Error())
 			return
 		}
 		raw, _ := json.Marshal(req.Filter)
 		ch.Filter = raw
 	}
 
-	// SetNotificationChannelEnabled also marks pending deliveries skipped when disabling,
-	// preventing a stale backlog from being sent when the channel is re-enabled.
-	// SaveNotificationChannel alone would not perform that transition.
+	// 走 SetNotificationChannelEnabled 而非 SaveNotificationChannel 的路径，
+	// 是为了让「停用」同时把存量待发投递标记为 skipped，避免重新启用时收到
+	// 一批已过时的积压消息。
 	enabledChanged := ch.Enabled != nil && current.Enabled != nil && *ch.Enabled != *current.Enabled
 	if enabledChanged {
-		// Persist configuration with the old enabled value, then toggle separately.
-		// This endpoint owns updates to both fields, preventing a premature skip transition.
+		// 先把配置更新落库（此时 enabled 用旧值，避免提前触发跳过逻辑），
+		// 再单独切开关。两步之间没有并发窗口：本接口是唯一改这两个字段的入口。
 		prev := ch.Enabled
 		ch.Enabled = current.Enabled
 		if _, err := pg.SaveNotificationChannel(r.Context(), ch); err != nil {
-			writeNotifyError(w, 500, err)
+			writeErr(w, 500, err.Error())
 			return
 		}
 		if err := pg.SetNotificationChannelEnabled(r.Context(), id, *prev); err != nil {
-			writeNotifyError(w, 500, err)
+			writeErr(w, 500, err.Error())
 			return
 		}
 		writeJSON(w, 200, map[string]any{"id": id})
 		return
 	}
 	if _, err := pg.SaveNotificationChannel(r.Context(), ch); err != nil {
-		writeNotifyError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"id": id})
@@ -382,7 +381,7 @@ func (s *Server) notifyDeleteChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	id, ok := pathInt(r, "id")
 	if !ok {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "Invalid channel ID"))
+		writeErr(w, 400, "渠道 id 无效")
 		return
 	}
 	if err := pg.DeleteNotificationChannel(r.Context(), id); err != nil {
@@ -392,11 +391,11 @@ func (s *Server) notifyDeleteChannel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-// notifyTestChannel sends one test message using the currently saved configuration.
+// notifyTestChannel 用当前保存的配置发一条测试消息。
 //
-// Call Send directly rather than queuing: users need immediate configuration
-// feedback without opening delivery history to discover whether the test succeeded.
-// This endpoint is synchronous, bounded by the notification client's 15-second timeout.
+// 直接调用渠道 Send 而不经投递队列：测试的目的是立刻告诉用户「这套配置能不能
+// 发出去」，走队列会把结果藏进投递历史，用户得再去翻一遍才知道成没成。
+// 因此本接口是**同步**的，超时上限由 notify 包的 HTTP 客户端决定（15 秒）。
 func (s *Server) notifyTestChannel(w http.ResponseWriter, r *http.Request) {
 	pg := s.pg(w)
 	if pg == nil {
@@ -404,7 +403,7 @@ func (s *Server) notifyTestChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	id, ok := pathInt(r, "id")
 	if !ok {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "Invalid channel ID"))
+		writeErr(w, 400, "渠道 id 无效")
 		return
 	}
 	ch, err := pg.NotificationChannelByID(r.Context(), id)
@@ -414,7 +413,7 @@ func (s *Server) notifyTestChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	channel, ok := notify.Get(ch.Kind)
 	if !ok {
-		writeErr(w, 400, fmt.Sprintf(locale.Text(responseLanguage(w), "Channel kind %q is not registered"), ch.Kind))
+		writeErr(w, 400, fmt.Sprintf("渠道类型 %q 未注册", ch.Kind))
 		return
 	}
 	var cfg map[string]any
@@ -422,16 +421,16 @@ func (s *Server) notifyTestChannel(w http.ResponseWriter, r *http.Request) {
 		_ = json.Unmarshal(ch.Config, &cfg)
 	}
 	if err := channel.Validate(cfg); err != nil {
-		writeNotifyError(w, 400, err)
+		writeErr(w, 400, err.Error())
 		return
 	}
-	msg := notifyTestMessage(s.notifierBaseURL(pg), locale.FromRequest(r))
+	msg := notifyTestMessage(s.notifierBaseURL(pg))
 	start := time.Now()
-	// A test contains one item, so the delivered count is unnecessary; single-item
-	// truncation handles channel limits without segmentation.
+	// 测试消息只有一条，送达条数这里不需要（渠道长度上限对单条消息而言
+	// 由截断兜底，不涉及分段）。
 	if _, err := channel.Send(r.Context(), cfg, msg); err != nil {
-		// Preserve the channel's actual error detail so users can diagnose their configuration.
-		writeNotifyError(w, 502, err)
+		// 把渠道返回的原始错误如实回给用户——这是他们调试配置的唯一线索。
+		writeErr(w, 502, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{
@@ -440,25 +439,24 @@ func (s *Server) notifyTestChannel(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// notifyTestMessage uses unmistakably synthetic content so recipients cannot
-// mistake the test for a real vulnerability.
-func notifyTestMessage(baseURL string, langs ...locale.Lang) notify.Message {
+// notifyTestMessage 构造测试消息。刻意用一眼能看出是测试的内容：
+// 收到的人不应该把它误判成真实漏洞。
+func notifyTestMessage(baseURL string) notify.Message {
 	return notify.Message{
-		Language: locale.First(langs),
 		Items: []notify.Item{{
 			FindingID: 0,
-			Name:      locale.Text(locale.First(langs), "Test message · Channel configured successfully"),
-			VulnClass: locale.Text(locale.First(langs), "Connectivity test"),
+			Name:      "测试消息 · 渠道配置正常",
+			VulnClass: "连通性测试",
 			Severity:  "low",
-			Summary:   locale.Text(locale.First(langs), "This is a K1nzr3c0n notification-channel test. Receiving it confirms the channel configuration works."),
-			Assets:    []string{"scopeweaver.example.com"},
+			Summary:   "这是 ARTEX 推送渠道的测试消息，收到即表示该渠道配置可用。",
+			Assets:    []string{"artex.example.com"},
 			DetailURL: baseURL,
 		}},
 		HomeURL: baseURL,
 	}
 }
 
-// notifierBaseURL reads the external return-link base URL.
+// notifierBaseURL 读回链用的外部地址。
 func (s *Server) notifierBaseURL(pg *db.DB) string {
 	v, _, _ := pg.GetSetting(settingNotifyPublicBaseURL)
 	return trimTrailingSlash(v)
@@ -480,7 +478,7 @@ func (s *Server) notifyListDeliveries(w http.ResponseWriter, r *http.Request) {
 	pageSize := queryInt(r, "page_size", 50)
 	items, total, err := pg.ListNotificationDeliveries(r.Context(), f, page, pageSize)
 	if err != nil {
-		writeNotifyError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	out := make([]notifyDeliveryDTO, 0, len(items))
@@ -497,26 +495,21 @@ func (s *Server) notifyRetryDelivery(w http.ResponseWriter, r *http.Request) {
 	}
 	id, ok := pathInt(r, "id")
 	if !ok {
-		writeErr(w, 400, locale.Text(responseLanguage(w), "Invalid delivery ID"))
+		writeErr(w, 400, "投递 id 无效")
 		return
 	}
 	if err := pg.RetryNotificationDelivery(r.Context(), id); err != nil {
-		writeNotifyError(w, 400, err)
+		writeErr(w, 400, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-// notifyChannelLookupErr maps missing channels to 404 and other failures to 500.
+// notifyChannelLookupErr 把「渠道不存在」翻译成 404，其余错误 500。
 func notifyChannelLookupErr(w http.ResponseWriter, err error) {
 	if errors.Is(err, db.ErrNotificationChannelNotFound) {
-		writeErr(w, 404, locale.Text(responseLanguage(w), "Notification channel not found"))
+		writeErr(w, 404, "通知渠道不存在")
 		return
 	}
-	writeNotifyError(w, 500, err)
-}
-
-// writeNotifyError preserves typed delivery failures until their request-language boundary.
-func writeNotifyError(w http.ResponseWriter, code int, err error) {
-	writeJSON(w, code, map[string]any{"error": notify.ErrorMessage(responseLanguage(w), err)})
+	writeErr(w, 500, err.Error())
 }

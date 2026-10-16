@@ -14,6 +14,7 @@ package intercept
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -22,7 +23,6 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/locale"
 )
 
 // ctxKey is the unexported context key type to avoid collisions.
@@ -305,6 +305,8 @@ const (
 	settingJudgeProfileID        = "llm_judge_profile_id"
 	settingJudgePrompt           = "llm_judge_prompt"
 	settingJudgeTimeoutSecs      = "llm_judge_timeout_seconds"
+	settingJudgeRetryCount       = "llm_judge_retry_count"
+	settingJudgeRetryIntervalMS  = "llm_judge_retry_interval_ms"
 	settingJudgeFailAction       = "llm_judge_fail_action"
 	settingJudgeAskTimeoutSecs   = "llm_judge_ask_timeout_seconds"
 	settingJudgeAskTimeoutAction = "llm_judge_ask_timeout_action"
@@ -313,6 +315,7 @@ const (
 // Judge default values.
 const (
 	defaultJudgeTimeoutSecs      = 15
+	defaultJudgeRetryIntervalMS  = 1000
 	defaultJudgeFailAction       = "allow"
 	defaultJudgeAskTimeoutSecs   = 300
 	defaultJudgeAskTimeoutAction = "deny"
@@ -325,7 +328,9 @@ type JudgeConfig struct {
 	ProfileID         int64  `json:"profile_id"` // 0 = follow active/default
 	Prompt            string `json:"prompt"`
 	TimeoutSeconds    int    `json:"timeout_seconds"`
-	FailAction        string `json:"fail_action"` // allow|ask|deny
+	RetryCount        int    `json:"retry_count"`       // extra review attempts; 0 preserves one-shot behavior
+	RetryIntervalMS   int    `json:"retry_interval_ms"` // delay between failed reviews
+	FailAction        string `json:"fail_action"`       // allow|ask|deny
 	AskTimeoutSeconds int    `json:"ask_timeout_seconds"`
 	AskTimeoutAction  string `json:"ask_timeout_action"` // allow|deny
 }
@@ -333,28 +338,16 @@ type JudgeConfig struct {
 // judgeConfig reads the judge configuration from settings, applying defaults for
 // missing/invalid keys. Read fresh on each fallback judgement — the LLM call that
 // follows dwarfs a few KV reads, and freshness avoids a cache-invalidation path.
-func (i *Interceptor) judgeConfig(resolveProfile ...bool) JudgeConfig {
-	profileID := int64(i.getSettingInt(settingJudgeProfileID, 0))
-	var profile *db.LLMProfile
-	if profileID == 0 {
-		profile, _ = i.db.ActiveProfile()
-	} else {
-		profile, _ = i.db.ProfileByID(profileID)
-	}
-	timeoutDefault, failDefault := defaultJudgeTimeoutSecs, defaultJudgeFailAction
-	if profile != nil && profile.Format == "ollama" {
-		timeoutDefault, failDefault = 60, "ask"
-	}
+func (i *Interceptor) judgeConfig() JudgeConfig {
 	c := JudgeConfig{
 		Enabled:           i.db.GetBool(settingJudgeEnabled, false),
-		ProfileID:         profileID,
-		TimeoutSeconds:    i.getSettingInt(settingJudgeTimeoutSecs, timeoutDefault),
-		FailAction:        i.getSettingChoice(settingJudgeFailAction, failDefault, "allow", "ask", "deny"),
+		ProfileID:         int64(i.getSettingInt(settingJudgeProfileID, 0)),
+		TimeoutSeconds:    i.getSettingInt(settingJudgeTimeoutSecs, defaultJudgeTimeoutSecs),
+		RetryCount:        min(max(i.getSettingInt(settingJudgeRetryCount, 0), 0), maxJudgeRetries),
+		RetryIntervalMS:   min(max(i.getSettingInt(settingJudgeRetryIntervalMS, defaultJudgeRetryIntervalMS), 0), maxJudgeRetryIntervalMS),
+		FailAction:        i.getSettingChoice(settingJudgeFailAction, defaultJudgeFailAction, "allow", "ask", "deny"),
 		AskTimeoutSeconds: i.getSettingInt(settingJudgeAskTimeoutSecs, defaultJudgeAskTimeoutSecs),
 		AskTimeoutAction:  i.getSettingChoice(settingJudgeAskTimeoutAction, defaultJudgeAskTimeoutAction, "allow", "deny"),
-	}
-	if len(resolveProfile) > 0 && resolveProfile[0] && profile != nil {
-		c.ProfileID = profile.ID
 	}
 	// Prompt: stored value if non-empty, else the built-in template.
 	if v, ok, _ := i.db.GetSetting(settingJudgePrompt); ok && strings.TrimSpace(v) != "" {
@@ -363,7 +356,7 @@ func (i *Interceptor) judgeConfig(resolveProfile ...bool) JudgeConfig {
 		c.Prompt = DefaultJudgePrompt
 	}
 	if c.TimeoutSeconds <= 0 {
-		c.TimeoutSeconds = timeoutDefault
+		c.TimeoutSeconds = defaultJudgeTimeoutSecs
 	}
 	if c.AskTimeoutSeconds <= 0 {
 		c.AskTimeoutSeconds = defaultJudgeAskTimeoutSecs
@@ -404,6 +397,9 @@ func (i *Interceptor) GetJudgeConfig() JudgeConfig { return i.judgeConfig() }
 // SetJudgeConfig persists the judge configuration. An empty Prompt clears the
 // override (the built-in template is used again).
 func (i *Interceptor) SetJudgeConfig(c JudgeConfig) error {
+	if err := c.ValidateRetry(); err != nil {
+		return err
+	}
 	if err := i.db.SetBool(settingJudgeEnabled, c.Enabled); err != nil {
 		return err
 	}
@@ -413,13 +409,19 @@ func (i *Interceptor) SetJudgeConfig(c JudgeConfig) error {
 	// Store the prompt only when it differs from the built-in template, so version
 	// updates to DefaultJudgePrompt flow through for users who never customized it.
 	promptToStore := ""
-	if strings.TrimSpace(c.Prompt) != "" && !IsDefaultJudgePrompt(c.Prompt) {
+	if strings.TrimSpace(c.Prompt) != "" && strings.TrimSpace(c.Prompt) != strings.TrimSpace(DefaultJudgePrompt) {
 		promptToStore = c.Prompt
 	}
 	if err := i.db.SetSetting(settingJudgePrompt, promptToStore); err != nil {
 		return err
 	}
 	if err := i.db.SetSetting(settingJudgeTimeoutSecs, strconv.Itoa(c.TimeoutSeconds)); err != nil {
+		return err
+	}
+	if err := i.db.SetSetting(settingJudgeRetryCount, strconv.Itoa(c.RetryCount)); err != nil {
+		return err
+	}
+	if err := i.db.SetSetting(settingJudgeRetryIntervalMS, strconv.Itoa(c.RetryIntervalMS)); err != nil {
 		return err
 	}
 	if err := i.db.SetSetting(settingJudgeFailAction, c.FailAction); err != nil {
@@ -441,7 +443,7 @@ func (i *Interceptor) SetJudgeConfig(c JudgeConfig) error {
 // falls back to the configured FailAction. Ask verdicts carry the human-approval
 // timeout so the existing HandleAsk consumes them unchanged.
 func (i *Interceptor) Judge(ctx context.Context, tool string, arguments json.RawMessage) (Decision, bool) {
-	cfg := i.judgeConfig(true) // Resolve active profile and its defaults together before creating the deadline.
+	cfg := i.judgeConfig()
 	i.mu.RLock()
 	rv := i.reviewer
 	i.mu.RUnlock()
@@ -449,34 +451,33 @@ func (i *Interceptor) Judge(ctx context.Context, tool string, arguments json.Raw
 		return Decision{}, false
 	}
 
-	cctx := ctx
-	if cfg.TimeoutSeconds > 0 {
-		var cancel context.CancelFunc
-		cctx, cancel = context.WithTimeout(ctx, time.Duration(cfg.TimeoutSeconds)*time.Second)
-		defer cancel()
-	}
-
-	input, contextErr := BuildReviewInput(cctx, tool, arguments)
-	cfg.Prompt = EffectiveJudgePrompt(cfg.Prompt, locale.FromContext(cctx))
+	input, contextErr := BuildReviewInput(ctx, tool, arguments)
+	cfg.Prompt = EffectiveJudgePrompt(cfg.Prompt)
 	var out Decision
 	var err error
 	var modelInput []byte
 	if contextErr != nil {
 		// Invalid current arguments cannot be reviewed faithfully, regardless of
 		// the configured model-failure strategy. A human must resolve the input.
-		out = Decision{Action: "ask", ModelFallback: true, Message: locale.Text(locale.FromContext(ctx), "Review context is incomplete; human confirmation is required: ") + locale.ErrorMessage(locale.FromContext(ctx), contextErr)}
+		out = Decision{Action: "ask", ModelFallback: true, Message: "审查上下文不完整，需要人工确认：" + contextErr.Error()}
 	} else {
 		modelInput, _ = json.Marshal(input)
-		out, err = rv(cctx, cfg.ProfileID, cfg.Prompt, input)
+		out, err = reviewWithRetry(ctx, rv, cfg, input)
 	}
 	if err != nil {
-		out = Decision{ProfileID: out.ProfileID, ModelFallback: true, Action: cfg.FailAction, Message: locale.Text(locale.FromContext(ctx), "Model review failed; applying failure policy: ") + locale.ErrorMessage(locale.FromContext(ctx), err)}
+		out = Decision{ProfileID: out.ProfileID, ModelFallback: true, Action: cfg.FailAction, Message: "模型审批失败,按失败策略处理: " + err.Error()}
+		if ctx.Err() != nil {
+			// Cancellation stops the operation, even if ordinary model failures
+			// are configured to fail open. It is not another approval verdict.
+			out.Action = "deny"
+			out.Message = "审核已取消，停止本次操作: " + ctx.Err().Error()
+		}
 	}
 	switch out.Action {
 	case "allow", "ask", "deny":
 		// valid verdict
 	default:
-		out = Decision{ProfileID: out.ProfileID, ModelFallback: true, Action: cfg.FailAction, Message: locale.Text(locale.FromContext(ctx), "Model output could not be parsed; applying failure policy")}
+		out = Decision{ProfileID: out.ProfileID, ModelFallback: true, Action: cfg.FailAction, Message: "模型输出无法解析,按失败策略处理"}
 	}
 	// A model verdict never carries a rule; keep RuleID 0 (→ NULL) for history.
 	out.RuleID = 0
@@ -491,9 +492,9 @@ func (i *Interceptor) Judge(ctx context.Context, tool string, arguments json.Raw
 	configJSON, _ := json.Marshal(cfg)
 	out.ConfigDigest = digestInput(configJSON)
 	if out.Message == "" {
-		out.Message = locale.Text(locale.FromContext(ctx), "[Model] ") + judgeActionLabel(out.Action, locale.FromContext(ctx))
-	} else if !strings.HasPrefix(out.Message, locale.Text(locale.FromContext(ctx), "[Model]")) {
-		out.Message = locale.Text(locale.FromContext(ctx), "[Model] ") + out.Message
+		out.Message = "[模型] " + judgeActionLabel(out.Action)
+	} else if !strings.HasPrefix(out.Message, "[模型]") {
+		out.Message = "[模型] " + out.Message
 	}
 	if out.Action == "ask" {
 		out.TimeoutEnabled = true
@@ -503,14 +504,14 @@ func (i *Interceptor) Judge(ctx context.Context, tool string, arguments json.Raw
 	return out, true
 }
 
-func judgeActionLabel(action string, langs ...locale.Lang) string {
+func judgeActionLabel(action string) string {
 	switch action {
 	case "allow":
-		return locale.Text(locale.First(langs), "Allow")
+		return "放行"
 	case "deny":
-		return locale.Text(locale.First(langs), "Block")
+		return "拦截"
 	case "ask":
-		return locale.Text(locale.First(langs), "Request human approval")
+		return "转人工审批"
 	default:
 		return action
 	}
@@ -519,7 +520,7 @@ func judgeActionLabel(action string, langs ...locale.Lang) string {
 // Match evaluates the rule list (priority DESC) against a tool call.
 // Returns (Decision, true) for the first matching enabled rule, or
 // (Decision{}, false) if no rule matches.
-func (i *Interceptor) Match(toolName string, input []byte, langs ...locale.Lang) (Decision, bool) {
+func (i *Interceptor) Match(toolName string, input []byte) (Decision, bool) {
 	rules, err := i.rules()
 	if err != nil || len(rules) == 0 {
 		return Decision{}, false
@@ -528,7 +529,7 @@ func (i *Interceptor) Match(toolName string, input []byte, langs ...locale.Lang)
 		if ruleMatches(r, toolName, input) {
 			msg := r.Message
 			if msg == "" {
-				msg = defaultMessage(r.Action, r.Name, langs...)
+				msg = defaultMessage(r.Action, r.Name)
 			}
 			configJSON, _ := json.Marshal(r.InterceptRule)
 			return Decision{
@@ -561,12 +562,12 @@ func ruleMatches(r compiledRule, toolName string, input []byte) bool {
 	return strings.Contains(subject, r.Pattern)
 }
 
-func defaultMessage(action, name string, langs ...locale.Lang) string {
+func defaultMessage(action, name string) string {
 	switch action {
 	case "deny":
-		return locale.Text(locale.First(langs), "Interception rule [") + name + locale.Text(locale.First(langs), "] prohibits this tool call")
+		return "拦截规则 [" + name + "] 禁止执行此工具"
 	case "ask":
-		return locale.Text(locale.First(langs), "Interception rule [") + name + locale.Text(locale.First(langs), "] requires user approval; please wait")
+		return "拦截规则 [" + name + "] 要求用户审批，请等待"
 	default:
 		return ""
 	}
@@ -623,7 +624,7 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 	})
 	activity := db.Activity{
 		Kind:    "intercept_request",
-		Summary: fmt.Sprintf(locale.Text(locale.FromContext(ctx), "Tool %s requests approval (#%d)"), toolName, pendingID),
+		Summary: fmt.Sprintf("工具 %s 请求审批 (#%d)", toolName, pendingID),
 		Detail:  string(detail),
 	}
 
@@ -642,8 +643,8 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 		case allowed := <-ch:
 			return allowed
 		case <-ctx.Done():
-			_, _ = i.db.ResolveIntercept(pendingID, "denied", "deny", locale.Text(locale.FromContext(ctx), "Work was cancelled"))
-			_ = i.db.CompleteIntercept(pendingID, audit.RunID, audit.ToolUseID, "not_executed", locale.Text(locale.FromContext(ctx), "Work was cancelled before execution"), false)
+			_, _ = i.db.ResolveIntercept(pendingID, "denied", "deny", "工作已取消")
+			_ = i.db.CompleteIntercept(pendingID, audit.RunID, audit.ToolUseID, "not_executed", "执行前工作已取消", false)
 			return false
 		}
 	}
@@ -663,7 +664,7 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 		if allowed {
 			action = "allow"
 		}
-		resolved, err := i.db.ResolveIntercept(pendingID, "timeout", action, locale.Text(locale.FromContext(ctx), "Approval timed out; applying timeout policy"))
+		resolved, err := i.db.ResolveIntercept(pendingID, "timeout", action, "审批超时，按超时策略处理")
 		if err != nil {
 			return false
 		}
@@ -673,13 +674,13 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 		}
 		return allowed
 	case <-ctx.Done():
-		_, _ = i.db.ResolveIntercept(pendingID, "denied", "deny", locale.Text(locale.FromContext(ctx), "Work was cancelled"))
-		_ = i.db.CompleteIntercept(pendingID, audit.RunID, audit.ToolUseID, "not_executed", locale.Text(locale.FromContext(ctx), "Work was cancelled before execution"), false)
+		_, _ = i.db.ResolveIntercept(pendingID, "denied", "deny", "工作已取消")
+		_ = i.db.CompleteIntercept(pendingID, audit.RunID, audit.ToolUseID, "not_executed", "执行前工作已取消", false)
 		return false
 	}
 }
 
-var ErrAlreadyDecided = locale.NewError("Approval was already resolved or does not exist; refresh the record")
+var ErrAlreadyDecided = errors.New("审批已处理或不存在，请刷新记录")
 
 // Decide resolves a pending request. Called by the HTTP decide endpoint.
 func (i *Interceptor) Decide(pendingID int64, allowed bool) error {
@@ -687,9 +688,9 @@ func (i *Interceptor) Decide(pendingID int64, allowed bool) error {
 	if allowed {
 		status = "allowed"
 	}
-	action, reason := "deny", locale.Text(locale.ServerDefault(), "Human denied execution")
+	action, reason := "deny", "人工拒绝执行"
 	if allowed {
-		action, reason = "allow", locale.Text(locale.ServerDefault(), "Human allowed execution")
+		action, reason = "allow", "人工允许执行"
 	}
 	resolved, err := i.db.ResolveIntercept(pendingID, status, action, reason)
 	if err != nil {

@@ -3,7 +3,8 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
-	"github.com/Autumn-27/artex/locale"
+	"errors"
+	"fmt"
 	"strconv"
 	"time"
 )
@@ -11,7 +12,7 @@ import (
 // Task is a row in the task registry (1:1 with an exploration).
 type Task struct {
 	ID            int64      `json:"id"`
-	Name          string     `json:"name"` // Optional task name; empty means unnamed.
+	Name          string     `json:"name"` // 可选任务名称;空=未命名
 	CategoryID    *int64     `json:"category_id,omitempty"`
 	CategoryName  string     `json:"category_name,omitempty"`
 	Pinned        bool       `json:"pinned"`
@@ -34,20 +35,20 @@ type Task struct {
 	LLMFailoverReason  string     `json:"llm_failover_reason,omitempty"`
 	SourceTaskIDs      []int64    `json:"source_task_ids,omitempty"`
 	CompanyIDs         []int64    `json:"company_ids,omitempty"`
-	ParentRef          string     `json:"parent_ref,omitempty"` // Parent task ID from orchestration spawn; nil means top-level.
+	ParentRef          string     `json:"parent_ref,omitempty"` // 父任务 id(编排 spawn 记录;空=顶层)
 	CreatedAt          time.Time  `json:"created_at"`
-	CompletedAt        *time.Time `json:"completed_at,omitempty"` // Time of entering done/failed/timeout; nil for nonterminal tasks.
-	// Task-level timeout; see the task-timeout and settlement design.
-	TimeoutSeconds int        `json:"timeout_seconds"`        // 0 means unlimited.
-	FirstRunAt     *time.Time `json:"first_run_at,omitempty"` // First actual start time, distinct from created_at; nil means never started.
-	DeadlineAt     *time.Time `json:"deadline_at,omitempty"`  // first_run_at + timeout_seconds; nil means unlimited or not started.
-	// Planner heartbeat in seconds: trigger after this interval from the last plan end/task start if nothing else triggers.
-	// Minimum/default=300 (5min); CreateTask raises lower values to 300. See docs/planner-trigger-impl-plan.md.
+	CompletedAt        *time.Time `json:"completed_at,omitempty"` // 进入终态(done/failed/timeout)的时刻;非终态为 nil
+	// 任务级超时(见 docs/任务级超时与收尾设计.md)。
+	TimeoutSeconds int        `json:"timeout_seconds"`        // 0=不限时
+	FirstRunAt     *time.Time `json:"first_run_at,omitempty"` // 首次真正开始运行的时刻(非 created_at);nil=尚未运行
+	DeadlineAt     *time.Time `json:"deadline_at,omitempty"`  // = first_run_at + timeout_seconds;nil=不限或未运行
+	// planner 心跳触发间隔(秒)：距上轮 plan 结束/任务开始满该值且期间无触发 → 触发一轮。
+	// 下限=默认=300(5min)，低于一律抬到 300(在 CreateTask 归一)。见 docs/planner-trigger-impl-plan.md
 	PlanHeartbeatSeconds int `json:"plan_heartbeat_seconds"`
-	// CoverageEnabled controls asset coverage (default true). When false, do not compute/display coverage,
-	// auto-accumulate task_scope(source=auto), expose add_task_scope/list_untested_assets to agents,
-	// or inject the coverage block into the situation (scope remains). Company links
-	// (task_scope kind=company) are independent and never affected. See db/task_scope.go.
+	// CoverageEnabled 是「资产覆盖度功能」总开关(默认 true)。false 时：不计算/不展示测试
+	// 覆盖度、不自动累积 task_scope(source=auto)、不给 agent 开放 add_task_scope/
+	// list_untested_assets、态势里不注入 coverage 块(scope 字段仍保留)。company 关联
+	// (task_scope kind=company)与此开关无关，永不受影响。见 db/task_scope.go。
 	CoverageEnabled bool `json:"coverage_enabled"`
 }
 
@@ -69,16 +70,16 @@ type TaskDeletePreparation struct {
 }
 
 // IsTerminal reports whether a task status is a terminal (finished) state.
-// Single source of truth replacing scattered hardcoded done/failed checks.
+// 单一真源，替换散落各处的 done/failed 硬编码判定。
 func IsTerminal(status string) bool {
 	return status == "done" || status == "failed" || status == "timeout"
 }
 
 // CreateTask creates an exploration + task in one transaction and returns the task.
-// timeoutSeconds is the task-level wall-clock budget (0 = unlimited); deadline_at is
+// timeoutSeconds is the task-level wall-clock budget (0 = 不限时); deadline_at is
 // stamped later at first real run (see engine), not here.
-// MinPlanHeartbeatSeconds is the planner heartbeat minimum and default: 10 minutes.
-// Raise lower values, including omitted zero, negatives, and misconfigured small values, to 10 minutes to protect the planner.
+// MinPlanHeartbeatSeconds 是 planner 心跳间隔的下限 = 默认 = 10min。
+// 低于它(含缺省 0 / 负值 / 误配的小值)一律抬到 10min，防止把 planner 打爆。
 const MinPlanHeartbeatSeconds = 600
 
 // MaxTaskSourceCount bounds the amount of live inherited context one task can
@@ -95,8 +96,8 @@ const MaxTaskCompanyCount = 32
 const taskCompanyAssetSource = "company"
 
 var (
-	ErrTaskCompanyIDsInvalid = locale.NewError("invalid task company ids")
-	ErrTaskCompanyNotFound   = locale.NewError("task company not found")
+	ErrTaskCompanyIDsInvalid = errors.New("invalid task company ids")
+	ErrTaskCompanyNotFound   = errors.New("task company not found")
 )
 
 // NormalizeTaskCompanyIDs validates IDs and removes duplicates while retaining
@@ -109,7 +110,7 @@ func NormalizeTaskCompanyIDs(ids []int64) ([]int64, error) {
 	normalized := make([]int64, 0, min(len(ids), MaxTaskCompanyCount))
 	for _, id := range ids {
 		if id <= 0 {
-			return nil, locale.Errorf("%w: company id must be positive", ErrTaskCompanyIDsInvalid)
+			return nil, fmt.Errorf("%w: company id must be positive", ErrTaskCompanyIDsInvalid)
 		}
 		if _, exists := seen[id]; exists {
 			continue
@@ -117,7 +118,7 @@ func NormalizeTaskCompanyIDs(ids []int64) ([]int64, error) {
 		seen[id] = struct{}{}
 		normalized = append(normalized, id)
 		if len(normalized) > MaxTaskCompanyCount {
-			return nil, locale.Errorf("%w: got more than %d unique companies", ErrTaskCompanyIDsInvalid, MaxTaskCompanyCount)
+			return nil, fmt.Errorf("%w: got more than %d unique companies", ErrTaskCompanyIDsInvalid, MaxTaskCompanyCount)
 		}
 	}
 	return normalized, nil
@@ -143,30 +144,25 @@ func (d *DB) CreateTask(description, goal string, llmProfileID *int64, timeoutSe
 // TaskCreateOptions contains the task data that must be committed atomically
 // with the task/exploration row.
 type TaskCreateOptions struct {
-	// Language is persisted atomically in the existing settings table; empty preserves legacy callers.
-	Language             locale.Lang
-	Name                 string // Optional task name; empty means unnamed.
+	Name                 string // 可选任务名称;空=未命名
 	CategoryID           *int64
 	SourceTaskIDs        []int64
 	CompanyIDs           []int64
 	LLMProfileIDs        []int64
 	TimeoutSeconds       int
 	PlanHeartbeatSeconds int
-	// CoverageEnabled controls asset coverage; nil defaults to true so callers unaware of the switch
-	// (orchestration spawn and old APIs) preserve prior behavior. Web task creation may explicitly disable it.
+	// CoverageEnabled 是「资产覆盖度功能」开关;nil=默认开(true)，让不关心该开关的创建
+	// 路径(编排 spawn、老 API)沿用原行为。仅 web 创建任务时可显式传 false 关闭。
 	CoverageEnabled *bool
-	// InterceptRules are task-level asset rules inserted into task_intercept_rules in the task-creation transaction.
+	// InterceptRules 是任务级资产拦截规则,创建时随任务在同一事务内写入 task_intercept_rules。
 	InterceptRules []TaskInterceptRuleInput
 }
 
 // CreateTaskWithOptions creates an exploration, task, direct source relations,
 // and the ordered task LLM chain in one transaction.
 func (d *DB) CreateTaskWithOptions(description, goal string, opts TaskCreateOptions) (*Task, error) {
-	if opts.Language != "" && !locale.Supported(opts.Language) {
-		return nil, locale.Errorf("language must be one of %s", locale.SupportedLanguageNames())
-	}
 	if len(opts.SourceTaskIDs) > MaxTaskSourceCount {
-		return nil, locale.Errorf("too many source tasks: got %d, maximum is %d", len(opts.SourceTaskIDs), MaxTaskSourceCount)
+		return nil, fmt.Errorf("too many source tasks: got %d, maximum is %d", len(opts.SourceTaskIDs), MaxTaskSourceCount)
 	}
 	companyIDs, err := NormalizeTaskCompanyIDs(opts.CompanyIDs)
 	if err != nil {
@@ -188,7 +184,7 @@ func (d *DB) CreateTaskWithOptions(description, goal string, opts TaskCreateOpti
 	// is global and shared, not isolated per task). Being a fact (not a special 'begin' kind) lets every
 	// intent uniformly connect to a fact node, including the first ones.
 	originPayload, _ := json.Marshal(map[string]any{
-		"summary":     locale.Text(opts.Language, "Task starting point: ") + description + locale.Text(opts.Language, "; objective: ") + goal,
+		"summary":     "任务起点：" + description + "；目标：" + goal,
 		"description": description,
 		"goal":        goal,
 	})
@@ -205,7 +201,7 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 	var categoryName string
 	if opts.CategoryID != nil {
 		if *opts.CategoryID <= 0 {
-			return nil, locale.Errorf("%w: category id must be positive", ErrTaskCategoryInvalid)
+			return nil, fmt.Errorf("%w: category id must be positive", ErrTaskCategoryInvalid)
 		}
 		if err := tx.QueryRow(`SELECT name FROM task_categories WHERE id=$1`, *opts.CategoryID).Scan(&categoryName); err != nil {
 			if err == sql.ErrNoRows {
@@ -235,15 +231,10 @@ VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9)
 RETURNING id, status, paused, created_at`, opts.Name, opts.CategoryID, description, goal, expID, active, opts.TimeoutSeconds, opts.PlanHeartbeatSeconds, coverageEnabled).Scan(&t.ID, &t.Status, &t.Paused, &t.CreatedAt); err != nil {
 		return nil, err
 	}
-	if opts.Language != "" {
-		if _, err := tx.Exec(`INSERT INTO settings(key,value) VALUES ($1,$2)`, "task_language."+strconv.FormatInt(t.ID, 10), string(opts.Language)); err != nil {
-			return nil, locale.Errorf("persist task language: %w", err)
-		}
-	}
 	if err := insertTaskRelations(tx, t.ID, opts.SourceTaskIDs); err != nil {
 		return nil, err
 	}
-	if err := insertTaskCompanies(tx, t.ID, opts.CompanyIDs, opts.Language); err != nil {
+	if err := insertTaskCompanies(tx, t.ID, opts.CompanyIDs); err != nil {
 		return nil, err
 	}
 	if err := insertTaskLLMProfiles(tx, t.ID, opts.LLMProfileIDs); err != nil {
@@ -260,7 +251,7 @@ RETURNING id, status, paused, created_at`, opts.Name, opts.CategoryID, descripti
 	return t, tx.Commit()
 }
 
-func insertTaskCompanies(tx *sql.Tx, taskID int64, companyIDs []int64, lang locale.Lang) error {
+func insertTaskCompanies(tx *sql.Tx, taskID int64, companyIDs []int64) error {
 	if len(companyIDs) == 0 {
 		return nil
 	}
@@ -276,18 +267,18 @@ WITH requested(company_id, position) AS (
     FROM unnest($2::bigint[]) WITH ORDINALITY AS requested(company_id, position)
 ), inserted AS (
     INSERT INTO task_scope(task_id, kind, company_id, source, reason)
-    SELECT $1, 'company', companies.id, 'manual', $3
+    SELECT $1, 'company', companies.id, 'manual', '任务创建时关联企业'
     FROM requested
     JOIN companies ON companies.id=requested.company_id
     ORDER BY requested.position
     RETURNING company_id
 )
-SELECT count(*) FROM inserted`, taskID, companyIDs, locale.Text(lang, "Company linked at task creation")).Scan(&inserted)
+SELECT count(*) FROM inserted`, taskID, companyIDs).Scan(&inserted)
 	if err != nil {
 		return err
 	}
 	if inserted != len(companyIDs) {
-		return locale.Errorf("%w: one or more companies do not exist", ErrTaskCompanyNotFound)
+		return fmt.Errorf("%w: one or more companies do not exist", ErrTaskCompanyNotFound)
 	}
 
 	// Updating task_ids fires sync_task_asset_links, which first creates generic
@@ -304,7 +295,7 @@ WHERE company_id=ANY($2::bigint[])`, taskID, companyIDs); err != nil {
 	}
 	if _, err := tx.Exec(`
 INSERT INTO task_asset_links(task_id, asset_id, source, source_summary)
-SELECT $1, asset.id, $3, $4 || company.name
+SELECT $1, asset.id, $3, '任务创建时关联企业：' || company.name
 FROM assets asset
 JOIN companies company ON company.id=asset.company_id
 WHERE asset.company_id=ANY($2::bigint[])
@@ -312,7 +303,7 @@ WHERE asset.company_id=ANY($2::bigint[])
 ON CONFLICT (task_id, asset_id) DO UPDATE
 SET source=EXCLUDED.source,
     source_summary=EXCLUDED.source_summary,
-    source_node_id=NULL`, taskID, companyIDs, taskCompanyAssetSource, locale.Text(lang, "Company linked at task creation: ")); err != nil {
+    source_node_id=NULL`, taskID, companyIDs, taskCompanyAssetSource); err != nil {
 		return err
 	}
 	return nil
@@ -322,7 +313,7 @@ func insertTaskRelations(tx *sql.Tx, taskID int64, sourceIDs []int64) error {
 	seen := map[int64]bool{}
 	for _, sourceID := range sourceIDs {
 		if sourceID <= 0 || sourceID == taskID || seen[sourceID] {
-			return locale.Errorf("invalid or duplicate source task id %d", sourceID)
+			return fmt.Errorf("invalid or duplicate source task id %d", sourceID)
 		}
 		seen[sourceID] = true
 		res, err := tx.Exec(`INSERT INTO task_relations(task_id, source_task_id)
@@ -331,7 +322,7 @@ SELECT $1, id FROM tasks WHERE id=$2 AND deleted_at IS NULL`, taskID, sourceID)
 			return err
 		}
 		if n, _ := res.RowsAffected(); n != 1 {
-			return locale.Errorf("source task %d not found", sourceID)
+			return fmt.Errorf("source task %d not found", sourceID)
 		}
 	}
 	return nil
@@ -341,7 +332,7 @@ func insertTaskLLMProfiles(tx *sql.Tx, taskID int64, profileIDs []int64) error {
 	seen := map[int64]bool{}
 	for position, profileID := range profileIDs {
 		if profileID <= 0 || seen[profileID] {
-			return locale.Errorf("invalid or duplicate LLM profile id %d", profileID)
+			return fmt.Errorf("invalid or duplicate LLM profile id %d", profileID)
 		}
 		seen[profileID] = true
 		if _, err := tx.Exec(`INSERT INTO task_llm_profiles(task_id, profile_id, position) VALUES ($1,$2,$3)`, taskID, profileID, position); err != nil {
@@ -364,7 +355,7 @@ func scanTask(sc interface{ Scan(...any) error }) (*Task, error) {
 	return &t, nil
 }
 
-// SetParentRef records a task's parent task ID from orchestration agent spawn_task.
+// SetParentRef records a task's parent task id (编排 agent spawn_task 关联).
 func (d *DB) SetParentRef(id int64, parentRef string) error {
 	_, err := d.Exec(`UPDATE tasks SET parent_ref=NULLIF($2,'') WHERE id=$1`, id, parentRef)
 	return err
@@ -372,7 +363,7 @@ func (d *DB) SetParentRef(id int64, parentRef string) error {
 
 // ListTasks returns alive tasks with pinned tasks first, then newest ids.
 func (d *DB) ListTasks() ([]*Task, error) {
-	// BIGSERIAL IDs give stable unique order even for tasks created simultaneously.
+	// id 是 BIGSERIAL，同一时刻创建的任务也有稳定且唯一的顺序。
 	rows, err := d.Query(`SELECT ` + taskCols + ` FROM tasks WHERE deleted_at IS NULL
 ORDER BY (pinned_at IS NOT NULL) DESC, pinned_at DESC NULLS LAST, id DESC`)
 	if err != nil {
@@ -449,7 +440,7 @@ func (d *DB) SetPaused(id int64, paused bool) error {
 // the operation while it is already queued keeps its original FIFO position.
 func (d *DB) Enqueue(id int64, mode string) error {
 	if mode != "bootstrap" && mode != "resume" {
-		return locale.Errorf("invalid queue mode %q", mode)
+		return fmt.Errorf("invalid queue mode %q", mode)
 	}
 	_, err := d.Exec(`UPDATE tasks
 SET queued=true,
@@ -515,14 +506,14 @@ UPDATE tasks
 // StampFirstRun records a task's first-real-run moment and computes its absolute
 // deadline (= now + timeoutSeconds). Idempotent: only stamps when first_run_at is
 // still NULL, so restarts / re-entries keep the original clock. timeoutSeconds<=0
-// leaves deadline_at NULL (unlimited). Returns the resulting deadline (nil = unlimited/unchanged).
+// leaves deadline_at NULL (不限时). Returns the resulting deadline (nil = 不限/未变).
 func (d *DB) StampFirstRun(id int64, timeoutSeconds int) (*time.Time, error) {
 	var deadline *time.Time
 	err := d.QueryRow(`
 UPDATE tasks
    SET first_run_at = COALESCE(first_run_at, now()),
        deadline_at  = CASE
-           WHEN first_run_at IS NOT NULL THEN deadline_at            -- Already stamped: preserve
+           WHEN first_run_at IS NOT NULL THEN deadline_at            -- 已盖过章：不动
            WHEN $2 > 0 THEN now() + make_interval(secs => $2)
            ELSE NULL END
  WHERE id = $1
@@ -653,9 +644,6 @@ DELETE FROM assets a USING deletable d WHERE a.id=d.id`, id, expID)
 	}
 	// llm_usage (the token metering ledger) is intentionally NOT deleted with the
 	// task — it is kept as historical accounting even after the task is gone.
-	if _, err := tx.Exec(`DELETE FROM settings WHERE key=$1`, "task_language."+strconv.FormatInt(id, 10)); err != nil {
-		return TaskDeleteResult{}, err
-	}
 	if _, err := tx.Exec(`DELETE FROM tasks WHERE id=$1`, id); err != nil {
 		return result, err
 	}

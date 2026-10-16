@@ -8,7 +8,6 @@ function ResizablePanelGroup({
   className,
   ...props
 }: ResizablePrimitive.GroupProps) {
-
   return (
     <ResizablePrimitive.Group
       data-slot="resizable-panel-group"
@@ -22,7 +21,6 @@ function ResizablePanelGroup({
 }
 
 function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
-
   return <ResizablePrimitive.Panel data-slot="resizable-panel" {...props} />
 }
 
@@ -33,7 +31,6 @@ function ResizableHandle({
 }: ResizablePrimitive.SeparatorProps & {
   withHandle?: boolean
 }) {
-
   return (
     <ResizablePrimitive.Separator
       data-slot="resizable-handle"

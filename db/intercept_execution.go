@@ -1,15 +1,15 @@
 package db
 
 import (
+	"errors"
 	"fmt"
-	"github.com/Autumn-27/artex/locale"
 	"strconv"
 )
 
-var ErrInterceptTaskDeleted = locale.NewError("The task has been deleted or archived")
-var ErrInterceptSessionDeleted = locale.NewError("The conversation or execution record has been deleted or does not exist")
+var ErrInterceptTaskDeleted = errors.New("任务已被删除或归档")
+var ErrInterceptSessionDeleted = errors.New("对应会话或执行记录已被删除或不存在")
 
-var ErrInterceptExecutionUnavailable = locale.NewError("No uniquely linked original tool call was found; the record may have been deleted, or a legacy approval may lack its linking ID")
+var ErrInterceptExecutionUnavailable = errors.New("未找到可唯一关联的原始工具调用；记录可能已删除，或旧审批没有保存关联 ID")
 
 // InterceptExecution is a navigation target read from original activity rows.
 // It is not model context and never falls back to matching command text.

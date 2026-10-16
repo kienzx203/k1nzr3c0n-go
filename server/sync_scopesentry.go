@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/Autumn-27/artex/locale"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,18 +13,18 @@ import (
 	"github.com/Autumn-27/artex/mcphttp"
 )
 
-// Asset synchronization from ScopeSentry.
+// 资产同步（ScopeSentry 数据源）。
 //
-// ScopeSentry is an attack-surface-management platform. Its MCP interface retrieves subdomains,
-// web apps, and services by project or task, mapping them into K1nzr3c0n's company and asset model.
-// The source is an HTTP MCP row named "ScopeSentry", with URL and X-API-Key stored in mcp_servers.
+// ScopeSentry 是一个 ASM 资产测绘平台，通过其 MCP 接口按【项目】/【任务】两个维度
+// 拉取子域名、Web 应用、服务等资产，映射为 ARTEX 的公司 + 资产模型。数据源本身是
+// 一个名为 "ScopeSentry" 的 http 传输 MCP 行（url + X-API-Key 头保存在 mcp_servers）。
 //
-// Unlike agent tools, this directly calls mcphttp.Client.Call for raw JSON without
-// an AskUser permission popup, as this is a background batch synchronization.
+// 与 agent 工具层不同，这里用 mcphttp.Client.Call 直接调用 MCP 工具、拿原始 JSON，
+// 不触发 AskUser 权限弹窗（后台批量同步）。
 
 const (
 	scopeSentryMCPName = "ScopeSentry"
-	syncMaxPerType     = 5000 // Maximum ingested entries per target and asset type.
+	syncMaxPerType     = 5000 // 单目标单类型的入库保护上限
 	syncDefaultPage    = 100
 )
 
@@ -50,10 +50,10 @@ func (s *Server) scopeSentryClient(ctx context.Context) (*mcphttp.Client, error)
 		return nil, err
 	}
 	if m == nil {
-		return nil, locale.Errorf("Data source %s does not exist; create it first", scopeSentryMCPName)
+		return nil, fmt.Errorf("数据源 %s 不存在，请先创建", scopeSentryMCPName)
 	}
 	if m.URL == "" {
-		return nil, locale.Errorf("Data source %s has no URL; configure it first", scopeSentryMCPName)
+		return nil, fmt.Errorf("数据源 %s 未配置 URL，请先配置", scopeSentryMCPName)
 	}
 	return mcphttp.New(ctx, m.Name, m.URL, jsonStrMap(m.Env), m.Insecure)
 }
@@ -77,7 +77,7 @@ func (s *Server) syncSSStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	m, err := s.findMCPByName(scopeSentryMCPName)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	resp := map[string]any{
@@ -130,7 +130,7 @@ func (s *Server) syncSSDatasource(w http.ResponseWriter, r *http.Request) {
 
 	m, err := s.findMCPByName(scopeSentryMCPName)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	if m == nil {
@@ -148,7 +148,7 @@ func (s *Server) syncSSDatasource(w http.ResponseWriter, r *http.Request) {
 
 	id, err := pg.SaveMCP(m)
 	if err != nil {
-		writeError(w, 500, err)
+		writeErr(w, 500, err.Error())
 		return
 	}
 	m.ID = id
@@ -171,7 +171,7 @@ func (s *Server) syncSSProjects(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	cl, err := s.scopeSentryClient(ctx)
 	if err != nil {
-		writeError(w, 502, err)
+		writeErr(w, 502, err.Error())
 		return
 	}
 	defer cl.Close()
@@ -185,7 +185,7 @@ func (s *Server) syncSSProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	text, err := cl.Call(ctx, "list_projects_data", args)
 	if err != nil {
-		writeError(w, 502, locale.Errorf("list_projects_data failed: %w", err))
+		writeErr(w, 502, "list_projects_data 失败: "+err.Error())
 		return
 	}
 	// {result:{All:[{id,name,logo,AssetCount,tag}], <tag>:[...]}, tag:{...}}
@@ -194,7 +194,7 @@ func (s *Server) syncSSProjects(w http.ResponseWriter, r *http.Request) {
 		Tag    map[string]int             `json:"tag"`
 	}
 	if err := json.Unmarshal([]byte(text), &env); err != nil {
-		writeError(w, 502, locale.Errorf("Could not parse project list: %w", err))
+		writeErr(w, 502, "解析项目列表失败: "+err.Error())
 		return
 	}
 	projects := json.RawMessage("[]")
@@ -214,7 +214,7 @@ func (s *Server) syncSSTasks(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	cl, err := s.scopeSentryClient(ctx)
 	if err != nil {
-		writeError(w, 502, err)
+		writeErr(w, 502, err.Error())
 		return
 	}
 	defer cl.Close()
@@ -228,14 +228,14 @@ func (s *Server) syncSSTasks(w http.ResponseWriter, r *http.Request) {
 	}
 	text, err := cl.Call(ctx, "list_tasks", args)
 	if err != nil {
-		writeError(w, 502, locale.Errorf("list_tasks failed: %w", err))
+		writeErr(w, 502, "list_tasks 失败: "+err.Error())
 		return
 	}
 	var env struct {
 		List json.RawMessage `json:"list"`
 	}
 	if err := json.Unmarshal([]byte(text), &env); err != nil {
-		writeError(w, 502, locale.Errorf("Could not parse task list: %w", err))
+		writeErr(w, 502, "解析任务列表失败: "+err.Error())
 		return
 	}
 	tasks := env.List
@@ -267,15 +267,15 @@ func (s *Server) syncSSRun(w http.ResponseWriter, r *http.Request) {
 	}
 	var req ssSyncReq
 	if err := decode(r, &req); err != nil {
-		writeError(w, 400, locale.Errorf("Invalid JSON: %w", err))
+		writeErr(w, 400, "invalid JSON: "+err.Error())
 		return
 	}
 	if req.Dimension != "project" && req.Dimension != "task" {
-		writeErr(w, 400, "dimension must be project or task")
+		writeErr(w, 400, "dimension 必须是 project 或 task")
 		return
 	}
 	if len(req.Targets) == 0 {
-		writeErr(w, 400, "targets must not be empty")
+		writeErr(w, 400, "targets 不能为空")
 		return
 	}
 	if len(req.AssetTypes) == 0 {
@@ -290,7 +290,7 @@ func (s *Server) syncSSRun(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	cl, err := s.scopeSentryClient(ctx)
 	if err != nil {
-		writeError(w, 502, err)
+		writeErr(w, 502, err.Error())
 		return
 	}
 	defer cl.Close()
@@ -308,11 +308,11 @@ func (s *Server) syncSSRun(w http.ResponseWriter, r *http.Request) {
 			if req.CreateCompany {
 				name, roots, perr := s.ssProjectMeta(ctx, cl, target)
 				if perr != nil {
-					warnings = append(warnings, locale.Text(responseLanguage(w), "Could not load project %s details: %v", target, locale.ErrorMessage(responseLanguage(w), perr)))
+					warnings = append(warnings, fmt.Sprintf("项目 %s 详情获取失败: %v", target, perr))
 				} else if name != "" {
 					cid, cerr := cs.UpsertByName(name)
 					if cerr != nil {
-						warnings = append(warnings, locale.Text(responseLanguage(w), "Could not create company %s: %v", name, locale.ErrorMessage(responseLanguage(w), cerr)))
+						warnings = append(warnings, fmt.Sprintf("公司 %s 创建失败: %v", name, cerr))
 					} else {
 						companies = append(companies, name)
 						madeCompany = true
@@ -329,19 +329,19 @@ func (s *Server) syncSSRun(w http.ResponseWriter, r *http.Request) {
 		for _, at := range req.AssetTypes {
 			ssType, ok := map[string]string{"subdomain": "subdomain", "service": "asset", "app": "app"}[at]
 			if !ok {
-				warnings = append(warnings, locale.Text(responseLanguage(w), "Unknown asset type skipped: ")+at)
+				warnings = append(warnings, "未知资产类型，已跳过: "+at)
 				continue
 			}
 			items, truncated, ferr := s.ssPageAll(ctx, cl, ssType, filter, pageSize)
 			if ferr != nil {
-				errs = append(errs, locale.Text(responseLanguage(w), "Could not fetch %s (%s): %v", at, target, locale.ErrorMessage(responseLanguage(w), ferr)))
+				errs = append(errs, fmt.Sprintf("%s(%s) 拉取失败: %v", at, target, ferr))
 				continue
 			}
 			if truncated {
-				warnings = append(warnings, locale.Text(responseLanguage(w), "%s (%s) reached the %d-entry limit and was truncated", at, target, syncMaxPerType))
+				warnings = append(warnings, fmt.Sprintf("%s(%s) 达到 %d 条上限，已截断", at, target, syncMaxPerType))
 			}
 			for _, raw := range items {
-				if e := s.ssIngestForLanguage(as, at, raw, synced, responseLanguage(w)); e != "" {
+				if e := s.ssIngest(as, at, raw, synced); e != "" {
 					errs = append(errs, e)
 				}
 			}
@@ -419,13 +419,9 @@ func (s *Server) ssPageAll(ctx context.Context, cl *mcphttp.Client, ssType strin
 	return items, truncated, nil
 }
 
-// ssIngest maps one ScopeSentry asset JSON to the K1nzr3c0n asset store and upserts it.
+// ssIngest maps one ScopeSentry asset JSON to the ARTEX asset store and upserts it.
 // Returns a non-empty error string on failure. synced is incremented per kind.
 func (s *Server) ssIngest(as *db.AssetStore, assetType string, raw json.RawMessage, synced map[string]int) string {
-	return s.ssIngestForLanguage(as, assetType, raw, synced, locale.ServerDefault())
-}
-
-func (s *Server) ssIngestForLanguage(as *db.AssetStore, assetType string, raw json.RawMessage, synced map[string]int, lang locale.Lang) string {
 	switch assetType {
 	case "subdomain":
 		var it struct {
@@ -435,13 +431,13 @@ func (s *Server) ssIngestForLanguage(as *db.AssetStore, assetType string, raw js
 			IP    []string `json:"ip"`
 		}
 		if err := json.Unmarshal(raw, &it); err != nil {
-			return locale.ErrorMessage(lang, locale.Errorf("Could not parse subdomain: %w", err))
+			return "subdomain 解析失败: " + err.Error()
 		}
 		if it.Host == "" {
 			return ""
 		}
 		if _, err := as.UpsertSubdomain(db.UpsertSubdomainReq{Domain: it.Host, RecordType: it.Type, RecordValue: it.Value}); err != nil {
-			return "subdomain " + it.Host + ": " + locale.ErrorMessage(lang, err)
+			return "subdomain " + it.Host + ": " + err.Error()
 		}
 		synced["subdomain"]++
 		for _, ip := range it.IP {
@@ -459,13 +455,13 @@ func (s *Server) ssIngestForLanguage(as *db.AssetStore, assetType string, raw js
 			ICP         string `json:"icp"`
 		}
 		if err := json.Unmarshal(raw, &it); err != nil {
-			return locale.ErrorMessage(lang, locale.Errorf("Could not parse app: %w", err))
+			return "app 解析失败: " + err.Error()
 		}
 		if it.Name == "" {
 			return ""
 		}
 		if _, err := as.UpsertApp(db.UpsertAppReq{Name: it.Name, Category: it.Category, Description: it.Description, ICP: it.ICP}); err != nil {
-			return "app " + it.Name + ": " + locale.ErrorMessage(lang, err)
+			return "app " + it.Name + ": " + err.Error()
 		}
 		synced["app"]++
 	case "service":
@@ -481,7 +477,7 @@ func (s *Server) ssIngestForLanguage(as *db.AssetStore, assetType string, raw js
 			Icon     string   `json:"icon"`
 		}
 		if err := json.Unmarshal(raw, &it); err != nil {
-			return locale.ErrorMessage(lang, locale.Errorf("Could not parse service: %w", err))
+			return "service 解析失败: " + err.Error()
 		}
 		if it.Service == "http" || it.URL != "" {
 			if it.URL == "" {
@@ -491,14 +487,14 @@ func (s *Server) ssIngestForLanguage(as *db.AssetStore, assetType string, raw js
 				URL: it.URL, Technologies: it.Products, StatusCode: it.Status,
 				PageTitle: it.Title, FaviconMMH3: it.Icon, IP: it.IP,
 			}); err != nil {
-				return "service " + it.URL + ": " + locale.ErrorMessage(lang, err)
+				return "service " + it.URL + ": " + err.Error()
 			}
 		} else {
 			port, _ := strconv.Atoi(it.Port)
 			if _, err := as.UpsertOtherService(db.UpsertOtherServiceReq{
 				Domain: it.Domain, IP: it.IP, Port: port, ServiceName: it.Service,
 			}); err != nil {
-				return "service " + it.IP + ":" + it.Port + ": " + locale.ErrorMessage(lang, err)
+				return "service " + it.IP + ":" + it.Port + ": " + err.Error()
 			}
 		}
 		synced["service"]++
