@@ -1,7 +1,2 @@
-* text=auto eol=lf
-*.go text eol=lf
-*.sh text eol=lf
-*.yaml text eol=lf
-*.md text eol=lf
-*.png binary
-*.jpg binary
+*.bat text eol=crlf
+*.sh  text eol=lf

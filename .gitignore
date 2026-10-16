@@ -1,22 +1,70 @@
-# build artifacts (root-anchored: chỉ ignore BINARY, không trúng cmd/k1nzr3c0n/)
-/k1nzr3c0n
-*.exe
-frontend/node_modules/
-frontend/dist/
-
-# runtime state
-runs/
+# backend
+/data/
 *.db
 *.db-wal
 *.db-shm
-wordlists/*.txt
-!wordlists/.gitkeep
-
-# python
+config.json
+scheduler_state.json
 __pycache__/
 *.pyc
+*.pyo
 
-# editor/OS
-.vscode/
+# frontend
+web/node_modules/
+web/.next/
+/.next/
+web/tsconfig.tsbuildinfo
+web/next-env.d.ts
+*.local
+
+# development tools
+.playwright-mcp/
+.playwright-cli/
 .idea/
+.vscode/
+*.swp
+*.swo
+
+
+# os
 .DS_Store
+Thumbs.db
+
+# claude code local state
+.claude/
+
+# Binary with embedded frontend
+/artex
+# Self-update staging, backup, failed binary and marker
+/artex.new
+/artex.new.sha256
+/artex.old
+/artex.failed
+/artex.upgrade.json
+# /server/webui/dist/ (committed prebuilt UI — rebuild with build.sh)
+/dist/
+
+# Runtime JWT signing key; never commit
+/jwt.key
+
+# Local Docker environment with passwords/keys; never commit
+.env
+
+# Scheduler test event logs
+*-events.csv
+
+# Local benchmark artifacts
+/bench/
+/Dockerfile.bench
+/Dockerfile.bench.v2
+/scopeweaver
+/scopeweaver.exe
+/scopeweaver.new
+/scopeweaver.new.sha256
+/scopeweaver.old
+/scopeweaver.failed
+/scopeweaver.upgrade.json
+/k1nzr3c0n
+/runs/
+/uploads/
+/ca/
