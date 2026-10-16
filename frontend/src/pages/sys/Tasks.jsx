@@ -11,7 +11,7 @@ export default function Tasks() {
   useEffect(() => { api.listConvs().then(c => setConvs(c.filter(x => (x.title || '').startsWith('autopilot')))).catch(() => {}) }, [])
   useEffect(() => { if (sel) api.convMessages(sel).then(setMsgs).catch(() => {}) }, [sel])
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="Tasks" sub="Autonomous engagement campaigns — plan → execute → analyze" />
       <div className="grid gap-4" style={{ gridTemplateColumns: '280px 1fr' }}>
         <Card pad={false}>

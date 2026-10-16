@@ -11,7 +11,7 @@ export default function AssetSync() {
   async function sync(e) { e.preventDefault(); setBusy(true); setResult(null)
     try { setResult(await api.syncScopeSentry(form)) } catch (e2) { setResult({ error: e2.message }) } setBusy(false) }
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="Asset Sync" sub="Import assets from a ScopeSentry instance into the graph" />
       <Card>
         <form onSubmit={sync} className="flex flex-col gap-3" style={{ maxWidth: 520 }}>

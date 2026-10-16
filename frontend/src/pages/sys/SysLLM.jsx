@@ -13,7 +13,7 @@ export default function SysLLM() {
   async function create(e) { e.preventDefault(); setErr('')
     try { await api.createLLM(form); setForm({ ...form, api_key: '' }); load() } catch (e2) { setErr(e2.message) } }
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="LLM Profiles" sub="Failover chain — the agent falls back to the next profile on 401/429/quota/5xx" />
       <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: '1fr 340px' }}>
         <Table head={['#', 'Name', 'Model', 'Base URL', 'Key']}

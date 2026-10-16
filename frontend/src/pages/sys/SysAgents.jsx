@@ -8,7 +8,7 @@ export default function SysAgents() {
   const [prompt, setPrompt] = useState(null)
   useEffect(() => { api.agentPrompt().then(p => setPrompt(p.system_prompt)).catch(() => {}) }, [])
   return (
-    <div className="fade-in">
+    <div className="fade-in p-6">
       <PageHeader icon={IC} title="Agents" sub="The recon agent persona — the operating discipline baked into every conversation" />
       <Card>
         <pre className="whitespace-pre-wrap text-[11.5px] leading-relaxed" style={{ color: 'var(--text-2)' }}>
