@@ -16,28 +16,32 @@ export default function SysAgents() {
     loadRoles()
   }, [])
 
+  const chat = roles.filter(r => r.kind === 'assistant')
+  const engine = roles.filter(r => r.kind !== 'assistant')
+
   return (
     <div className="fade-in p-6">
-      <PageHeader icon={IC} title="Agents" sub="Exploration agent roles — configure prompt, LLM, run budget and tools per role" />
+      <PageHeader icon={IC} title="Agent" sub="Agents · built-in + custom · configure prompt, LLM, run budget and tools per agent" />
 
-      {/* role management */}
+      {/* chat agents (selectable in AI Agent chat) */}
+      <div className="section-title mb-2">Chat agents</div>
       <div className="flex flex-col gap-3 mb-5">
-        {roles.map(r => <RoleCard key={r.role} role={r} profiles={profiles} onSaved={loadRoles} />)}
-        {!roles.length && <Card><div className="text-[11px]" style={{ color: 'var(--text-3)' }}>loading roles…</div></Card>}
+        {chat.map(r => <RoleCard key={r.role} role={r} profiles={profiles} onSaved={loadRoles} />)}
+        {!chat.length && <Card><div className="text-[11px]" style={{ color: 'var(--text-3)' }}>loading…</div></Card>}
       </div>
 
-      {/* recon chat-agent persona (existing) */}
-      <div className="section-title mb-2">Recon chat-agent persona</div>
-      <Card>
-        <pre className="whitespace-pre-wrap text-[11.5px] leading-relaxed" style={{ color: 'var(--text-2)' }}>
-          {prompt || 'loading…'}
-        </pre>
-      </Card>
+      {/* exploration engine roles */}
+      <div className="section-title mb-2">Exploration roles (autonomous task engine)</div>
+      <div className="flex flex-col gap-3 mb-5">
+        {engine.map(r => <RoleCard key={r.role} role={r} profiles={profiles} onSaved={loadRoles} />)}
+      </div>
     </div>
   )
 }
 
 const ROLE_DESC = {
+  auto: 'Platform assistant — manage tasks and assets, create/edit skills, tools, MCP.',
+  pentest: 'Independent penetration-testing agent (recon → exploit → verify → wrap-up).',
   goals: 'Decomposes the task goal and extracts scope.',
   planner: 'The only intent generator — reads the graph and queues directions.',
   worker: 'Executes one intent with real tools; writes facts/findings back.',
@@ -67,7 +71,7 @@ function RoleCard({ role, profiles, onSaved }) {
         <div className="flex items-center gap-2">
           <Badge tone={enabled ? 'green' : 'gray'}>{role.role}</Badge>
           <span className="text-[12px] font-semibold">{role.name}</span>
-          <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>{ROLE_DESC[role.role]}</span>
+          <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>{role.description || ROLE_DESC[role.role]}</span>
         </div>
         <span className="text-[10px] font-mono" style={{ color: 'var(--text-3)' }}>
           {steps} steps · {llm ? (profiles.find(p => p.id === +llm)?.name || `#${llm}`) : 'auto LLM'} {open ? '▴' : '▾'}

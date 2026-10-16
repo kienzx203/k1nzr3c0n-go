@@ -133,18 +133,22 @@ func (s *Store) GetAgentConfig(role string) (*AgentConfig, error) {
 }
 
 func (s *Store) ListAgentConfigs() ([]AgentConfig, error) {
-	rows, err := s.db.Query(`SELECT ` + agentCfgCols + ` FROM agent_configs ORDER BY id`)
+	rows, err := s.db.Query(`SELECT ` + agentCfgCols + `, COALESCE(description,''), COALESCE(kind,'engine') FROM agent_configs ORDER BY (kind='assistant') DESC, id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []AgentConfig
 	for rows.Next() {
-		a, err := scanAgentCfg(rows)
-		if err != nil {
+		var a AgentConfig
+		var llm sql.NullInt64
+		var c, u any
+		if err := rows.Scan(&a.ID, &a.Role, &a.Name, &a.Prompt, &llm, &a.MaxSteps, &a.Tools, &a.Enabled, &c, &u, &a.Description, &a.Kind); err != nil {
 			return nil, err
 		}
-		out = append(out, *a)
+		a.LLMProfileID = llm.Int64
+		a.CreatedAt, a.UpdatedAt = parseDBTime(c), parseDBTime(u)
+		out = append(out, a)
 	}
 	return out, rows.Err()
 }

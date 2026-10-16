@@ -467,6 +467,7 @@ func (s *Server) handleAgentConfigList(w http.ResponseWriter, r *http.Request) {
 	for _, c := range cfgs {
 		out = append(out, map[string]any{
 			"id": c.ID, "role": c.Role, "name": c.Name, "prompt": c.Prompt,
+			"description": c.Description, "kind": c.Kind,
 			"llm_profile_id": c.LLMProfileID, "max_steps": c.MaxSteps,
 			"tools": c.Tools, "enabled": c.Enabled, "updated_at": iso(c.UpdatedAt),
 		})

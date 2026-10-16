@@ -36,7 +36,7 @@ func LoadSkillsDir() []Skill {
 			continue
 		}
 		s := Skill{Dir: filepath.Join(base, e.Name())}
-		body := string(data)
+		body := strings.ReplaceAll(string(data), "\r\n", "\n") // CRLF-robust frontmatter
 		if m := frontmatterRe.FindStringSubmatch(body); m != nil {
 			for _, line := range strings.Split(m[1], "\n") {
 				k, v, ok := strings.Cut(line, ":")
