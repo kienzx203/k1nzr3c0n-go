@@ -10,7 +10,7 @@ export default function SysToolExec() {
     api.agentAudit(150).then(setItems).catch(() => {}); return () => clearInterval(t) }, [])
   return (
     <div className="fade-in p-6">
-      <PageHeader icon={IC} title="Tool Executions" sub="Every agent tool call — audited, including blocked attempts" />
+      <PageHeader icon={IC} title="Tool executions" sub="Every agent tool call — audited, including blocked attempts" />
       <Table head={['#', 'Tool', 'Arguments', 'Result', 'When']}
         rows={(items || []).map(a => [a.id,
           <span className="font-mono" style={{ color: a.blocked ? 'var(--red)' : 'var(--accent)' }}>{a.tool}</span>,

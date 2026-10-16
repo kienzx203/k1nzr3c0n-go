@@ -12,7 +12,7 @@ export default function SysIntercept() {
   async function add(e) { e.preventDefault(); await api.createAgentRule(form); setForm({ tool_pattern: '', input_pattern: '', action: 'ask' }); load() }
   return (
     <div className="fade-in p-6">
-      <PageHeader icon={IC} title="Interception Rules" sub="Gate agent tool calls — allow / deny / ask (ask parks the call until approved)" />
+      <PageHeader icon={IC} title="Interception rules" sub="Gate agent tool calls — allow / deny / ask (ask parks the call until approved)" />
       <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 340px' }}>
         <Table head={['#', 'Tool pattern', 'Input pattern', 'Action', '']}
           rows={(rules || []).map(r => [r.id, <span className="font-mono">{r.tool_pattern}</span>,

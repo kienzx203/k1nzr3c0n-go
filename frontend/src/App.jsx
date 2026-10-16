@@ -56,6 +56,13 @@ const I = {
   cog:      <><circle cx="8" cy="8" r="2.4" /><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4" /></>,
   sun:      <><circle cx="8" cy="8" r="3.2" /><path d="M8 1v1.8M8 13.2V15M1 8h1.8M13.2 8H15M3 3l1.3 1.3M11.7 11.7 13 13M13 3l-1.3 1.3M4.3 11.7 3 13" /></>,
   moon:     <path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7z" />,
+  chat:     <path d="M2.5 3.5h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H6l-3 2.5v-2.5H2.5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" />,
+  bot:      <><rect x="3" y="5.5" width="10" height="7.5" rx="1.8" /><circle cx="6" cy="9" r="0.9" fill="currentColor" /><circle cx="10" cy="9" r="0.9" fill="currentColor" /><path d="M8 2.5v3M5.5 13v1M10.5 13v1" /></>,
+  radio:    <><circle cx="8" cy="8" r="1.6" /><path d="M5.2 5.2a4 4 0 0 0 0 5.6M10.8 5.2a4 4 0 0 1 0 5.6M3.4 3.4a6.5 6.5 0 0 0 0 9.2M12.6 3.4a6.5 6.5 0 0 1 0 9.2" /></>,
+  sync:     <path d="M2.5 8a5.5 5.5 0 0 1 9.4-3.9M13.5 8a5.5 5.5 0 0 1-9.4 3.9M12 1.5v3h-3M4 14.5v-3h3" />,
+  folder:   <path d="M1.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h5.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />,
+  ban:      <><circle cx="8" cy="8" r="6" /><path d="M3.8 3.8l8.4 8.4" /></>,
+  scroll:   <path d="M4 2.5h8v9a2 2 0 0 1-2 2H4a1.5 1.5 0 0 1-1.5-1.5V12H4zM6 5.5h4M6 8h4" />,
 }
 function Icon({ d, size = 15 }) {
   return (
@@ -87,49 +94,48 @@ function Logo() {
   )
 }
 
+// Sidebar mirrors ScopeWeaver's Features + System groups (exact labels/order).
+// k1nzr3c0n's own workflow-runner pages live in a third group so nothing is lost.
 const NAV_GROUPS = [
   {
-    title: 'Overview',
-    items: [{ to: '/', label: 'Dashboard', icon: I.grid, exact: true }],
-  },
-  {
-    title: 'Operations',
+    title: 'Features',
     items: [
-      { to: '/agent',     label: 'AI Agent',   icon: I.spark },
-      { to: '/tasks',     label: 'Tasks',      icon: I.radar },
-      { to: '/runs',      label: 'Runs',       icon: I.flow },
-      { to: '/workflows', label: 'Workflows',  icon: I.flow },
-      { to: '/findings',  label: 'Findings',   icon: I.flag },
-      { to: '/graph',     label: 'Asset Graph',icon: I.boxes },
-      { to: '/inventory', label: 'Inventory',  icon: I.boxes },
-      { to: '/traffic',   label: 'Traffic',    icon: I.globe },
-      { to: '/targets',   label: 'Targets',    icon: I.target },
-      { to: '/schedules', label: 'Schedules',  icon: I.clock },
-    ],
-  },
-  {
-    title: 'Intelligence',
-    items: [
-      { to: '/llm-records', label: 'LLM Recordings', icon: I.key },
-      { to: '/asset-sync',  label: 'Asset Sync',     icon: I.boxes },
-      { to: '/workspace',   label: 'Workspace',      icon: I.upload },
+      { to: '/',            label: 'Dashboard',       icon: I.grid, exact: true },
+      { to: '/agent',       label: 'Chat',            icon: I.chat },
+      { to: '/tasks',       label: 'Tasks',           icon: I.target },
+      { to: '/findings',    label: 'Findings',        icon: I.flag },
+      { to: '/traffic',     label: 'Traffic',         icon: I.globe },
+      { to: '/sys/exec',    label: 'Tool executions', icon: I.terminal },
+      { to: '/llm-records', label: 'LLM recordings',  icon: I.radio },
+      { to: '/graph',       label: 'Assets',          icon: I.boxes },
+      { to: '/asset-sync',  label: 'Asset sync',      icon: I.sync },
+      { to: '/workspace',   label: 'Workspace',       icon: I.folder },
     ],
   },
   {
     title: 'System',
     items: [
-      { to: '/sys/llm',       label: 'LLM Providers',   icon: I.spark },
-      { to: '/sys/agents',    label: 'Agent Guard',     icon: I.target },
-      { to: '/sys/mcp',       label: 'MCP Servers',     icon: I.wrench },
-      { to: '/sys/skills',    label: 'Skills',          icon: I.key },
-      { to: '/tools',         label: 'Tools',           icon: I.wrench },
-      { to: '/sys/notify',    label: 'Notifications',   icon: I.bell },
-      { to: '/sys/intercept', label: 'Intercept Rules', icon: I.shield },
-      { to: '/sys/blocking',  label: 'Asset Blocking',  icon: I.shield },
-      { to: '/sys/approvals', label: 'Approvals',       icon: I.flag },
-      { to: '/sys/exec',      label: 'Tool Executions', icon: I.terminal },
-      { to: '/sys/logs',      label: 'Logs',            icon: I.list },
-      { to: '/sys/settings',  label: 'Settings',        icon: I.cog },
+      { to: '/sys/llm',       label: 'LLM',                icon: I.spark },
+      { to: '/sys/agents',    label: 'Agent',              icon: I.bot },
+      { to: '/sys/mcp',       label: 'MCP',                icon: I.wrench },
+      { to: '/sys/skills',    label: 'Skill',              icon: I.spark },
+      { to: '/tools',         label: 'Tool',               icon: I.wrench },
+      { to: '/sys/notify',    label: 'Notifications',      icon: I.bell },
+      { to: '/sys/intercept', label: 'Interception rules', icon: I.shield },
+      { to: '/sys/blocking',  label: 'Asset blocking',     icon: I.ban },
+      { to: '/sys/approvals', label: 'Approval records',   icon: I.list },
+      { to: '/sys/logs',      label: 'Logs',               icon: I.scroll },
+      { to: '/sys/settings',  label: 'System settings',    icon: I.cog },
+    ],
+  },
+  {
+    title: 'Workflow Runner',
+    items: [
+      { to: '/runs',      label: 'Runs',      icon: I.flow },
+      { to: '/workflows', label: 'Workflows', icon: I.flow },
+      { to: '/inventory', label: 'Inventory', icon: I.boxes },
+      { to: '/targets',   label: 'Targets',   icon: I.radar },
+      { to: '/schedules', label: 'Schedules', icon: I.clock },
     ],
   },
 ]

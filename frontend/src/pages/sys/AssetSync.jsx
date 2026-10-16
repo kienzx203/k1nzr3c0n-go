@@ -12,7 +12,7 @@ export default function AssetSync() {
     try { setResult(await api.syncScopeSentry(form)) } catch (e2) { setResult({ error: e2.message }) } setBusy(false) }
   return (
     <div className="fade-in p-6">
-      <PageHeader icon={IC} title="Asset Sync" sub="Import assets from a ScopeSentry instance into the graph" />
+      <PageHeader icon={IC} title="Asset sync" sub="Import assets from a ScopeSentry instance into the graph" />
       <Card>
         <form onSubmit={sync} className="flex flex-col gap-3" style={{ maxWidth: 520 }}>
           <Field label="ScopeSentry URL"><input className="input font-mono text-[11px]" placeholder="https://scopesentry.example" value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} /></Field>
