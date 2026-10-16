@@ -72,7 +72,8 @@ func (s *Server) explCounts(explID int64) map[string]int {
 // ── CRUD + control ───────────────────────────────────────────────────────────
 
 func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
-	tasks, err := s.St.ListTasks(r.URL.Query().Get("status"))
+	archived := r.URL.Query().Get("archived") == "1"
+	tasks, err := s.St.ListTasksFiltered(r.URL.Query().Get("status"), archived)
 	if err != nil {
 		writeDetail(w, 500, err.Error())
 		return
@@ -81,9 +82,139 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 	for i := range tasks {
 		d := s.taskDTO(&tasks[i])
 		d["counts"] = s.explCounts(tasks[i].ExplorationID)
+		d["category_id"] = s.St.TaskCategoryID(tasks[i].ID)
 		out = append(out, d)
 	}
 	writeJSON(w, 200, map[string]any{"items": out, "total": len(out)})
+}
+
+// ── categories ───────────────────────────────────────────────────────────────
+
+func (s *Server) handleCategoryList(w http.ResponseWriter, r *http.Request) {
+	cats, _ := s.St.ListCategories()
+	out := []map[string]any{}
+	for _, c := range cats {
+		out = append(out, map[string]any{"id": c.ID, "name": c.Name, "color": c.Color})
+	}
+	writeJSON(w, 200, map[string]any{"items": out, "total": len(out)})
+}
+
+func (s *Server) handleCategoryCreate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	}
+	if err := readJSON(r, &body); err != nil || body.Name == "" {
+		writeDetail(w, 422, "name is required")
+		return
+	}
+	c, err := s.St.CreateCategory(body.Name, body.Color)
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 201, map[string]any{"id": c.ID, "name": c.Name, "color": c.Color})
+}
+
+func (s *Server) handleCategoryDelete(w http.ResponseWriter, r *http.Request) {
+	_ = s.St.DeleteCategory(pathInt(r, "id"))
+	writeJSON(w, 200, map[string]any{"deleted": true})
+}
+
+func (s *Server) handleTaskSetCategory(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		CategoryID int64 `json:"category_id"`
+	}
+	_ = readJSON(r, &body)
+	if err := s.St.SetTaskCategory(pathInt(r, "id"), body.CategoryID); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// ── templates ────────────────────────────────────────────────────────────────
+
+func (s *Server) handleTemplateList(w http.ResponseWriter, r *http.Request) {
+	ts, _ := s.St.ListTemplates()
+	out := []map[string]any{}
+	for _, t := range ts {
+		out = append(out, map[string]any{"id": t.ID, "name": t.Name, "goal": t.Goal,
+			"description": t.Description, "max_workers": t.MaxWorkers})
+	}
+	writeJSON(w, 200, map[string]any{"items": out, "total": len(out)})
+}
+
+func (s *Server) handleTemplateCreate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name        string `json:"name"`
+		Goal        string `json:"goal"`
+		Description string `json:"description"`
+		MaxWorkers  int    `json:"max_workers"`
+	}
+	if err := readJSON(r, &body); err != nil || body.Name == "" || body.Goal == "" {
+		writeDetail(w, 422, "name and goal are required")
+		return
+	}
+	t := &store.TaskTemplate{Name: body.Name, Goal: body.Goal, Description: body.Description, MaxWorkers: body.MaxWorkers}
+	if err := s.St.CreateTemplate(t); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 201, map[string]any{"id": t.ID})
+}
+
+func (s *Server) handleTemplateDelete(w http.ResponseWriter, r *http.Request) {
+	_ = s.St.DeleteTemplate(pathInt(r, "id"))
+	writeJSON(w, 200, map[string]any{"deleted": true})
+}
+
+// handleTemplateLaunch creates (and optionally starts) a task from a template.
+func (s *Server) handleTemplateLaunch(w http.ResponseWriter, r *http.Request) {
+	tpl, err := s.St.GetTemplate(pathInt(r, "id"))
+	if err != nil {
+		writeDetail(w, 404, "template not found")
+		return
+	}
+	var body struct {
+		Autostart bool `json:"autostart"`
+	}
+	_ = readJSON(r, &body)
+	t := &store.Task{Name: tpl.Name, Goal: tpl.Goal, Description: tpl.Description,
+		MaxWorkers: tpl.MaxWorkers, CoverageEnabled: true}
+	if err := s.St.CreateTask(t); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	if body.Autostart && s.Explore != nil {
+		if e := s.Explore.StartTask(t.ID); e != nil {
+			writeJSON(w, 201, map[string]any{"id": t.ID, "start_error": e.Error()})
+			return
+		}
+	}
+	writeJSON(w, 201, s.taskDTO(t))
+}
+
+// ── archive / restore ────────────────────────────────────────────────────────
+
+func (s *Server) handleTaskArchive(w http.ResponseWriter, r *http.Request) {
+	id := pathInt(r, "id")
+	if s.Explore != nil {
+		s.Explore.StopTask(id)
+	}
+	if err := s.St.ArchiveTask(id); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"archived": true})
+}
+
+func (s *Server) handleTaskRestore(w http.ResponseWriter, r *http.Request) {
+	if err := s.St.RestoreTask(pathInt(r, "id")); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"restored": true})
 }
 
 func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request) {
@@ -135,6 +266,10 @@ func (s *Server) handleTaskGet(w http.ResponseWriter, r *http.Request) {
 	d := s.taskDTO(t)
 	d["counts"] = s.explCounts(t.ExplorationID)
 	d["todolist"] = s.todolistFor(t.ExplorationID)
+	d["category_id"] = s.St.TaskCategoryID(t.ID)
+	if !t.ArchivedAt.IsZero() {
+		d["archived_at"] = iso(t.ArchivedAt)
+	}
 	if expl != nil {
 		d["exploration_status"] = expl.Status
 	}

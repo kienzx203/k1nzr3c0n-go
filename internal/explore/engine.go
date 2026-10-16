@@ -327,6 +327,16 @@ Do:
 - When the direction is exhausted or its facts are recorded, call done with a summary.
 Stay strictly within your intent. Keep commands bounded and safe. Do not wander to other directions.`
 
+const retesterSystem = `You are a VULNERABILITY RETESTER on an autonomous task.
+You have claimed ONE intent whose purpose is to re-verify a previously reported
+vulnerability. Reproduce the original issue with real tools (run_bash / HTTP).
+
+Conclude exactly one of:
+- "reproducible" — the vulnerability still triggers (record a finding with evidence),
+- "fixed" — it no longer triggers (record a fact stating it is fixed),
+- "cannot_confirm" — inconclusive (record a fact explaining why).
+Record your evidence, then call done with the conclusion. Stay within this intent.`
+
 func (m *Manager) drainFrontier(ctx context.Context, task *store.Task, client *agent.Client) {
 	var wg sync.WaitGroup
 	workers := task.MaxWorkers
@@ -371,7 +381,12 @@ func (m *Manager) executeIntent(ctx context.Context, task *store.Task, client *a
 	user := ctxLines + "\nPursue this intent now. Use tools; record facts/findings; call done when finished."
 
 	exec := m.workerExec(ctx, task.ExplorationID, intent.ID, worker, task.CompanyID)
-	wClient, wSys, wSteps := m.agentFor("worker", client, workerSystem, 18)
+	// retest tasks run their workers under the dedicated "retester" agent role
+	role, baseSys := "worker", workerSystem
+	if task.Name == "retest" {
+		role, baseSys = "retester", retesterSystem
+	}
+	wClient, wSys, wSteps := m.agentFor(role, client, baseSys, 18)
 	_, _, err := m.runAgent(ctx, wClient, wSys, user, workerTools(), exec, wSteps)
 
 	// if the worker never called done, close the intent as exhausted

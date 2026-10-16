@@ -17,12 +17,19 @@ export default function SysSettings() {
         <Card>
           <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--text-2)' }}>Version</p>
           <p className="font-mono text-[20px] font-bold" style={{ color: 'var(--accent)' }}>{ver?.version || '…'}</p>
-          {upd?.update_available && (
-            <button className="btn btn-primary mt-3 text-[11px]" onClick={async () => {
-              try { await api.selfUpdate(); setMsg('Binary updated — run: systemctl restart k1nzr3c0n-go') } catch (e) { setMsg(e.message) } }}>
-              ↑ Update to {upd.latest}
+          <div className="flex flex-wrap gap-2 mt-3">
+            {upd?.update_available && (
+              <button className="btn btn-primary text-[11px]" onClick={async () => {
+                try { const r = await api.selfUpdate(); setMsg('Binary updated' + (r?.rollback_available ? ' (rollback available)' : '') + ' — run: systemctl restart k1nzr3c0n-go') } catch (e) { setMsg(e.message) } }}>
+                ↑ Update to {upd.latest}
+              </button>
+            )}
+            <button className="btn text-[11px]" onClick={async () => {
+              if (!confirm('Roll back to the previous binary (.old)?')) return
+              try { await api.updateRollback(); setMsg('Rolled back to previous version — run: systemctl restart k1nzr3c0n-go') } catch (e) { setMsg(e.message) } }}>
+              ↩ Roll back
             </button>
-          )}
+          </div>
           {msg && <p className="text-[11px] mt-2" style={{ color: 'var(--green)' }}>{msg}</p>}
         </Card>
         <Card>
@@ -32,7 +39,7 @@ export default function SysSettings() {
         </Card>
         <Card>
           <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--text-2)' }}>Language</p>
-          <p className="text-[11px] mb-3" style={{ color: 'var(--text-3)' }}>Interface language is English (default). Toggle VI/EN next to the theme switch in the sidebar.</p>
+          <p className="text-[11px] mb-3" style={{ color: 'var(--text-3)' }}>Interface language is English.</p>
         </Card>
       </div>
     </div>

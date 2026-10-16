@@ -42,7 +42,38 @@ export const api = {
   listConvs:      () => req('GET', '/agent/conversations'),
   convMessages:   (id) => req('GET', `/agent/conversations/${id}/messages`),
   deleteConv:     (id) => req('DELETE', `/agent/conversations/${id}`),
+  renameConv:     (id, title) => req('PATCH', `/agent/conversations/${id}`, { title }),
+  pinConv:        (id, pinned) => req('POST', `/agent/conversations/${id}/pin`, { pinned }),
+  deleteConvsBatch: (ids) => req('POST', '/agent/conversations/delete/batch', { ids }),
+  chatMentions:   (q, kind = '') => req('GET', `/chat/mentions?q=${encodeURIComponent(q)}${kind ? `&kind=${kind}` : ''}`),
+  stopChat:       (id) => req('POST', `/agent/conversations/${id}/stop`),
+  chatUpload:     async (file) => {
+    const fd = new FormData(); fd.append('file', file)
+    const res = await fetch(BASE + '/chat/upload', { method: 'POST', headers: headers(), body: fd })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText)
+    return res.json()
+  },
   agentChat:      (body) => req('POST', '/agent/chat', body),
+  agentChatStream: async (body, onEvent, signal) => {
+    const res = await fetch(BASE + '/agent/chat/stream', {
+      method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body), signal,
+    })
+    if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText)
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      let i
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, i); buf = buf.slice(i + 2)
+        const line = chunk.split('\n').find(l => l.startsWith('data:'))
+        if (!line) continue
+        try { onEvent(JSON.parse(line.slice(5).trim())) } catch {}
+      }
+    }
+  },
   llmUsage:       () => req('GET', '/llm/usage'),
   agentRules:     () => req('GET', '/agent/rules'),
   createAgentRule:(body) => req('POST', '/agent/rules', body),
@@ -218,6 +249,26 @@ export const api = {
   // Agent role configs (goals/planner/worker/mainagent/retester)
   agentConfigs:   () => req('GET', '/agent-configs'),
   updateAgentConfig: (role, body) => req('PATCH', `/agent-configs/${role}`, body),
+
+  // Task categories / templates / archive (ScopeWeaver parity)
+  listTasksArchived: () => req('GET', '/tasks?archived=1'),
+  archiveTask:    (id) => req('POST', `/tasks/${id}/archive`),
+  restoreTask:    (id) => req('POST', `/tasks/${id}/restore`),
+  setTaskCategory:(id, categoryId) => req('PATCH', `/tasks/${id}/category`, { category_id: categoryId }),
+  listCategories: () => req('GET', '/task-categories'),
+  createCategory: (name, color) => req('POST', '/task-categories', { name, color }),
+  deleteCategory: (id) => req('DELETE', `/task-categories/${id}`),
+  listTemplates:  () => req('GET', '/task-templates'),
+  createTemplate: (body) => req('POST', '/task-templates', body),
+  deleteTemplate: (id) => req('DELETE', `/task-templates/${id}`),
+  launchTemplate: (id, autostart = true) => req('POST', `/task-templates/${id}/launch`, { autostart }),
+
+  // LLM network setting + Ollama + update rollback + approval detail
+  getLocalLLM:    () => req('GET', '/settings/local-llm'),
+  setLocalLLM:    (enabled) => req('PUT', '/settings/local-llm', { enabled }),
+  ollamaModels:   (baseUrl) => req('GET', `/ollama/models${baseUrl ? `?base_url=${encodeURIComponent(baseUrl)}` : ''}`),
+  approvalDetail: (id) => req('GET', `/approvals/${id}`),
+  updateRollback: () => req('POST', '/system/update/rollback'),
 }
 
 export function wsUrl(runId) {

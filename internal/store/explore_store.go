@@ -83,6 +83,7 @@ CREATE INDEX IF NOT EXISTS ix_activity_node ON activity (node_id);
 CREATE TABLE IF NOT EXISTS tasks (
 	id                     INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 	name                   TEXT NOT NULL DEFAULT '',
+	category_id            INTEGER,
 	description            TEXT NOT NULL DEFAULT '',
 	goal                   TEXT NOT NULL,
 	exploration_id         INTEGER NOT NULL UNIQUE,

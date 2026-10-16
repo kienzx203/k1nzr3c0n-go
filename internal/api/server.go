@@ -4,9 +4,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 
 	"k1nzr3c0n/internal/bus"
 	"k1nzr3c0n/internal/capture"
@@ -21,10 +23,39 @@ type Server struct {
 	Bus    *bus.Bus
 	Runner *runner.Runner
 	Mux     *http.ServeMux
-	Cap     *capture.Proxy    // recording proxy (nil = unavailable)
-	Explore *explore.Manager  // autonomous exploration engine (nil = unavailable)
+	Cap     *capture.Proxy   // recording proxy (nil = unavailable)
+	Explore *explore.Manager // autonomous exploration engine (nil = unavailable)
 
 	lastBeatTick string // health "beat" liveness
+
+	chatMu      sync.Mutex                    // guards chatCancels
+	chatCancels map[int64]context.CancelFunc  // in-flight chat turns by conversation id
+}
+
+// registerChatCancel records the cancel func for a running chat turn so a Stop
+// request can abort it; clearChatCancel removes it when the turn ends.
+func (s *Server) registerChatCancel(convID int64, cancel context.CancelFunc) {
+	s.chatMu.Lock()
+	if s.chatCancels == nil {
+		s.chatCancels = map[int64]context.CancelFunc{}
+	}
+	s.chatCancels[convID] = cancel
+	s.chatMu.Unlock()
+}
+func (s *Server) clearChatCancel(convID int64) {
+	s.chatMu.Lock()
+	delete(s.chatCancels, convID)
+	s.chatMu.Unlock()
+}
+func (s *Server) cancelChat(convID int64) bool {
+	s.chatMu.Lock()
+	defer s.chatMu.Unlock()
+	if c, ok := s.chatCancels[convID]; ok {
+		c()
+		delete(s.chatCancels, convID)
+		return true
+	}
+	return false
 }
 
 func New(st *store.Store, b *bus.Bus, r *runner.Runner) *Server {
@@ -255,6 +286,13 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/agent/conversations", s.handleConvList)
 	m.HandleFunc("GET /api/v1/agent/conversations/{id}/messages", s.handleConvMessages)
 	m.HandleFunc("DELETE /api/v1/agent/conversations/{id}", s.handleConvDelete)
+	m.HandleFunc("PATCH /api/v1/agent/conversations/{id}", s.handleConvRename)
+	m.HandleFunc("POST /api/v1/agent/conversations/{id}/pin", s.handleConvPin)
+	m.HandleFunc("POST /api/v1/agent/conversations/delete/batch", s.handleConvDeleteBatch)
+	m.HandleFunc("POST /api/v1/agent/conversations/{id}/stop", s.handleConvStop)
+	m.HandleFunc("GET /api/v1/chat/mentions", s.handleChatMentions)
+	m.HandleFunc("POST /api/v1/chat/upload", s.handleChatUpload)
+	m.HandleFunc("POST /api/v1/agent/chat/stream", s.handleAgentChatStream)
 	m.HandleFunc("POST /api/v1/agent/chat", s.handleAgentChat)
 	m.HandleFunc("POST /api/v1/agent/autopilot", s.handleAutopilot)
 	m.HandleFunc("GET /api/v1/companies", s.handleCompanyList)
@@ -318,6 +356,23 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/questions/pending", s.handleQuestionsPending)
 	m.HandleFunc("POST /api/v1/questions/{qid}/answer", s.handleQuestionAnswer)
 	m.HandleFunc("POST /api/v1/questions/{qid}/skip", s.handleQuestionSkip)
+	// task categories / templates / archive
+	m.HandleFunc("GET /api/v1/task-categories", s.handleCategoryList)
+	m.HandleFunc("POST /api/v1/task-categories", s.handleCategoryCreate)
+	m.HandleFunc("DELETE /api/v1/task-categories/{id}", s.handleCategoryDelete)
+	m.HandleFunc("PATCH /api/v1/tasks/{id}/category", s.handleTaskSetCategory)
+	m.HandleFunc("GET /api/v1/task-templates", s.handleTemplateList)
+	m.HandleFunc("POST /api/v1/task-templates", s.handleTemplateCreate)
+	m.HandleFunc("DELETE /api/v1/task-templates/{id}", s.handleTemplateDelete)
+	m.HandleFunc("POST /api/v1/task-templates/{id}/launch", s.handleTemplateLaunch)
+	m.HandleFunc("POST /api/v1/tasks/{id}/archive", s.handleTaskArchive)
+	m.HandleFunc("POST /api/v1/tasks/{id}/restore", s.handleTaskRestore)
+	// LLM network setting + ollama + approval detail + update rollback
+	m.HandleFunc("GET /api/v1/settings/local-llm", s.handleLocalLLMGet)
+	m.HandleFunc("PUT /api/v1/settings/local-llm", s.handleLocalLLMSet)
+	m.HandleFunc("GET /api/v1/ollama/models", s.handleOllamaModels)
+	m.HandleFunc("GET /api/v1/approvals/{id}", s.handleApprovalDetail)
+	m.HandleFunc("POST /api/v1/system/update/rollback", s.handleUpdateRollback)
 
 	// static SPA
 	s.mountStatic(m)
