@@ -469,7 +469,7 @@ export default function Tools() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[var(--text)] font-semibold text-lg">Tools</h1>
+          <h1 className="text-[var(--text)] font-semibold text-lg">Tool</h1>
           <p className="text-[var(--text-2)] text-xs mt-0.5">
             {tools.length} tools · {wordlists.length} wordlists
             {outdated_count > 0 && (

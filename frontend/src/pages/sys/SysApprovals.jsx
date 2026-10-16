@@ -13,7 +13,7 @@ export default function SysApprovals() {
 
   return (
     <div className="fade-in p-6">
-      <PageHeader icon={IC} title="Approval Records" sub="Held requests & tool calls — decide pending, review full detail" />
+      <PageHeader icon={IC} title="Approval records" sub="Held requests & tool calls — decide pending, review full detail" />
       <div className="grid gap-4" style={{ gridTemplateColumns: detail ? '1fr 1fr' : '1fr' }}>
         <Table head={['#', 'Kind', 'Host / Tool', 'Detail', 'Decision', 'When']}
           rows={(items || []).map(a => [a.id,

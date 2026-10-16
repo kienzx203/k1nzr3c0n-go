@@ -12,7 +12,7 @@ export default function SysAssetBlocking() {
   async function add(e) { e.preventDefault(); await api.createRule(form); setForm({ pattern: '', action: 'block' }); load() }
   return (
     <div className="fade-in p-6">
-      <PageHeader icon={IC} title="Asset Blocking" sub="Proxy-level traffic rules — block / hold / flag hosts matching a pattern (e.g. .gov, .edu)" />
+      <PageHeader icon={IC} title="Asset blocking" sub="Proxy-level traffic rules — block / hold / flag hosts matching a pattern (e.g. .gov, .edu)" />
       <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 340px' }}>
         <Table head={['#', 'Pattern', 'Action', '']}
           rows={(rules || []).map(r => [r.id, <span className="font-mono">{r.pattern}</span>,

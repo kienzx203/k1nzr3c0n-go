@@ -65,7 +65,7 @@ export default function AssetGraph() {
           <Icon d={I.graph} size={17} />
         </span>
         <div>
-          <h2 className="text-[15px] font-bold leading-tight">Asset Graph</h2>
+          <h2 className="text-[15px] font-bold leading-tight">Assets</h2>
           <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
             {companies.length} companies · {assets.length} assets{selCompany ? ` · ${selCompany.name}` : ''}
           </p>
