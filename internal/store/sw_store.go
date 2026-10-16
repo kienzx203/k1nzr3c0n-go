@@ -42,6 +42,8 @@ type AgentConfig struct {
 	ID           int64
 	Role         string
 	Name         string
+	Description  string
+	Kind         string // engine | assistant
 	Prompt       string
 	LLMProfileID int64
 	MaxSteps     int
@@ -51,22 +53,58 @@ type AgentConfig struct {
 	UpdatedAt    time.Time
 }
 
-// SeedAgentConfigs inserts the five built-in agent roles once.
+// SeedAgentConfigs inserts the built-in agent roles (engine roles) and the
+// built-in chat assistant agents (Auto + Penetration testing) once.
 func (s *Store) SeedAgentConfigs() {
+	// idempotent column migrations for existing DBs
+	for _, q := range []string{
+		`ALTER TABLE agent_configs ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE agent_configs ADD COLUMN kind TEXT NOT NULL DEFAULT 'engine'`,
+	} {
+		_, _ = s.db.Exec(q)
+	}
 	defaults := []struct {
-		role, name string
-		steps      int
+		role, name, kind, desc string
+		steps                  int
 	}{
-		{"goals", "Goal decomposition", 10},
-		{"planner", "Planner (intent generator)", 14},
-		{"worker", "Worker (executor)", 18},
-		{"mainagent", "Main agent (human-in-the-loop)", 12},
-		{"retester", "Vulnerability retester", 16},
+		{"goals", "Goal decomposition", "engine", "Break a penetration-testing objective into independent, verifiable subgoals.", 10},
+		{"planner", "Planner", "engine", "Review the situation and goals, adding exploration intents only for genuinely uncovered directions.", 14},
+		{"worker", "Worker", "engine", "Claim and execute one intent, write facts and vulnerabilities back to the graph, then stop.", 18},
+		{"mainagent", "Main agent", "engine", "Human interface: observe progress and turn user intent into hints or high-priority intents.", 12},
+		{"retester", "Vulnerability retester", "engine", "Confirm whether a previously reported vulnerability is still reproducible.", 16},
+		// chat assistant agents (selectable in the AI Agent chat)
+		{"auto", "Auto", "assistant", "Platform assistant: manage tasks (create, inspect, pause, hint) and assets, and create or edit skills, custom tools, and MCP servers.", 24},
+		{"pentest", "Penetration testing", "assistant", "Independent penetration-testing agent: handles reconnaissance, attack-surface discovery, exploitation, verification, and wrap-up with its own planning, execution, and adversarial validation.", 24},
 	}
 	for _, d := range defaults {
-		_, _ = s.db.Exec(`INSERT OR IGNORE INTO agent_configs (role, name, max_steps, enabled, created_at, updated_at)
-			VALUES (?,?,?,?,?,?)`, d.role, d.name, d.steps, true, SqlNow(), SqlNow())
+		_, _ = s.db.Exec(`INSERT OR IGNORE INTO agent_configs (role, name, kind, description, max_steps, enabled, created_at, updated_at)
+			VALUES (?,?,?,?,?,?,?,?)`, d.role, d.name, d.kind, d.desc, d.steps, true, SqlNow(), SqlNow())
+		// keep built-in name/description fresh without clobbering user edits to prompt/llm
+		_, _ = s.db.Exec(`UPDATE agent_configs SET name=?, kind=?, description=? WHERE role=? AND (description='' OR description IS NULL)`,
+			d.name, d.kind, d.desc, d.role)
 	}
+}
+
+// ListChatAgents returns the selectable chat assistant agents.
+func (s *Store) ListChatAgents() ([]AgentConfig, error) {
+	rows, err := s.db.Query(`SELECT ` + agentCfgCols + `, description, kind FROM agent_configs WHERE kind='assistant' AND enabled=1 ORDER BY role`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AgentConfig
+	for rows.Next() {
+		var a AgentConfig
+		var llm sql.NullInt64
+		var c, u any
+		if err := rows.Scan(&a.ID, &a.Role, &a.Name, &a.Prompt, &llm, &a.MaxSteps, &a.Tools, &a.Enabled, &c, &u, &a.Description, &a.Kind); err != nil {
+			return nil, err
+		}
+		a.LLMProfileID = llm.Int64
+		a.CreatedAt, a.UpdatedAt = parseDBTime(c), parseDBTime(u)
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 func scanAgentCfg(row interface{ Scan(...any) error }) (*AgentConfig, error) {

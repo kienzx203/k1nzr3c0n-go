@@ -174,6 +174,7 @@ func (m *Manager) run(ctx context.Context, taskID int64, client *agent.Client) {
 		deadline = time.Now().Add(time.Duration(task.TimeoutSeconds) * time.Second)
 	}
 
+	stalls := 0
 	for round := 0; round < maxRounds; round++ {
 		if ctx.Err() != nil {
 			return
@@ -200,7 +201,9 @@ func (m *Manager) run(ctx context.Context, taskID int64, client *agent.Client) {
 			return
 		}
 
+		factsBefore := m.countNodes(task.ExplorationID, store.NodeFact)
 		m.drainFrontier(ctx, task, client)
+		factsAfter := m.countNodes(task.ExplorationID, store.NodeFact)
 
 		open, _ := m.st.CountOpenIntents(task.ExplorationID)
 		if emitted == 0 && open == 0 {
@@ -208,6 +211,19 @@ func (m *Manager) run(ctx context.Context, taskID int64, client *agent.Client) {
 			_ = m.st.SetExplorationStatus(task.ExplorationID, "achieved")
 			m.emit(task.ExplorationID, "status", map[string]any{"status": "done", "reason": "frontier exhausted"})
 			return
+		}
+		// stall guard: a round that added intents but produced no new facts twice
+		// in a row means the exploration is not advancing — stop instead of spinning.
+		if factsAfter <= factsBefore {
+			stalls++
+			if stalls >= 2 {
+				_ = m.st.SetTaskStatus(taskID, "done")
+				_ = m.st.SetExplorationStatus(task.ExplorationID, "achieved")
+				m.emit(task.ExplorationID, "status", map[string]any{"status": "done", "reason": "no further progress"})
+				return
+			}
+		} else {
+			stalls = 0
 		}
 	}
 	// round budget reached
@@ -233,6 +249,15 @@ Be concise and decisive. Use graph_overview and list_assets before submitting.`
 
 func (m *Manager) plannerTurn(ctx context.Context, task *store.Task, client *agent.Client) (emitted int, goalMet bool) {
 	goalNode := m.goalNodeID(task.ExplorationID)
+	// dedup guard: never re-queue a direction already seen this task (any intent state)
+	seen := map[string]bool{}
+	if existing, _ := m.st.ListNodes(task.ExplorationID, store.NodeIntent); existing != nil {
+		for _, n := range existing {
+			var p map[string]any
+			_ = jsonUnmarshal(n.Payload, &p)
+			seen[normDesc(argStr(p, "description"))] = true
+		}
+	}
 	exec := func(call agent.FunctionCall) (string, bool) {
 		a := parseArgs(call.Arguments)
 		switch call.Name {
@@ -245,6 +270,10 @@ func (m *Manager) plannerTurn(ctx context.Context, task *store.Task, client *age
 			if desc == "" {
 				return "error: description required", false
 			}
+			if seen[normDesc(desc)] {
+				return "duplicate direction — already queued/explored this task; pick a genuinely new direction or finish", false
+			}
+			seen[normDesc(desc)] = true
 			n := &store.ExplorationNode{ExplorationID: task.ExplorationID, Kind: store.NodeIntent,
 				State: store.IntentOpen, Priority: argInt(a, "priority"), Origin: "planner",
 				Payload: `{"description":` + jsonStr(desc) + `}`}
@@ -277,6 +306,11 @@ func (m *Manager) plannerTurn(ctx context.Context, task *store.Task, client *age
 	pClient, pSys, pSteps := m.agentFor("planner", client, plannerSystem, 14)
 	_, _, _ = m.runAgent(ctx, pClient, pSys, user, plannerTools(), exec, pSteps)
 	return emitted, goalMet
+}
+
+func (m *Manager) countNodes(explID int64, kind string) int {
+	ns, _ := m.st.ListNodes(explID, kind)
+	return len(ns)
 }
 
 func (m *Manager) goalNodeID(explID int64) int64 {

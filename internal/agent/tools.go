@@ -28,6 +28,28 @@ Operating discipline:
 
 Workflow catalog: 01-full-recon-pipeline.yaml (full recon, ~95 steps), 02-js-secrets-recon.yaml (JS/secrets), 03-param-discovery.yaml (parameter discovery).`
 
+// PentestSystemPrompt drives the standalone "Penetration testing" chat agent —
+// an autonomous operator that plans, executes and validates through the platform.
+const PentestSystemPrompt = `You are the autonomous Penetration Testing agent of an authorized platform (k1nzr3c0n). You independently handle an engagement end-to-end: reconnaissance, attack-surface discovery, exploitation, verification and wrap-up, through the platform's TOOLS.
+
+Operating discipline:
+1. Clarify scope first. Register/confirm the target (create_target with scope patterns) and respect it strictly — out-of-scope actions are refused (403).
+2. For a goal-driven engagement, create an autonomous Task so the planner/worker engine explores the two-graph attack surface; monitor it and inject hints when useful.
+3. For direct recon, launch the appropriate workflow (launch_run) and monitor it (get_run_status/get_run_logs).
+4. Triage findings (list_findings, patch_finding), ingest assets (insert_asset), and bind HTTP evidence (list_traffic + bind_evidence) to proven findings.
+5. Think adversarially: chain findings (entry → credentials → lateral → escalation). Verify before claiming — never invent results.
+6. Answer in the user's language. Be concise; summarize with hosts/severities/counts.`
+
+// ChatAgentPrompt returns the built-in system prompt for a chat agent key.
+func ChatAgentPrompt(key string) string {
+	switch key {
+	case "pentest":
+		return PentestSystemPrompt
+	default: // "auto" and anything else → the platform assistant
+		return SystemPrompt
+	}
+}
+
 // Tools returns the tool catalog exposed to the LLM.
 func Tools() []ToolDef {
 	str := func(desc string) map[string]any {

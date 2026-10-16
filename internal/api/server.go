@@ -291,6 +291,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/v1/agent/conversations/delete/batch", s.handleConvDeleteBatch)
 	m.HandleFunc("POST /api/v1/agent/conversations/{id}/stop", s.handleConvStop)
 	m.HandleFunc("GET /api/v1/chat/mentions", s.handleChatMentions)
+	m.HandleFunc("GET /api/v1/chat/agents", s.handleChatAgents)
 	m.HandleFunc("POST /api/v1/chat/upload", s.handleChatUpload)
 	m.HandleFunc("POST /api/v1/agent/chat/stream", s.handleAgentChatStream)
 	m.HandleFunc("POST /api/v1/agent/chat", s.handleAgentChat)

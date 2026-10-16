@@ -146,6 +146,35 @@ func (s *Server) handleConvDeleteBatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"deleted": len(body.IDs)})
 }
 
+// handleChatAgents: GET /chat/agents — selectable chat assistant agents.
+func (s *Server) handleChatAgents(w http.ResponseWriter, r *http.Request) {
+	agents, _ := s.St.ListChatAgents()
+	out := []map[string]any{}
+	for _, a := range agents {
+		out = append(out, map[string]any{
+			"key": a.Role, "name": a.Name, "description": a.Description,
+			"llm_profile_id": a.LLMProfileID, "has_custom_prompt": a.Prompt != "",
+		})
+	}
+	writeJSON(w, 200, map[string]any{"items": out, "total": len(out)})
+}
+
+// resolveAgentPrompt returns the system prompt for a conversation's agent:
+// its stored custom prompt, else the built-in default for that agent key.
+func (s *Server) resolveAgentPrompt(convID int64, agentKey string) string {
+	key := agentKey
+	if key == "" && convID > 0 {
+		key = s.St.ConversationAgentKey(convID)
+	}
+	if key == "" {
+		key = "auto"
+	}
+	if custom := s.St.ChatAgentPrompt(key); custom != "" {
+		return custom
+	}
+	return agent.ChatAgentPrompt(key)
+}
+
 // handleChatMentions: GET /chat/mentions?q=&kind=
 func (s *Server) handleChatMentions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
@@ -247,7 +276,7 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	s.registerChatCancel(convID, cancel)
 	defer s.clearChatCancel(convID)
-	res, err := agent.RunTurnMCP(ctx, s.St, s.Runner, client, convID, body.Message, agent.LoopConfig{})
+	res, err := agent.RunTurnMCP(ctx, s.St, s.Runner, client, convID, body.Message, agent.LoopConfig{SystemPrompt: s.resolveAgentPrompt(convID, body.AgentKey)})
 	if err != nil {
 		if ctx.Err() == context.Canceled {
 			writeJSON(w, 200, map[string]any{"conversation_id": convID, "reply": "", "stopped": true})
@@ -355,7 +384,7 @@ func (s *Server) handleAgentChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 		sse(m)
 	}
-	res, err := agent.RunTurnMCPStream(ctx, s.St, s.Runner, client, convID, body.Message, agent.LoopConfig{}, emit)
+	res, err := agent.RunTurnMCPStream(ctx, s.St, s.Runner, client, convID, body.Message, agent.LoopConfig{SystemPrompt: s.resolveAgentPrompt(convID, body.AgentKey)}, emit)
 	if err != nil {
 		if ctx.Err() == context.Canceled {
 			sse(map[string]any{"event": "done", "conversation_id": convID, "stopped": true})

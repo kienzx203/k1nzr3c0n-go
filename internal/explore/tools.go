@@ -398,6 +398,11 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
+// normDesc normalizes an intent description for dedup (lowercase, collapsed spaces).
+func normDesc(s string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(s))), " ")
+}
+
 func jsonStr(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
