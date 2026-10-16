@@ -14,5 +14,7 @@ if command -v npm >/dev/null 2>&1 && [ -d frontend ]; then
 fi
 
 echo "[*] building k1nzr3c0n..."
-go build -o k1nzr3c0n ./cmd/k1nzr3c0n
+VERSION=${K1Z_VERSION:-$(date +%Y%m%d)-$(git rev-parse --short HEAD 2>/dev/null || echo dev)}
+echo "[*] building k1nzr3c0n ($VERSION)..."
+go build -ldflags "-X k1nzr3c0n/internal/api.BuildVersion=$VERSION" -o k1nzr3c0n ./cmd/k1nzr3c0n
 echo "[+] done: ./k1nzr3c0n"

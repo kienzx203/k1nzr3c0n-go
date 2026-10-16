@@ -1608,3 +1608,8 @@ func (s *Store) RunStats() (RunStatsData, error) {
 	}
 	return d, rows.Err()
 }
+
+// Exec runs a raw statement (used for VACUUM INTO backups).
+func (s *Store) Exec(q string, args ...any) (sql.Result, error) {
+	return s.db.Exec(q, args...)
+}

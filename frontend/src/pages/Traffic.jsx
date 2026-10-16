@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { api } from '../api.js'
+import { useI18n } from '../i18n.jsx'
 import { timeAgo } from '../utils.js'
 
 function Icon({ d, size = 14 }) {
@@ -22,6 +23,7 @@ const methodColor = m => ({
 const statusColor = c => (c >= 500 ? 'var(--red)' : c >= 400 ? 'var(--amber)' : c > 0 ? 'var(--green)' : 'var(--text-3)')
 
 export default function Traffic() {
+  const { t } = useI18n()
   const [items, setItems] = useState([])
   const [host, setHost] = useState('')
   const [detail, setDetail] = useState(null)
@@ -110,20 +112,20 @@ export default function Traffic() {
           <Icon d={I.wave} size={17} />
         </span>
         <div>
-          <h2 className="text-[15px] font-bold leading-tight">Traffic Evidence</h2>
+          <h2 className="text-[15px] font-bold leading-tight">{t('traffic.title')}</h2>
           <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
             Recording MITM proxy {capture?.addr ? `· ${capture.addr}` : ''} · {items.length} pairs captured
           </p>
         </div>
         <span className={`badge badge-${on ? 'running' : 'cancelled'} text-[10px] ml-1`}>
-          {on ? 'capture ON' : 'capture OFF'}
+          {on ? t('traffic.captureOn') : t('traffic.captureOff')}
         </span>
         <div className="flex gap-2 ml-auto">
-          <input className="input w-44 text-[11.5px]" placeholder="filter host…" value={host}
+          <input className="input w-44 text-[11.5px]" placeholder={t("traffic.filter")} value={host}
                  onChange={e => setHost(e.target.value)} />
           {on
-            ? <button className="btn btn-danger flex items-center gap-1.5" onClick={toggle}><Icon d={I.stop} /> Stop</button>
-            : <button className="btn btn-primary flex items-center gap-1.5" onClick={toggle}><Icon d={I.play} /> Start capture</button>}
+            ? <button className="btn btn-danger flex items-center gap-1.5" onClick={toggle}><Icon d={I.stop} /> {t('traffic.stop')}</button>
+            : <button className="btn btn-primary flex items-center gap-1.5" onClick={toggle}><Icon d={I.play} /> {t('traffic.start')}</button>}
         </div>
       </div>
 
@@ -131,7 +133,7 @@ export default function Traffic() {
       {approvals.length > 0 && (
         <div className="card p-3 mb-4 fade-in" style={{ borderColor: 'var(--amber)' }}>
           <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--amber)' }}>
-            ⏸ Pending approvals — request đang bị GIỮ chờ quyết định
+            {t('traffic.pending')}
           </p>
           <div className="flex flex-col gap-1.5">
             {approvals.map(a => (
@@ -139,8 +141,8 @@ export default function Traffic() {
                 <span className="font-mono" style={{ color: 'var(--text-2)' }}>{a.method}</span>
                 <span className="font-mono truncate max-w-[380px]">{a.host}{a.path}</span>
                 <span className="ml-auto flex gap-1.5">
-                  <button className="btn btn-primary text-[10px] px-2 py-1" onClick={() => decide(a.id, 'approve')}>✓ Approve</button>
-                  <button className="btn btn-danger text-[10px] px-2 py-1" onClick={() => decide(a.id, 'deny')}>✕ Deny</button>
+                  <button className="btn btn-primary text-[10px] px-2 py-1" onClick={() => decide(a.id, 'approve')}>{t('traffic.approve')}</button>
+                  <button className="btn btn-danger text-[10px] px-2 py-1" onClick={() => decide(a.id, 'deny')}>{t('traffic.deny')}</button>
                 </span>
               </div>
             ))}
@@ -152,7 +154,7 @@ export default function Traffic() {
       <div className="card p-3 mb-4">
         <div className="flex items-center gap-3 mb-2">
           <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>
-            Traffic rules — chặn (block) host khớp pattern
+            {t('traffic.rules')}
           </p>
           <form onSubmit={addRule} className="flex gap-1.5 ml-auto">
             <input name="pattern" className="input w-52 text-[11px]" placeholder="pattern, vd: .gov.vn" />
@@ -231,7 +233,7 @@ export default function Traffic() {
         <div className="card overflow-auto" style={{ padding: 0, maxHeight: '68vh' }}>
           {!detail && (
             <div className="px-4 py-10 text-center text-[11.5px]" style={{ color: 'var(--text-3)' }}>
-              Chọn một bản ghi bên trái để xem request / response đầy đủ.
+              {t('traffic.selectRow')}
             </div>
           )}
           {detail && (
@@ -256,10 +258,10 @@ export default function Traffic() {
               </div>
               <div className="px-3.5 py-2.5 border-t flex items-center gap-2" style={{ borderColor: 'var(--border)' }}>
                 {detail.finding_id ? (
-                  <span className="badge badge-completed text-[10px]">evidence → finding #{detail.finding_id}</span>
+                  <span className="badge badge-completed text-[10px]">{t('traffic.evidenceTo')} #{detail.finding_id}</span>
                 ) : (
                   <button className="btn btn-accent flex items-center gap-1.5 text-[11px]" onClick={bindToFinding}>
-                    <Icon d={I.link} size={12} /> Bind to finding
+                    <Icon d={I.link} size={12} /> {t('traffic.bindFinding')}
                   </button>
                 )}
               </div>
