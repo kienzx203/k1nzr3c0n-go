@@ -215,6 +215,11 @@ export const api = {
   getTools: () => req('GET', '/tools'),
   checkToolVersions: () => req('POST', '/tools/check'),
   updateTools: (body = {}) => req('POST', '/tools/update', body),
+  // custom tools (agent-callable)
+  listCustomTools: () => req('GET', '/tools/custom'),
+  saveCustomTool:  (body) => req('POST', '/tools/custom', body),
+  deleteCustomTool:(key) => req('DELETE', `/tools/custom/${encodeURIComponent(key)}`),
+  testCustomTool:  (body) => req('POST', '/tools/custom/test', body),
 
   // Asset Inventory (cross-run deduped http findings)
   getAssets: (params = {}) => {

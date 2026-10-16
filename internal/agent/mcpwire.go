@@ -117,6 +117,7 @@ func RunTurnMCP(ctx context.Context, st *store.Store, r *runner.Runner, c *Clien
 	baseTools := Tools()
 	mcpTools := reg.ExtraTools()
 	all := append(append([]ToolDef{}, baseTools...), mcpTools...)
+	all = append(all, CustomToolDefs(st)...)
 
 	chat := func() (*Turn, *Usage, error) {
 		turn, usage, err := c.ChatCompletion(ctx, msgs, all)
@@ -159,6 +160,9 @@ func RunTurnMCP(ctx context.Context, st *store.Store, r *runner.Runner, c *Clien
 				Audit(st, tc.Function.Name, tc.Function.Arguments, out, true)
 			} else if strings.HasPrefix(tc.Function.Name, "mcp_") {
 				out = safeMCP(ctx, reg, tc.Function)
+				Audit(st, tc.Function.Name, tc.Function.Arguments, out, false)
+			} else if IsCustomTool(st, tc.Function.Name) {
+				out = ExecCustomTool(st, tc.Function)
 				Audit(st, tc.Function.Name, tc.Function.Arguments, out, false)
 			} else {
 				out = safeExec(st, r, tc.Function)

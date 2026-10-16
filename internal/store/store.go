@@ -361,6 +361,9 @@ func (s *Store) init() error {
 	if _, err := s.db.Exec(skillSchema); err != nil {
 		return fmt.Errorf("skill schema: %w", err)
 	}
+	if _, err := s.db.Exec(customToolSchema); err != nil {
+		return fmt.Errorf("custom tool schema: %w", err)
+	}
 	// post-table migrations (tasks already exists by now)
 	for _, q := range []string{
 		"ALTER TABLE tasks ADD COLUMN category_id INTEGER",
