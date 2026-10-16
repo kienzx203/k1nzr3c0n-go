@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -261,17 +262,74 @@ func (s *Server) handleDeleteWordlist(w http.ResponseWriter, r *http.Request) {
 // ── static SPA ───────────────────────────────────────────────────────────────
 
 func (s *Server) mountStatic(m *http.ServeMux) {
-	fsHandler := http.StripPrefix("/assets/", http.FileServer(http.Dir(filepath.Join(config.StaticDir(), "assets"))))
-	m.Handle("GET /assets/", fsHandler)
+	// Prefer the embedded ScopeWeaver UI (swui/, a Next.js static export) when
+	// present; otherwise serve k1nzr3c0n's own SPA from static/.
+	uiDir := config.StaticDir()
+	nextExport := false
+	if sw := filepath.Join(config.BaseDir(), "swui"); fileExists(filepath.Join(sw, "index.html")) {
+		uiDir, nextExport = sw, true
+	}
 	m.HandleFunc("GET /{path...}", func(w http.ResponseWriter, r *http.Request) {
-		index := filepath.Join(config.StaticDir(), "index.html")
-		if _, err := os.Stat(index); err != nil {
-			writeDetail(w, 404, "static frontend not built")
+		serveUI(w, r, uiDir, nextExport)
+	})
+}
+
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
+}
+
+// serveUI resolves a request to a file in the UI dir. For a Next.js static
+// export, a route like /function/tasks maps to function/tasks/index.html; hashed
+// assets under /_next are cached, HTML is never cached.
+func serveUI(w http.ResponseWriter, r *http.Request, dir string, nextExport bool) {
+	rel := path.Clean(strings.TrimPrefix(r.URL.Path, "/"))
+	if strings.Contains(rel, "..") {
+		writeDetail(w, 400, "bad path")
+		return
+	}
+	var candidates []string
+	if rel == "" || rel == "." {
+		candidates = []string{"index.html"}
+	} else {
+		candidates = []string{rel}
+		if filepath.Ext(rel) == "" { // extensionless → a route
+			candidates = append(candidates, rel+"/index.html", rel+".html")
+		}
+	}
+	for _, c := range candidates {
+		full := filepath.Join(dir, filepath.FromSlash(c))
+		if fileExists(full) {
+			setUICache(w, full)
+			http.ServeFile(w, r, full)
 			return
 		}
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Expires", "0")
-		http.ServeFile(w, r, index)
-	})
+	}
+	// SPA / route fallback
+	if nextExport {
+		if f := filepath.Join(dir, "404.html"); fileExists(f) {
+			setUICache(w, f)
+			w.WriteHeader(404)
+			http.ServeFile(w, r, f)
+			return
+		}
+	}
+	index := filepath.Join(dir, "index.html")
+	if !fileExists(index) {
+		writeDetail(w, 404, "static frontend not built")
+		return
+	}
+	setUICache(w, index)
+	http.ServeFile(w, r, index)
+}
+
+func setUICache(w http.ResponseWriter, full string) {
+	if strings.Contains(full, string(os.PathSeparator)+"_next"+string(os.PathSeparator)) ||
+		strings.HasSuffix(full, ".woff2") || strings.HasSuffix(full, ".woff") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 }
