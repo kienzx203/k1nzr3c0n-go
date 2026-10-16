@@ -262,13 +262,10 @@ func (s *Server) handleDeleteWordlist(w http.ResponseWriter, r *http.Request) {
 // ── static SPA ───────────────────────────────────────────────────────────────
 
 func (s *Server) mountStatic(m *http.ServeMux) {
-	// Prefer the embedded ScopeWeaver UI (swui/, a Next.js static export) when
-	// present; otherwise serve k1nzr3c0n's own SPA from static/.
+	// static/ holds the ScopeWeaver UI (a Next.js static export, detected by
+	// _next/). If it's a plain SPA instead, serveUI still works.
 	uiDir := config.StaticDir()
-	nextExport := false
-	if sw := filepath.Join(config.BaseDir(), "swui"); fileExists(filepath.Join(sw, "index.html")) {
-		uiDir, nextExport = sw, true
-	}
+	nextExport := dirExists(filepath.Join(uiDir, "_next"))
 	m.HandleFunc("GET /{path...}", func(w http.ResponseWriter, r *http.Request) {
 		serveUI(w, r, uiDir, nextExport)
 	})
@@ -277,6 +274,11 @@ func (s *Server) mountStatic(m *http.ServeMux) {
 func fileExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
+}
+
+func dirExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
 }
 
 // serveUI resolves a request to a file in the UI dir. For a Next.js static
