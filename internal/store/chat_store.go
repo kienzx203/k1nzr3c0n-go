@@ -2,6 +2,21 @@ package store
 
 import "strings"
 
+// ConversationAgentKey returns a conversation's agent key (empty if unknown).
+func (s *Store) ConversationAgentKey(id int64) string {
+	var k string
+	_ = s.db.QueryRow(`SELECT agent_key FROM conversations WHERE id=?`, id).Scan(&k)
+	return k
+}
+
+// ChatAgentPrompt returns the custom prompt stored for a chat agent key, or ""
+// when it uses the built-in default.
+func (s *Store) ChatAgentPrompt(key string) string {
+	var p string
+	_ = s.db.QueryRow(`SELECT prompt FROM agent_configs WHERE role=?`, key).Scan(&p)
+	return p
+}
+
 // Mention is one @-mention candidate (asset / finding / task) for the chat input.
 type Mention struct {
 	Kind  string `json:"kind"`  // asset | finding | task

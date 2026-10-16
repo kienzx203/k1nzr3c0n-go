@@ -46,6 +46,7 @@ export const api = {
   pinConv:        (id, pinned) => req('POST', `/agent/conversations/${id}/pin`, { pinned }),
   deleteConvsBatch: (ids) => req('POST', '/agent/conversations/delete/batch', { ids }),
   chatMentions:   (q, kind = '') => req('GET', `/chat/mentions?q=${encodeURIComponent(q)}${kind ? `&kind=${kind}` : ''}`),
+  chatAgents:     () => req('GET', '/chat/agents'),
   stopChat:       (id) => req('POST', `/agent/conversations/${id}/stop`),
   chatUpload:     async (file) => {
     const fd = new FormData(); fd.append('file', file)

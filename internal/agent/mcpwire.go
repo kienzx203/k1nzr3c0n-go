@@ -111,7 +111,7 @@ func RunTurnMCP(ctx context.Context, st *store.Store, r *runner.Runner, c *Clien
 	if err != nil {
 		return nil, err
 	}
-	msgs := compactedMessages(ctx, c, SystemPrompt, history)
+	msgs := compactedMessages(ctx, c, cfg.sysPrompt(), history)
 
 	res := &LoopResult{}
 	baseTools := Tools()

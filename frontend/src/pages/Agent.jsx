@@ -26,6 +26,7 @@ const I = {
   trash: <path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9h6.6L12 4M6.7 7v3.5M9.3 7v3.5" />,
   pin: <path d="M6 2h4l-.5 4 2 2v1.5H5V8l2-2z M8 10.5V14" />,
   edit: <path d="M11 2.5 13.5 5 6 12.5 3 13l.5-3z" />,
+  bot: <><rect x="3" y="5.5" width="10" height="7.5" rx="1.8" /><circle cx="6" cy="9" r="0.9" fill="currentColor" /><circle cx="10" cy="9" r="0.9" fill="currentColor" /><path d="M8 2.5v3M5.5 13v1M10.5 13v1" /></>,
 }
 
 export default function Agent() {
@@ -52,7 +53,12 @@ export default function Agent() {
   const [mentions, setMentions] = useState([])
   const [mentionOpen, setMentionOpen] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState({})
-  const [newAgentKey, setNewAgentKey] = useState('recon-agent')
+  const [newAgentKey, setNewAgentKey] = useState('auto')
+  const [chatAgents, setChatAgents] = useState([])
+  const [agentFilter, setAgentFilter] = useState('')
+  const [selectMode, setSelectMode] = useState(false)
+  const agentName = k => chatAgents.find(a => a.key === k)?.name || k
+  const curAgent = chatAgents.find(a => a.key === newAgentKey) || chatAgents[0] || { key: 'auto', name: 'Auto', description: 'Platform assistant.' }
   // attachments, stop, send-mode, side-questions, approvals, todo (ScopeWeaver chat parity)
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -143,7 +149,7 @@ export default function Agent() {
     } catch {}
   }, [profileId])
 
-  useEffect(() => { loadConvs(); loadProfiles() }, []) // eslint-disable-line
+  useEffect(() => { loadConvs(); loadProfiles(); api.chatAgents().then(r => setChatAgents(r.items || [])).catch(() => {}) }, []) // eslint-disable-line
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, busy])
 
   async function openConv(id) {
@@ -268,40 +274,54 @@ export default function Agent() {
         {/* ── sidebar ── */}
         <div className="flex flex-col gap-2.5 min-w-0">
           <button className="btn btn-primary flex items-center justify-center gap-1.5" onClick={newChat}>
-            <Icon d={I.plus} /> New chat
+            <Icon d={I.plus} /> Create conversation
           </button>
 
+          {/* All Agents filter */}
+          <select className="input text-[11.5px] font-medium" value={agentFilter} onChange={e => setAgentFilter(e.target.value)}>
+            <option value="">🤖 All Agents</option>
+            {chatAgents.map(a => <option key={a.key} value={a.key}>{a.name}</option>)}
+          </select>
+
+          <div className="flex items-center justify-between px-0.5 text-[10px]" style={{ color: 'var(--text-3)' }}>
+            <span>{convs.filter(c => !agentFilter || c.agent_key === agentFilter).length} total</span>
+            <button className="flex items-center gap-1 hover:underline" style={{ color: selectMode ? 'var(--accent)' : 'var(--text-3)' }}
+                    onClick={() => { setSelectMode(v => !v); setSelected([]) }}>
+              ☑ Select multiple
+            </button>
+          </div>
+
           <div className="card flex-1 overflow-y-auto" style={{ padding: 0 }}>
-            <div className="card-header text-[10px]" style={{ padding: '10px 12px' }}>
-              Conversations
-              {selected.length > 0 && (
-                <button className="btn btn-danger text-[9.5px] px-2 py-0.5 ml-auto" onClick={batchDelete}>
-                  Delete {selected.length}
-                </button>
-              )}
-            </div>
+            {selected.length > 0 && (
+              <div className="card-header text-[10px]" style={{ padding: '8px 12px' }}>
+                {selected.length} selected
+                <button className="btn btn-danger text-[9.5px] px-2 py-0.5 ml-auto" onClick={batchDelete}>Delete {selected.length}</button>
+              </div>
+            )}
             {(() => {
+              const shown = convs.filter(c => !agentFilter || (c.agent_key || 'auto') === agentFilter)
               const groups = {}
-              for (const c of convs) { const k = c.agent_key || 'recon-agent'; (groups[k] = groups[k] || []).push(c) }
+              for (const c of shown) { const k = c.agent_key || 'auto'; (groups[k] = groups[k] || []).push(c) }
               const keys = Object.keys(groups)
               return keys.map(gk => {
                 const collapsed = collapsedGroups[gk]
                 return (
                   <div key={gk}>
-                    {keys.length > 1 && (
-                      <div className="px-3 py-1.5 flex items-center gap-1.5 cursor-pointer border-b text-[9px] uppercase tracking-wider font-bold"
-                           style={{ borderColor: 'var(--border)', color: 'var(--text-3)', background: 'var(--bg-soft)' }}
-                           onClick={() => setCollapsedGroups(s => ({ ...s, [gk]: !s[gk] }))}>
-                        <span>{collapsed ? '▸' : '▾'}</span><span className="truncate">{gk}</span>
-                        <span className="ml-auto font-mono">{groups[gk].length}</span>
-                      </div>
-                    )}
+                    <div className="px-3 py-2 flex items-center gap-1.5 cursor-pointer border-b text-[11px] font-semibold"
+                         style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+                         onClick={() => setCollapsedGroups(s => ({ ...s, [gk]: !s[gk] }))}>
+                      <span style={{ color: 'var(--text-3)' }}>{collapsed ? '▸' : '▾'}</span>
+                      <Icon d={I.bot} size={13} /><span className="truncate flex-1">{agentName(gk)}</span>
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-3)' }}>{groups[gk].length}</span>
+                    </div>
                     {!collapsed && groups[gk].map(c => (
                       <div key={c.id} onClick={() => openConv(c.id)}
                            className="group flex items-center gap-2 px-3 py-2 cursor-pointer border-b transition-colors"
                            style={{ borderColor: 'var(--border)', background: convId === c.id ? 'var(--surface-3)' : selected.includes(c.id) ? 'var(--surface-2)' : 'transparent' }}>
-                        <input type="checkbox" checked={selected.includes(c.id)} onClick={e => toggleSelect(c.id, e)} onChange={() => {}}
-                               className="opacity-0 group-hover:opacity-100 checked:opacity-100" style={{ accentColor: 'var(--accent)' }} />
+                        {selectMode && (
+                          <input type="checkbox" checked={selected.includes(c.id)} onClick={e => toggleSelect(c.id, e)} onChange={() => {}}
+                                 style={{ accentColor: 'var(--accent)' }} />
+                        )}
                         <div className="flex-1 min-w-0">
                           {editingId === c.id ? (
                             <input autoFocus className="input text-[11.5px] py-0.5" value={editTitle} onClick={e => e.stopPropagation()}
@@ -314,6 +334,7 @@ export default function Agent() {
                           )}
                           <div className="text-[9.5px] flex items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
                             {timeAgo(c.updated_at)}{c.total_tokens > 0 && <span className="font-mono">· {fmtTok(c.total_tokens)} tok</span>}
+                            <span className="font-mono ml-auto">#{c.id}</span>
                           </div>
                         </div>
                         <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -486,12 +507,17 @@ export default function Agent() {
               </div>
             )}
             {!messages.length && !noProfile && (
-              <div className="flex flex-col gap-2 items-start py-6 px-2">
-                <p className="text-[12px] mb-1" style={{ color: 'var(--text-3)' }}>Try one of the quick commands:</p>
-                {SUGGESTIONS.map(s => (
-                  <button key={s} className="btn text-left text-[11.5px]" style={{ maxWidth: 480 }}
-                          onClick={() => send(s)}>{s}</button>
-                ))}
+              <div className="flex flex-col items-center justify-center text-center flex-1 py-10 px-4">
+                <span className="p-3 rounded-full mb-3" style={{ background: 'var(--surface-3)', color: 'var(--text-2)' }}>
+                  <Icon d={I.bot} size={24} />
+                </span>
+                <p className="text-[14px] font-semibold mb-1.5" style={{ color: 'var(--text)' }}>Start a conversation with “{curAgent.name}”</p>
+                <p className="text-[11.5px] leading-relaxed mb-5" style={{ color: 'var(--text-3)', maxWidth: 440 }}>{curAgent.description}</p>
+                <div className="flex flex-col gap-2 items-stretch w-full" style={{ maxWidth: 460 }}>
+                  {SUGGESTIONS.map(s => (
+                    <button key={s} className="btn text-left text-[11.5px]" onClick={() => send(s)}>{s}</button>
+                  ))}
+                </div>
               </div>
             )}
             {messages.map((m, i) => m.role === 'user' ? (
@@ -563,6 +589,15 @@ export default function Agent() {
                 ))}
               </div>
             )}
+            {/* agent picker (applies to new conversations) */}
+            <div className="relative self-stretch flex items-center" title={convId ? 'Agent is fixed for this conversation' : 'Pick the agent for a new conversation'}>
+              <Icon d={I.bot} size={13} />
+              <select className="input text-[11px] font-medium pl-5 pr-6 py-1.5" style={{ width: 150, marginLeft: -16 }}
+                      value={convId ? (convs.find(c => c.id === convId)?.agent_key || newAgentKey) : newAgentKey}
+                      disabled={!!convId} onChange={e => setNewAgentKey(e.target.value)}>
+                {chatAgents.map(a => <option key={a.key} value={a.key}>{a.name}</option>)}
+              </select>
+            </div>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={pickFiles} />
             <button className="btn self-stretch px-2.5" title="Attach files" onClick={() => fileRef.current?.click()} disabled={uploading}>
               {uploading ? '…' : '📎'}

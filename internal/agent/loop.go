@@ -26,7 +26,16 @@ func baseDir() string {
 
 // LoopConfig controls one chat turn.
 type LoopConfig struct {
-	MaxToolRounds int // safety cap on tool-call rounds (default 16)
+	MaxToolRounds int    // safety cap on tool-call rounds (default 16)
+	SystemPrompt  string // overrides the default system prompt (per chat agent)
+}
+
+// sysPrompt returns the configured override or the package default.
+func (c LoopConfig) sysPrompt() string {
+	if c.SystemPrompt != "" {
+		return c.SystemPrompt
+	}
+	return SystemPrompt
 }
 
 // LoopResult is the outcome of one user turn.
@@ -55,7 +64,7 @@ func RunTurn(ctx context.Context, st *store.Store, r *runner.Runner, c *Client,
 	if err != nil {
 		return nil, err
 	}
-	msgs := []Message{{Role: "system", Content: SystemPrompt}}
+	msgs := []Message{{Role: "system", Content: cfg.sysPrompt()}}
 	for _, m := range history {
 		switch m.Role {
 		case "user", "assistant":

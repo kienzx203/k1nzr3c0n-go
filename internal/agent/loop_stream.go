@@ -43,7 +43,7 @@ func RunTurnMCPStream(ctx context.Context, st *store.Store, r *runner.Runner, c 
 	if err != nil {
 		return nil, err
 	}
-	msgs := compactedMessages(ctx, c, SystemPrompt, history)
+	msgs := compactedMessages(ctx, c, cfg.sysPrompt(), history)
 
 	res := &LoopResult{}
 	all := append(append([]ToolDef{}, Tools()...), reg.ExtraTools()...)
