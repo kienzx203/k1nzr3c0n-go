@@ -100,7 +100,7 @@ func RunTurn(ctx context.Context, st *store.Store, r *runner.Runner, c *Client,
 			msgs = append(msgs, Message{Role: "tool", Content: out, ToolCallID: tc.ID})
 		}
 	}
-	res.Reply = "Đạt giới hạn vòng gọi tool — hãy tiếp tục với câu hỏi cụ thể hơn."
+	res.Reply = "Reached the tool-call round limit — please continue with a more specific question."
 	_ = st.InsertChatMessage(&store.ChatMessage{ConversationID: convID, Role: "assistant", Content: res.Reply})
 	return res, nil
 }

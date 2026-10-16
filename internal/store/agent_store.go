@@ -25,11 +25,13 @@ type LLMProfile struct {
 
 // Conversation is one agent chat thread.
 type Conversation struct {
-	ID        int64
-	Title     string
-	AgentKey  string // "recon-agent"
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID          int64
+	Title       string
+	AgentKey    string // "recon-agent"
+	PinnedAt    time.Time
+	TotalTokens int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // ChatRole: user | assistant | tool
@@ -289,7 +291,8 @@ func (s *Store) CreateConversation(title, agentKey string) (*Conversation, error
 }
 
 func (s *Store) ListConversations() ([]Conversation, error) {
-	rows, err := s.db.Query(`SELECT id, title, agent_key, created_at, updated_at FROM conversations ORDER BY updated_at DESC`)
+	rows, err := s.db.Query(`SELECT id, title, agent_key, pinned_at, total_tokens, created_at, updated_at
+		FROM conversations ORDER BY (pinned_at IS NOT NULL) DESC, updated_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -297,15 +300,60 @@ func (s *Store) ListConversations() ([]Conversation, error) {
 	var out []Conversation
 	for rows.Next() {
 		var c Conversation
-		var ct, ut any
-		if err := rows.Scan(&c.ID, &c.Title, &c.AgentKey, &ct, &ut); err != nil {
+		var pin, ct, ut any
+		var tok sql.NullInt64
+		if err := rows.Scan(&c.ID, &c.Title, &c.AgentKey, &pin, &tok, &ct, &ut); err != nil {
 			return nil, err
 		}
+		c.PinnedAt = parseDBTime(pin)
+		c.TotalTokens = int(tok.Int64)
 		c.CreatedAt = parseDBTime(ct)
 		c.UpdatedAt = parseDBTime(ut)
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// SetConversationPinned pins/unpins a conversation.
+func (s *Store) SetConversationPinned(id int64, pinned bool) error {
+	if pinned {
+		_, err := s.db.Exec(`UPDATE conversations SET pinned_at=? WHERE id=?`, SqlNow(), id)
+		return err
+	}
+	_, err := s.db.Exec(`UPDATE conversations SET pinned_at=NULL WHERE id=?`, id)
+	return err
+}
+
+// RenameConversation updates the title.
+func (s *Store) RenameConversation(id int64, title string) error {
+	if title == "" {
+		return nil
+	}
+	_, err := s.db.Exec(`UPDATE conversations SET title=?, updated_at=? WHERE id=?`, title, SqlNow(), id)
+	return err
+}
+
+// DeleteConversationsBatch removes several conversations and their messages.
+func (s *Store) DeleteConversationsBatch(ids []int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, id := range ids {
+		if _, err := s.db.Exec(`DELETE FROM chat_messages WHERE conversation_id=?`, id); err != nil {
+			return err
+		}
+		if _, err := s.db.Exec(`DELETE FROM conversations WHERE id=?`, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AddConversationTokens accumulates a turn's token usage onto the conversation.
+func (s *Store) AddConversationTokens(id int64, tokens int) {
+	if tokens <= 0 {
+		return
+	}
+	_, _ = s.db.Exec(`UPDATE conversations SET total_tokens = COALESCE(total_tokens,0) + ? WHERE id=?`, tokens, id)
 }
 
 func (s *Store) DeleteConversation(id int64) error {

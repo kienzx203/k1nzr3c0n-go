@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -371,25 +372,143 @@ func (s *Server) handleSelfUpdate(w http.ResponseWriter, r *http.Request) {
 		writeDetail(w, 500, err.Error())
 		return
 	}
-	tmp := exe + ".__updating__"
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	// stage the download as <exe>.new
+	staged := exe + ".new"
+	out, err := os.OpenFile(staged, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
 	if err != nil {
 		writeDetail(w, 500, err.Error())
 		return
 	}
 	if _, err := io.Copy(out, resp.Body); err != nil {
 		out.Close()
-		os.Remove(tmp)
+		os.Remove(staged)
 		writeDetail(w, 500, err.Error())
 		return
 	}
 	out.Close()
-	os.Chmod(tmp, 0o755)
-	if err := os.Rename(tmp, exe); err != nil {
+	os.Chmod(staged, 0o755)
+
+	// smoke-test the staged binary (-h must exit cleanly); discard it on failure
+	if smokeErr := exec.Command(staged, "-h").Run(); smokeErr != nil {
+		if ee, ok := smokeErr.(*exec.ExitError); !ok || ee.ExitCode() != 0 {
+			// -h commonly exits 0 or 2; only reject a hard launch failure
+			if _, statErr := os.Stat(staged); statErr == nil && !canLaunch(staged) {
+				os.Rename(staged, exe+".failed")
+				writeDetail(w, 500, "staged binary failed smoke test (kept as .failed)")
+				return
+			}
+		}
+	}
+
+	// back up the current binary as <exe>.old, then swap in the new one
+	_ = os.Remove(exe + ".old")
+	if err := copyFile(exe, exe+".old"); err != nil {
+		writeDetail(w, 500, "backup current: "+err.Error())
+		return
+	}
+	if err := os.Rename(staged, exe); err != nil {
 		writeDetail(w, 500, "swap: "+err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"updated": true, "note": "restart the service: systemctl restart k1nzr3c0n-go"})
+	writeJSON(w, 200, map[string]any{"updated": true, "rollback_available": true,
+		"note": "restart the service: systemctl restart k1nzr3c0n-go"})
+}
+
+// canLaunch reports whether the staged binary can start at all.
+func canLaunch(path string) bool {
+	c := exec.Command(path, "-h")
+	_ = c.Start()
+	if c.Process != nil {
+		_ = c.Process.Kill()
+		return true
+	}
+	return false
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// handleUpdateRollback restores the previous binary from <exe>.old.
+func (s *Server) handleUpdateRollback(w http.ResponseWriter, r *http.Request) {
+	exe, err := os.Executable()
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	old := exe + ".old"
+	if _, err := os.Stat(old); err != nil {
+		writeDetail(w, 404, "no previous version to roll back to")
+		return
+	}
+	// keep the current (bad) one as .failed, then restore .old
+	_ = os.Remove(exe + ".failed")
+	_ = copyFile(exe, exe+".failed")
+	if err := copyFile(old, exe); err != nil {
+		writeDetail(w, 500, "restore: "+err.Error())
+		return
+	}
+	os.Chmod(exe, 0o755)
+	_ = os.Remove(old)
+	writeJSON(w, 200, map[string]any{"rolled_back": true,
+		"note": "restart the service: systemctl restart k1nzr3c0n-go"})
+}
+
+// handleLocalLLMGet / Set — the opt-in "local-only LLM network" setting.
+func (s *Server) handleLocalLLMGet(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"enabled": s.St.GetSetting("local_only_llm", "0") == "1"})
+}
+
+func (s *Server) handleLocalLLMSet(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	_ = readJSON(r, &body)
+	v := "0"
+	if body.Enabled {
+		v = "1"
+	}
+	_ = s.St.SetSetting("local_only_llm", v)
+	writeJSON(w, 200, map[string]any{"enabled": body.Enabled})
+}
+
+// handleOllamaModels lists installed models from an Ollama endpoint (/api/tags).
+func (s *Server) handleOllamaModels(w http.ResponseWriter, r *http.Request) {
+	base := r.URL.Query().Get("base_url")
+	if base == "" {
+		base = "http://localhost:11434"
+	}
+	base = strings.TrimSuffix(strings.TrimSuffix(base, "/"), "/v1")
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Get(base + "/api/tags")
+	if err != nil {
+		writeDetail(w, 502, "cannot reach Ollama: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	var tags struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	json.NewDecoder(resp.Body).Decode(&tags)
+	names := []string{}
+	for _, m := range tags.Models {
+		names = append(names, m.Name)
+	}
+	writeJSON(w, 200, map[string]any{"models": names})
 }
 
 func envOrDefault(k, def string) string {

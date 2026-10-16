@@ -122,7 +122,7 @@ func RunAutopilot(ctx context.Context, st *store.Store, r *runner.Runner, c *Cli
 			}
 		}
 	}
-	res.Summary = "Đạt giới hạn bước autopilot."
+	res.Summary = "Reached the autopilot step limit."
 	return res, nil
 }
 

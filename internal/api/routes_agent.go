@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"k1nzr3c0n/internal/agent"
+	"k1nzr3c0n/internal/config"
 	"k1nzr3c0n/internal/store"
 )
 
@@ -87,9 +90,68 @@ func (s *Server) handleConvList(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []map[string]any{}
 	for _, c := range convs {
-		out = append(out, map[string]any{"id": c.ID, "title": c.Title, "updated_at": iso(c.UpdatedAt)})
+		out = append(out, map[string]any{
+			"id": c.ID, "title": c.Title, "agent_key": c.AgentKey,
+			"pinned": !c.PinnedAt.IsZero(), "total_tokens": c.TotalTokens,
+			"updated_at": iso(c.UpdatedAt),
+		})
 	}
 	writeJSON(w, 200, out)
+}
+
+// handleConvRename: PATCH {title}
+func (s *Server) handleConvRename(w http.ResponseWriter, r *http.Request) {
+	id, _ := parseID(r.PathValue("id"))
+	var body struct {
+		Title string `json:"title"`
+	}
+	if err := readJSON(r, &body); err != nil || body.Title == "" {
+		writeDetail(w, 422, "title is required")
+		return
+	}
+	if err := s.St.RenameConversation(id, body.Title); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"id": id, "title": body.Title})
+}
+
+// handleConvPin: POST {pinned}
+func (s *Server) handleConvPin(w http.ResponseWriter, r *http.Request) {
+	id, _ := parseID(r.PathValue("id"))
+	var body struct {
+		Pinned bool `json:"pinned"`
+	}
+	_ = readJSON(r, &body)
+	if err := s.St.SetConversationPinned(id, body.Pinned); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"id": id, "pinned": body.Pinned})
+}
+
+// handleConvDeleteBatch: POST {ids:[...]}
+func (s *Server) handleConvDeleteBatch(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeDetail(w, 422, err.Error())
+		return
+	}
+	if err := s.St.DeleteConversationsBatch(body.IDs); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"deleted": len(body.IDs)})
+}
+
+// handleChatMentions: GET /chat/mentions?q=&kind=
+func (s *Server) handleChatMentions(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	kind := r.URL.Query().Get("kind")
+	items, _ := s.St.SearchMentions(q, kind, 8)
+	writeJSON(w, 200, map[string]any{"items": items})
 }
 
 func (s *Server) handleConvMessages(w http.ResponseWriter, r *http.Request) {
@@ -126,13 +188,25 @@ func (s *Server) handleConvDelete(w http.ResponseWriter, r *http.Request) {
 // handleAgentChat runs one agent turn: POST {message, conversation_id?, profile_id?}
 func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Message        string `json:"message"`
-		ConversationID *int64 `json:"conversation_id"`
-		ProfileID      *int64 `json:"profile_id"`
+		Message        string   `json:"message"`
+		ConversationID *int64   `json:"conversation_id"`
+		ProfileID      *int64   `json:"profile_id"`
+		AgentKey       string   `json:"agent_key"`
+		Attachments    []string `json:"attachments"`
 	}
 	if err := readJSON(r, &body); err != nil || strings.TrimSpace(body.Message) == "" {
 		writeDetail(w, 422, "message is required")
 		return
+	}
+	// fold attached files into the message so the agent sees them
+	if len(body.Attachments) > 0 {
+		var b strings.Builder
+		b.WriteString(body.Message)
+		b.WriteString("\n\n[Operator attached files]")
+		for _, p := range body.Attachments {
+			b.WriteString("\n- " + p)
+		}
+		body.Message = b.String()
 	}
 
 	// resolve profile: explicit → first → 503
@@ -156,7 +230,11 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 		if len(title) > 40 {
 			title = title[:40]
 		}
-		conv, err := s.St.CreateConversation(title, "recon-agent")
+		agentKey := body.AgentKey
+		if agentKey == "" {
+			agentKey = "recon-agent"
+		}
+		conv, err := s.St.CreateConversation(title, agentKey)
 		if err != nil {
 			writeDetail(w, 500, err.Error())
 			return
@@ -167,13 +245,20 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 	client := agent.NewClient(prof.BaseURL, prof.APIKey, prof.Model, prof.Temperature)
 	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Minute)
 	defer cancel()
+	s.registerChatCancel(convID, cancel)
+	defer s.clearChatCancel(convID)
 	res, err := agent.RunTurnMCP(ctx, s.St, s.Runner, client, convID, body.Message, agent.LoopConfig{})
 	if err != nil {
+		if ctx.Err() == context.Canceled {
+			writeJSON(w, 200, map[string]any{"conversation_id": convID, "reply": "", "stopped": true})
+			return
+		}
 		writeDetail(w, 502, "agent error: "+err.Error())
 		return
 	}
 	_ = s.St.InsertLLMUsage(prof.ID, convID,
 		res.UsageTotals.PromptTokens, res.UsageTotals.CompletionTokens, res.UsageTotals.TotalTokens)
+	s.St.AddConversationTokens(convID, res.UsageTotals.TotalTokens)
 	writeJSON(w, 200, map[string]any{
 		"conversation_id": convID,
 		"reply":           res.Reply,
@@ -181,6 +266,152 @@ func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
 		"rounds":          res.Rounds,
 		"tokens":          res.UsageTotals,
 	})
+}
+
+// handleAgentChatStream runs one agent turn with token-by-token SSE streaming.
+// Events: {event:"delta",content}, {event:"tool",name}, {event:"done",...}.
+func (s *Server) handleAgentChatStream(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Message        string   `json:"message"`
+		ConversationID *int64   `json:"conversation_id"`
+		ProfileID      *int64   `json:"profile_id"`
+		AgentKey       string   `json:"agent_key"`
+		Attachments    []string `json:"attachments"`
+	}
+	if err := readJSON(r, &body); err != nil || strings.TrimSpace(body.Message) == "" {
+		writeDetail(w, 422, "message is required")
+		return
+	}
+	profiles, _ := s.St.ListLLMProfiles()
+	if len(profiles) == 0 {
+		writeDetail(w, 503, "No LLM profile configured")
+		return
+	}
+	prof := profiles[0]
+	if body.ProfileID != nil {
+		if p, err := s.St.GetLLMProfile(*body.ProfileID); err == nil {
+			prof = *p
+		}
+	}
+	if len(body.Attachments) > 0 {
+		var b strings.Builder
+		b.WriteString(body.Message)
+		b.WriteString("\n\n[Operator attached files]")
+		for _, p := range body.Attachments {
+			b.WriteString("\n- " + p)
+		}
+		body.Message = b.String()
+	}
+	convID := int64(0)
+	if body.ConversationID != nil {
+		convID = *body.ConversationID
+	} else {
+		title := body.Message
+		if len(title) > 40 {
+			title = title[:40]
+		}
+		agentKey := body.AgentKey
+		if agentKey == "" {
+			agentKey = "recon-agent"
+		}
+		conv, err := s.St.CreateConversation(title, agentKey)
+		if err != nil {
+			writeDetail(w, 500, err.Error())
+			return
+		}
+		convID = conv.ID
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeDetail(w, 500, "streaming unsupported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(200)
+
+	sse := func(obj map[string]any) {
+		b, _ := json.Marshal(obj)
+		_, _ = w.Write([]byte("data: "))
+		_, _ = w.Write(b)
+		_, _ = w.Write([]byte("\n\n"))
+		flusher.Flush()
+	}
+	sse(map[string]any{"event": "start", "conversation_id": convID})
+
+	client := agent.NewClient(prof.BaseURL, prof.APIKey, prof.Model, prof.Temperature)
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Minute)
+	defer cancel()
+	s.registerChatCancel(convID, cancel)
+	defer s.clearChatCancel(convID)
+
+	emit := func(event string, payload map[string]any) {
+		m := map[string]any{"event": event}
+		for k, v := range payload {
+			m[k] = v
+		}
+		sse(m)
+	}
+	res, err := agent.RunTurnMCPStream(ctx, s.St, s.Runner, client, convID, body.Message, agent.LoopConfig{}, emit)
+	if err != nil {
+		if ctx.Err() == context.Canceled {
+			sse(map[string]any{"event": "done", "conversation_id": convID, "stopped": true})
+			return
+		}
+		sse(map[string]any{"event": "error", "error": err.Error()})
+		return
+	}
+	_ = s.St.InsertLLMUsage(prof.ID, convID,
+		res.UsageTotals.PromptTokens, res.UsageTotals.CompletionTokens, res.UsageTotals.TotalTokens)
+	s.St.AddConversationTokens(convID, res.UsageTotals.TotalTokens)
+	sse(map[string]any{
+		"event": "done", "conversation_id": convID, "reply": res.Reply,
+		"tool_calls": res.ToolCalls, "rounds": res.Rounds, "tokens": res.UsageTotals,
+	})
+}
+
+// handleConvStop aborts the in-flight chat turn for a conversation.
+func (s *Server) handleConvStop(w http.ResponseWriter, r *http.Request) {
+	id, _ := parseID(r.PathValue("id"))
+	stopped := s.cancelChat(id)
+	writeJSON(w, 200, map[string]any{"stopped": stopped})
+}
+
+// handleChatUpload stores an uploaded chat attachment and returns its path.
+func (s *Server) handleChatUpload(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		writeDetail(w, 422, "invalid multipart form")
+		return
+	}
+	file, hdr, err := r.FormFile("file")
+	if err != nil {
+		writeDetail(w, 422, "file field required")
+		return
+	}
+	defer file.Close()
+	dir := filepath.Join(config.BaseDir(), "uploads", "chat")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	safe := filepath.Base(hdr.Filename)
+	name := fmt.Sprintf("%d-%s", time.Now().UnixNano(), safe)
+	dst := filepath.Join(dir, name)
+	out, err := os.Create(dst)
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	n, err := io.Copy(out, file)
+	out.Close()
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 201, map[string]any{"path": dst, "name": safe, "size": n})
 }
 
 func (s *Server) handleLLMUsage(w http.ResponseWriter, r *http.Request) {
@@ -448,6 +679,20 @@ func (s *Server) handleApprovalsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, items)
+}
+
+// handleApprovalDetail returns one approval with its full request dump.
+func (s *Server) handleApprovalDetail(w http.ResponseWriter, r *http.Request) {
+	id, _ := parseID(r.PathValue("id"))
+	a, err := s.St.GetApproval(id)
+	if err != nil {
+		writeDetail(w, 404, "approval not found")
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"id": a.ID, "method": a.Method, "host": a.Host, "path": a.Path,
+		"dump": a.Dump, "decision": a.Decision, "created_at": iso(a.CreatedAt),
+	})
 }
 
 func (s *Server) handleApprovalDecide(w http.ResponseWriter, r *http.Request) {

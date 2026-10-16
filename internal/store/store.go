@@ -317,6 +317,8 @@ var migrations = []string{
 	"ALTER TABLE findings ADD COLUMN screenshot TEXT",
 	"ALTER TABLE findings ADD COLUMN notes TEXT",
 	"ALTER TABLE findings ADD COLUMN tags TEXT DEFAULT '[]'",
+	"ALTER TABLE conversations ADD COLUMN pinned_at DATETIME",
+	"ALTER TABLE conversations ADD COLUMN total_tokens INTEGER DEFAULT 0",
 }
 
 // Open creates/opens the database, applies schema + idempotent migrations.
@@ -352,6 +354,15 @@ func (s *Store) init() error {
 	}
 	if _, err := s.db.Exec(swSchema); err != nil {
 		return fmt.Errorf("scopeweaver schema: %w", err)
+	}
+	if _, err := s.db.Exec(sw2Schema); err != nil {
+		return fmt.Errorf("scopeweaver2 schema: %w", err)
+	}
+	// post-table migrations (tasks already exists by now)
+	for _, q := range []string{
+		"ALTER TABLE tasks ADD COLUMN category_id INTEGER",
+	} {
+		_, _ = s.db.Exec(q)
 	}
 	return nil
 }
