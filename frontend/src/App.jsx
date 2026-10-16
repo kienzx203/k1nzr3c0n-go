@@ -19,6 +19,7 @@ import Traffic from './pages/Traffic.jsx'
 import CommandPalette from './components/CommandPalette.jsx'
 import StatusFooter from './components/StatusFooter.jsx'
 import { getTheme, applyTheme } from './theme.js'
+import { useI18n } from './i18n.jsx'
 
 /* ── Inline icon set (16px, stroke) ───────────────────────────────────────── */
 const I = {
@@ -61,42 +62,43 @@ function Logo() {
   )
 }
 
-const NAV_GROUPS = [
+const NAV_GROUPS = (t) => [
   {
-    title: 'Overview',
-    items: [{ to: '/', label: 'Dashboard', icon: I.grid, exact: true }],
+    title: t('nav.overview'),
+    items: [{ to: '/', label: t('nav.dashboard'), icon: I.grid, exact: true }],
   },
   {
-    title: 'Operations',
+    title: t('nav.operations'),
     items: [
-      { to: '/agent',     label: 'AI Agent',  icon: I.spark },
-      { to: '/runs',      label: 'Runs',      icon: I.radar },
-      { to: '/workflows', label: 'Workflows', icon: I.flow },
-      { to: '/findings',  label: 'Findings',  icon: I.flag },
-      { to: '/inventory', label: 'Inventory', icon: I.boxes },
-      { to: '/targets',   label: 'Targets',   icon: I.target },
-      { to: '/graph',     label: 'Asset Graph', icon: I.boxes },
-      { to: '/schedules', label: 'Schedules', icon: I.clock },
+      { to: '/agent',     label: t('nav.agent'),  icon: I.spark },
+      { to: '/runs',      label: t('nav.runs'),      icon: I.radar },
+      { to: '/workflows', label: t('nav.workflows'), icon: I.flow },
+      { to: '/findings',  label: t('nav.findings'),  icon: I.flag },
+      { to: '/inventory', label: t('nav.inventory'), icon: I.boxes },
+      { to: '/targets',   label: t('nav.targets'),   icon: I.target },
+      { to: '/graph',     label: t('nav.graph'), icon: I.boxes },
+      { to: '/schedules', label: t('nav.schedules'), icon: I.clock },
     ],
   },
   {
-    title: 'Capture',
+    title: t('nav.capture'),
     items: [
-      { to: '/traffic', label: 'Traffic', icon: I.upload },
-      { to: '/upload',  label: 'Upload',  icon: I.upload },
+      { to: '/traffic', label: t('nav.traffic'), icon: I.upload },
+      { to: '/upload',  label: t('nav.upload'),  icon: I.upload },
     ],
   },
   {
-    title: 'System',
+    title: t('nav.system'),
     items: [
-      { to: '/terminal', label: 'Terminal', icon: I.terminal },
-      { to: '/keys',     label: 'API Keys', icon: I.key },
-      { to: '/tools',    label: 'Tools',    icon: I.wrench },
+      { to: '/terminal', label: t('nav.terminal'), icon: I.terminal },
+      { to: '/keys',     label: t('nav.keys'), icon: I.key },
+      { to: '/tools',    label: t('nav.tools'),    icon: I.wrench },
     ],
   },
 ]
 
 export default function App() {
+  const { lang, setLang, t } = useI18n()
   const [theme, setTheme] = React.useState(getTheme())
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
@@ -123,7 +125,7 @@ export default function App() {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2.5 space-y-4">
-          {NAV_GROUPS.map(group => (
+          {NAV_GROUPS(t).map(group => (
             <div key={group.title}>
               <div className="px-2 mb-1 text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-3)' }}>
                 {group.title}
@@ -182,6 +184,14 @@ export default function App() {
             title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
           >
             <Icon d={theme === 'dark' ? I.sun : I.moon} size={14} />
+          </button>
+          <button
+            onClick={() => setLang(lang === 'vi' ? 'en' : 'vi')}
+            className="p-1.5 rounded-md text-[10px] font-bold transition-colors hover:bg-[var(--surface-2)]"
+            style={{ color: 'var(--text-2)' }}
+            title="Language / Ngôn ngữ"
+          >
+            {lang.toUpperCase()}
           </button>
         </div>
       </aside>

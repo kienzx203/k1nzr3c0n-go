@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
+import { useI18n } from '../i18n.jsx'
 import { formatDuration, timeAgo, durSecs } from '../utils.js'
 import NewRunModal from '../components/NewRunModal.jsx'
 
@@ -75,6 +76,7 @@ function Skeleton() {
 }
 
 export default function Dashboard() {
+  const { t } = useI18n()
   const [stats, setStats] = useState(null)
   const [assets, setAssets] = useState(null)
   const [targetsTotal, setTargetsTotal] = useState(null)
@@ -301,31 +303,35 @@ export default function Dashboard() {
       {ai && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
           <div className="card card-hover p-4 cursor-pointer fade-in" onClick={() => navigate('/agent')}>
-            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>AI Agent</p>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>{t('dash.aiAgent')}</p>
             <p className="text-[24px] leading-none font-bold font-mono mt-2" style={{ color: 'var(--accent)' }}>
               {ai.profiles > 0 ? ai.convs : '—'}
             </p>
             <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>
-              {ai.profiles > 0 ? `${ai.profiles} LLM profile · ${ai.usage?.turns || 0} turns` : 'chưa cấu hình LLM'}
+              {ai.profiles > 0 ? `${ai.profiles} LLM profile · ${ai.usage?.turns || 0} turns` : t('dash.noLLM')}
             </p>
           </div>
           <div className="card card-hover p-4 cursor-pointer fade-in" onClick={() => navigate('/graph')}>
-            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>Asset Graph</p>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>{t('dash.assetGraph')}</p>
             <p className="text-[24px] leading-none font-bold font-mono mt-2" style={{ color: 'var(--green)' }}>{ai.graphAssets}</p>
-            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>assets across companies</p>
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>{t('dash.assetsAcross')}</p>
           </div>
           <div className="card card-hover p-4 cursor-pointer fade-in" onClick={() => navigate('/traffic')}>
-            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>Traffic Evidence</p>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>{t('dash.trafficEv')}</p>
             <p className="text-[24px] leading-none font-bold font-mono mt-2" style={{ color: 'var(--orange)' }}>{ai.traffic}</p>
-            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>captured pairs</p>
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>{t('dash.captured')}</p>
           </div>
           <div className="card card-hover p-4 cursor-pointer fade-in" onClick={() => window.open('/api/v1/report/engagement', '_blank')}>
-            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>Engagement Report</p>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>{t('dash.report')}</p>
             <p className="text-[24px] leading-none font-bold font-mono mt-2" style={{ color: 'var(--amber)' }}>⬇</p>
-            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>markdown · all open vulns</p>
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>{t('dash.mdAll')}</p>
           </div>
         </div>
       )}
+
+      <div className="flex gap-2 mt-4">
+        <a className="btn text-[11px]" href="/api/v1/system/backup" download>⬇ Backup (DB + workflows + skills)</a>
+      </div>
 
       {showModal && <NewRunModal onClose={() => setShowModal(false)} onCreated={() => setShowModal(false)} />}
     </div>

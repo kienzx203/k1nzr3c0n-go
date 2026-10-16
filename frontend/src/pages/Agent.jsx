@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { api } from '../api.js'
+import { useI18n } from '../i18n.jsx'
 import { timeAgo } from '../utils.js'
 
 const SUGGESTIONS = [
@@ -25,6 +26,7 @@ const I = {
 }
 
 export default function Agent() {
+  const { t } = useI18n()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -140,9 +142,9 @@ export default function Agent() {
           <Icon d={I.spark} size={17} />
         </span>
         <div>
-          <h2 className="text-[15px] font-bold leading-tight">AI Agent</h2>
+          <h2 className="text-[15px] font-bold leading-tight">{t('agent.title')}</h2>
           <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
-            GLM-driven operator — launches scans, triages findings, maintains the graph
+            {t('agent.sub')}
           </p>
         </div>
       </div>
@@ -151,11 +153,11 @@ export default function Agent() {
         {/* ── sidebar ── */}
         <div className="flex flex-col gap-2.5 min-w-0">
           <button className="btn btn-primary flex items-center justify-center gap-1.5" onClick={newChat}>
-            <Icon d={I.plus} /> New chat
+            <Icon d={I.plus} /> {t('agent.newChat')}
           </button>
 
           <div className="card flex-1 overflow-y-auto" style={{ padding: 0 }}>
-            <div className="card-header text-[10px]" style={{ padding: '10px 12px' }}>Conversations</div>
+            <div className="card-header text-[10px]" style={{ padding: '10px 12px' }}>{t('agent.conversations')}</div>
             {convs.map(c => (
               <div key={c.id} onClick={() => openConv(c.id)}
                    className="group flex items-center gap-2 px-3 py-2 cursor-pointer border-b transition-colors"
@@ -176,7 +178,7 @@ export default function Agent() {
               </div>
             ))}
             {!convs.length && (
-              <div className="px-3 py-4 text-[11px]" style={{ color: 'var(--text-3)' }}>No conversations yet</div>
+              <div className="px-3 py-4 text-[11px]" style={{ color: 'var(--text-3)' }}>{t('agent.noConvs')}</div>
             )}
           </div>
 
@@ -192,20 +194,20 @@ export default function Agent() {
             )}
           </div>
           <button className="btn flex items-center justify-center gap-1.5" onClick={() => { setShowConfig(v => !v); setFormErr('') }}>
-            <Icon d={I.gear} /> LLM profile
+            <Icon d={I.gear} /> {t('agent.profile')}
           </button>
           <button className="btn btn-accent flex items-center justify-center gap-1.5" onClick={startAutopilot} disabled={busy || !profiles.length}>
-            <Icon d={I.spark} /> Autopilot
+            <Icon d={I.spark} /> {t('agent.autopilot')}
           </button>
 
           {showConfig && (
             <form onSubmit={createProfile} className="card flex flex-col gap-2 p-3 fade-in">
               <div>
-                <label className="label">Name</label>
+                <label className="label">{t('agent.name')}</label>
                 <input className="input" value={form.name} required onChange={e => setForm({ ...form, name: e.target.value })} />
               </div>
               <div>
-                <label className="label">Preset</label>
+                <label className="label">{t('agent.preset')}</label>
                 <select className="input text-[11px]" value={form.base_url}
                         onChange={e => setForm({ ...form, base_url: e.target.value, model: e.target.selectedOptions[0].dataset.model || form.model })}>
                   <option value="https://api.z.ai/api/coding/paas/v4" data-model="glm-4.7">Z.ai Coding Plan (OpenAI) — glm-4.7</option>
@@ -216,23 +218,23 @@ export default function Agent() {
                 </select>
               </div>
               <div>
-                <label className="label">Base URL</label>
+                <label className="label">{t('agent.baseUrl')}</label>
                 <input className="input font-mono text-[10.5px]" value={form.base_url} onChange={e => setForm({ ...form, base_url: e.target.value })} />
               </div>
               <div>
-                <label className="label">API key</label>
+                <label className="label">{t('agent.apiKey')}</label>
                 <input className="input font-mono text-[10.5px]" type="password" required value={form.api_key}
                        onChange={e => setForm({ ...form, api_key: e.target.value })} />
               </div>
               <div>
-                <label className="label">Model</label>
+                <label className="label">{t('agent.model')}</label>
                 <input className="input font-mono text-[10.5px]" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} />
               </div>
               {formErr && (
                 <p className="text-[10.5px]" style={{ color: 'var(--red)' }}>⚠ {formErr}</p>
               )}
               <button className="btn btn-primary" type="submit" disabled={saving}>
-                {saving ? 'Saving…' : 'Save profile'}
+                {saving ? t('agent.saving') : t('agent.saveProfile')}
               </button>
             </form>
           )}
@@ -243,7 +245,7 @@ export default function Agent() {
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
             {noProfile && (
               <div className="card p-4 text-[12px] leading-relaxed" style={{ borderColor: 'var(--accent)' }}>
-                <p className="font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>⚙ Chưa cấu hình LLM</p>
+                <p className="font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>{t('agent.noProfileTitle')}</p>
                 <p style={{ color: 'var(--text-2)' }}>
                   Tạo profile ở sidebar trái: Base URL <code className="font-mono">https://api.z.ai/api/paas/v4</code>,
                   model <code className="font-mono">glm-4.7</code>, API key từ Z.ai — rồi bắt đầu chat.
@@ -252,7 +254,7 @@ export default function Agent() {
             )}
             {!messages.length && !noProfile && (
               <div className="flex flex-col gap-2 items-start py-6 px-2">
-                <p className="text-[12px] mb-1" style={{ color: 'var(--text-3)' }}>Thử một trong các lệnh nhanh:</p>
+                <p className="text-[12px] mb-1" style={{ color: 'var(--text-3)' }}>{t('agent.tryQuick')}</p>
                 {SUGGESTIONS.map(s => (
                   <button key={s} className="btn text-left text-[11.5px]" style={{ maxWidth: 480 }}
                           onClick={() => send(s)}>{s}</button>
@@ -284,7 +286,7 @@ export default function Agent() {
               <div className="self-start flex items-center gap-1.5 text-[11px] px-3 py-2 rounded-xl"
                    style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
                 <span className="badge badge-running" style={{ padding: '2px 8px' }}>thinking</span>
-                agent đang gọi tools / soạn câu trả lời…
+                {t('agent.thinking')}
               </div>
             )}
             {err && !busy && !messages.some(m => m.error) && (
@@ -305,7 +307,7 @@ export default function Agent() {
             <textarea className="input flex-1 resize-none font-[13px]" rows={2} value={input}
                       onChange={e => setInput(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-                      placeholder="ví dụ: Recon example.com — register target rồi chạy full pipeline…" />
+                      placeholder="{t('agent.placeholder')}" />
             <button className="btn btn-primary flex items-center gap-1.5 self-stretch px-4" onClick={() => send()}
                     disabled={busy || !input.trim()}>
               <Icon d={I.send} /> Send

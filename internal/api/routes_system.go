@@ -1,12 +1,17 @@
 package api
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -279,6 +284,171 @@ func localIPs() []string {
 }
 
 // ── system ───────────────────────────────────────────────────────────────────
+
+// Version is stamped at build time via -ldflags; fallback "dev".
+var BuildVersion = "dev"
+
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"version": BuildVersion})
+}
+
+// handleUpdateCheck queries the GitHub latest release.
+func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	repo := os.Getenv("K1NZR3C0N_UPDATE_REPO")
+	if repo == "" {
+		repo = "kienzx203/k1nzr3c0n-go"
+	}
+	resp, err := http.Get("https://api.github.com/repos/" + repo + "/releases/latest")
+	if err != nil {
+		writeDetail(w, 502, "github: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	var rel struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&rel) != nil || rel.TagName == "" {
+		writeDetail(w, 502, "no release found")
+		return
+	}
+	asset := ""
+	for _, a := range rel.Assets {
+		if strings.Contains(a.Name, "linux_amd64") {
+			asset = a.BrowserDownloadURL
+			break
+		}
+	}
+	writeJSON(w, 200, map[string]any{
+		"current": BuildVersion, "latest": rel.TagName,
+		"update_available": asset != "" && rel.TagName != BuildVersion,
+		"asset_url":        asset, "repo": repo,
+	})
+}
+
+// handleSelfUpdate downloads the release binary and atomically replaces the
+// running executable (rename swap — safe while executing). Caller restarts.
+func (s *Server) handleSelfUpdate(w http.ResponseWriter, r *http.Request) {
+	check, err := http.Get("https://api.github.com/repos/" + envOrDefault("K1NZR3C0N_UPDATE_REPO", "kienzx203/k1nzr3c0n-go") + "/releases/latest")
+	if err != nil {
+		writeDetail(w, 502, err.Error())
+		return
+	}
+	var rel struct {
+		Assets []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	json.NewDecoder(check.Body).Decode(&rel)
+	check.Body.Close()
+	asset := ""
+	for _, a := range rel.Assets {
+		if strings.Contains(a.Name, "linux_amd64") {
+			asset = a.BrowserDownloadURL
+			break
+		}
+	}
+	if asset == "" {
+		writeDetail(w, 404, "no linux_amd64 release asset")
+		return
+	}
+	resp, err := http.Get(asset)
+	if err != nil {
+		writeDetail(w, 502, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		writeDetail(w, 502, "asset HTTP "+strconv.Itoa(resp.StatusCode))
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	tmp := exe + ".__updating__"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	out.Close()
+	os.Chmod(tmp, 0o755)
+	if err := os.Rename(tmp, exe); err != nil {
+		writeDetail(w, 500, "swap: "+err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"updated": true, "note": "restart the service: systemctl restart k1nzr3c0n-go"})
+}
+
+func envOrDefault(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+// handleBackup streams a tar.gz of DB (VACUUM INTO snapshot) + workflows + skills.
+func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
+	tmpDir, err := os.MkdirTemp("", "k1z-backup-*")
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+	snap := filepath.Join(tmpDir, "k1nzr3c0n.db")
+	if _, err := s.St.Exec("VACUUM INTO ?", snap); err != nil {
+		writeDetail(w, 500, "snapshot: "+err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"k1nzr3c0n-backup-%s.tar.gz\"", time.Now().Format("20060102-150405")))
+	gz := gzip.NewWriter(w)
+	defer gz.Close()
+	tw := tar.NewWriter(gz)
+	defer tw.Close()
+	addFile := func(path, name string) {
+		fi, err := os.Stat(path)
+		if err != nil {
+			return
+		}
+		hdr, _ := tar.FileInfoHeader(fi, "")
+		hdr.Name = name
+		tw.WriteHeader(hdr)
+		f, err := os.Open(path)
+		if err != nil {
+			return
+		}
+		defer f.Close()
+		io.Copy(tw, f)
+	}
+	addFile(snap, "k1nzr3c0n.db")
+	filepath.Walk(filepath.Join(config.BaseDir(), "workflows"), func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && !strings.HasPrefix(info.Name(), ".") {
+			rel, _ := filepath.Rel(config.BaseDir(), p)
+			addFile(p, rel)
+		}
+		return nil
+	})
+	filepath.Walk(filepath.Join(config.BaseDir(), "skills"), func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			rel, _ := filepath.Rel(config.BaseDir(), p)
+			addFile(p, rel)
+		}
+		return nil
+	})
+}
 
 func (s *Server) handleSystemUsage(w http.ResponseWriter, r *http.Request) {
 	u, _ := s.St.Usage()

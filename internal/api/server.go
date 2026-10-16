@@ -235,6 +235,10 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/network/check", s.handleNetworkCheck)
 	m.HandleFunc("POST /api/v1/network/fix", s.handleNetworkFix)
 	m.HandleFunc("GET /api/v1/system/usage", s.handleSystemUsage)
+	m.HandleFunc("GET /api/v1/system/version", s.handleVersion)
+	m.HandleFunc("GET /api/v1/system/update/check", s.handleUpdateCheck)
+	m.HandleFunc("POST /api/v1/system/update", s.handleSelfUpdate)
+	m.HandleFunc("GET /api/v1/system/backup", s.handleBackup)
 	m.HandleFunc("POST /api/v1/system/reset", s.handleSystemReset)
 
 	// websockets
