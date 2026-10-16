@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { api } from '../api.js'
-import { useI18n } from '../i18n.jsx'
 import { timeAgo } from '../utils.js'
 
 const TYPES = ['subdomain', 'site', 'ip', 'port', 'domain', 'endpoint']
@@ -22,7 +21,6 @@ const I = {
 }
 
 export default function AssetGraph() {
-  const { t } = useI18n()
   const [companies, setCompanies] = useState([])
   const [assets, setAssets] = useState([])
   const [sel, setSel] = useState(null)
@@ -67,15 +65,15 @@ export default function AssetGraph() {
           <Icon d={I.graph} size={17} />
         </span>
         <div>
-          <h2 className="text-[15px] font-bold leading-tight">{t('graph.title')}</h2>
+          <h2 className="text-[15px] font-bold leading-tight">Asset Graph</h2>
           <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
             {companies.length} companies · {assets.length} assets{selCompany ? ` · ${selCompany.name}` : ''}
           </p>
         </div>
         <div className="flex gap-2 ml-auto">
-          <input className="input w-44 text-[11.5px]" placeholder={t("graph.search")} value={q} onChange={e => setQ(e.target.value)} />
+          <input className="input w-44 text-[11.5px]" placeholder="Search value…" value={q} onChange={e => setQ(e.target.value)} />
           <select className="input w-32 text-[11.5px]" value={type} onChange={e => setType(e.target.value)}>
-            <option value="">{t('graph.allTypes')}</option>
+            <option value="">All types</option>
             {TYPES.map(t => <option key={t}>{t}</option>)}
           </select>
         </div>
@@ -96,7 +94,7 @@ export default function AssetGraph() {
         {/* company sidebar */}
         <div className="flex flex-col gap-2.5 min-w-0">
           <form onSubmit={addCompany} className="flex gap-1.5">
-            <input name="name" className="input text-[11.5px]" placeholder={t("graph.newCompany")} />
+            <input name="name" className="input text-[11.5px]" placeholder="New company…" />
             <button className="btn btn-accent px-2.5" type="submit" title="Add"><Icon d={I.plus} /></button>
           </form>
           <div className="card overflow-y-auto flex-1" style={{ padding: 0, maxHeight: '62vh' }}>
@@ -157,7 +155,7 @@ export default function AssetGraph() {
               ))}
               {!loading && !assets.length && (
                 <tr><td colSpan={5} className="px-3 py-10 text-center text-[11.5px]" style={{ color: 'var(--text-3)' }}>
-                  {t('graph.empty')}
+                  No assets yet — run a workflow (findings auto-ingest into the graph) or add a company + asset manually.
                 </td></tr>
               )}
             </tbody>

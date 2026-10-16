@@ -299,12 +299,12 @@ function NetworkPanel() {
       <div className="flex gap-2 flex-wrap">
         <button className="btn btn-accent" disabled={busy}
                 onClick={() => fix(false)}
-                title="Tự dò resolver đang sống (gateway → 1.1.1.1 → 8.8.8.8) rồi ghi /etc/resolv.conf — đúng cho mọi card mạng">
+                title="Auto-detect a live resolver (gateway → 1.1.1.1 → 8.8.8.8) and write /etc/resolv.conf — works for any network interface">
           ⚡ Auto-Fix DNS
         </button>
         {!state.is_stub && (
           <button className="btn btn-ghost" disabled={busy}
-                  onClick={() => window.confirm('Khôi phục systemd-resolved stub? DNS sẽ lại phụ thuộc DHCP của card mạng hiện tại.') && fix(true)}>
+                  onClick={() => window.confirm('Restore the systemd-resolved stub? DNS will again depend on the current interface’s DHCP.') && fix(true)}>
             Restore systemd stub
           </button>
         )}
