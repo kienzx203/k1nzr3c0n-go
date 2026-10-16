@@ -4,12 +4,14 @@
 set -e
 cd "$(dirname "$0")"
 
-if command -v npm >/dev/null 2>&1 && [ -d frontend ]; then
-  if [ ! -d frontend/node_modules ]; then
-    echo "[*] installing frontend deps..."
-    (cd frontend && npm install --no-audit --no-fund)
-  fi
-  echo "[*] building frontend..."
+# NOTE: static/ now holds the prebuilt ScopeWeaver UI (committed in the repo).
+# The old k1nzr3c0n React frontend build is intentionally DISABLED so it does not
+# overwrite static/. To rebuild the k1nzr3c0n React UI instead, run:
+#   (cd frontend && npm run build)   # wipes static/ and replaces it
+# To rebuild the ScopeWeaver UI, see K1Z_REBUILD_SWUI below.
+if [ "${K1Z_BUILD_FRONTEND:-0}" = "1" ] && command -v npm >/dev/null 2>&1 && [ -d frontend ]; then
+  [ -d frontend/node_modules ] || (cd frontend && npm install --no-audit --no-fund)
+  echo "[*] building k1nzr3c0n React frontend (overwrites static/)..."
   (cd frontend && npm run build >/dev/null)
 fi
 
