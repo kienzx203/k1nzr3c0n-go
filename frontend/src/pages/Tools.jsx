@@ -466,10 +466,11 @@ export default function Tools() {
 
   return (
     <div className="p-6 space-y-6">
+      <CustomTools />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[var(--text)] font-semibold text-lg">Tool</h1>
+          <h1 className="text-[var(--text)] font-semibold text-lg">Tool installations</h1>
           <p className="text-[var(--text-2)] text-xs mt-0.5">
             {tools.length} tools · {wordlists.length} wordlists
             {outdated_count > 0 && (
@@ -658,6 +659,94 @@ export default function Tools() {
           Last checked: {new Date(tools[0].last_checked_at).toLocaleString()}
         </p>
       )}
+    </div>
+  )
+}
+
+// CustomTools — ScopeWeaver's "Tool" feature: agent-callable command/script/http
+// tools with a JSON-Schema parameter spec, create + test here.
+const BLANK_TOOL = { key: '', description: '', kind: 'command', exec: { command: '' }, schema: '{\n  "type": "object",\n  "properties": {}\n}', enabled: true }
+
+function CustomTools() {
+  const [tools, setTools] = useState([])
+  const [editing, setEditing] = useState(null)
+  const load = () => api.listCustomTools().then(r => setTools(r.items || [])).catch(() => {})
+  useEffect(() => { load() }, [])
+  return (
+    <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+      <div className="flex items-center mb-3">
+        <div>
+          <h1 className="text-[var(--text)] font-semibold text-lg">Tool</h1>
+          <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>Custom agent tools · command / script / http · callable by the chat agent</p>
+        </div>
+        <button className="btn btn-primary text-[11px] ml-auto" onClick={() => setEditing({ ...BLANK_TOOL })}>+ New tool</button>
+      </div>
+      {tools.length === 0 && !editing && <p className="text-[12px]" style={{ color: 'var(--text-3)' }}>No custom tools yet. Create one — the agent can then call it by its key.</p>}
+      <div className="flex flex-col gap-1.5">
+        {tools.map(t => (
+          <div key={t.key} className="flex items-center gap-2 px-3 py-2 rounded-lg border text-[12px]" style={{ borderColor: 'var(--border)' }}>
+            <span className="badge text-[9px] font-mono" style={{ background: 'var(--surface-2)', color: t.kind === 'http' ? 'var(--green)' : t.kind === 'script' ? 'var(--amber)' : 'var(--accent)' }}>{t.kind}</span>
+            <span className="font-mono font-semibold">{t.key}</span>
+            <span className="truncate" style={{ color: 'var(--text-3)' }}>{t.description}</span>
+            {!t.enabled && <span className="text-[9px]" style={{ color: 'var(--text-3)' }}>(disabled)</span>}
+            <span className="ml-auto flex gap-1.5">
+              <button className="btn text-[10px] px-2 py-0.5" onClick={() => setEditing({ ...t, exec: t.exec || {}, schema: JSON.stringify(t.schema || {}, null, 2) })}>Edit</button>
+              <button className="btn btn-danger text-[10px] px-2 py-0.5" onClick={() => { if (confirm('Delete tool?')) api.deleteCustomTool(t.key).then(load) }}>✕</button>
+            </span>
+          </div>
+        ))}
+      </div>
+      {editing && <ToolEditor tool={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
+    </div>
+  )
+}
+
+function ToolEditor({ tool, onClose, onSaved }) {
+  const [t, setT] = useState(tool)
+  const [testOut, setTestOut] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [err, setErr] = useState('')
+  const execField = (k, v) => setT(s => ({ ...s, exec: { ...s.exec, [k]: v } }))
+  async function save() {
+    setErr('')
+    let schema
+    try { schema = JSON.parse(t.schema || '{}') } catch { setErr('Schema is not valid JSON'); return }
+    try { await api.saveCustomTool({ key: t.key, description: t.description, kind: t.kind, exec: t.exec, schema, enabled: t.enabled }); onSaved() }
+    catch (e) { setErr(e.message) }
+  }
+  async function test() {
+    setTesting(true); setTestOut('')
+    try { const r = await api.testCustomTool({ kind: t.kind, exec: t.exec, params: {} }); setTestOut(JSON.stringify(r.result, null, 2)) }
+    catch (e) { setTestOut('error: ' + e.message) } finally { setTesting(false) }
+  }
+  return (
+    <div className="mt-3 rounded-lg border p-3 flex flex-col gap-2.5" style={{ borderColor: 'var(--accent)', background: 'var(--bg-soft)' }}>
+      <div className="flex items-center">
+        <span className="text-[12px] font-semibold">{tool.key ? `Edit ${tool.key}` : 'New custom tool'}</span>
+        <button className="btn btn-ghost text-[11px] ml-auto" onClick={onClose}>✕ Close</button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <label className="label">Key<input className="input" value={t.key} disabled={!!tool.key} placeholder="my_tool" onChange={e => setT({ ...t, key: e.target.value })} /></label>
+        <label className="label">Kind<select className="input" value={t.kind} onChange={e => setT({ ...t, kind: e.target.value })}><option value="command">command</option><option value="script">script</option><option value="http">http</option></select></label>
+        <label className="label">Enabled<select className="input" value={t.enabled ? '1' : '0'} onChange={e => setT({ ...t, enabled: e.target.value === '1' })}><option value="1">enabled</option><option value="0">disabled</option></select></label>
+      </div>
+      <label className="label">Description<input className="input" value={t.description} onChange={e => setT({ ...t, description: e.target.value })} /></label>
+      {t.kind === 'http' ? (
+        <div className="grid grid-cols-4 gap-2">
+          <label className="label">Method<input className="input font-mono text-[11px]" value={t.exec.method || 'GET'} onChange={e => execField('method', e.target.value)} /></label>
+          <label className="label col-span-3">URL (use {`{{param}}`})<input className="input font-mono text-[11px]" value={t.exec.url || ''} onChange={e => execField('url', e.target.value)} /></label>
+        </div>
+      ) : (
+        <label className="label">{t.kind === 'script' ? 'Script (bash; params as $UPPER env + {{param}})' : 'Command (use {{param}} substitution)'}
+          <textarea className="input resize-none font-mono text-[11px]" rows={3} value={t.exec.command || ''} onChange={e => execField('command', e.target.value)} /></label>
+      )}
+      <label className="label">Parameter JSON Schema<textarea className="input resize-none font-mono text-[11px]" rows={5} value={t.schema} onChange={e => setT({ ...t, schema: e.target.value })} /></label>
+      {err && <p className="text-[10.5px]" style={{ color: 'var(--red)' }}>⚠ {err}</p>}
+      <div className="flex gap-2">
+        <button className="btn btn-primary text-[11px]" onClick={save}>Save tool</button>
+        <button className="btn text-[11px]" onClick={test} disabled={testing}>{testing ? 'Testing…' : '▶ Test (empty params)'}</button>
+      </div>
+      {testOut && <pre className="m-0 p-2 rounded text-[10.5px] font-mono whitespace-pre-wrap" style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}>{testOut}</pre>}
     </div>
   )
 }
