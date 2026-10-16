@@ -1,0 +1,124 @@
+1:"$Sreact.fragment"
+a:"/_next/static/chunks/3w7s8kbtumcpg.js"
+b:"/_next/static/chunks/2x1xen_9sot64.js"
+c:"/_next/static/chunks/33b6yl3cnnkgz.js"
+d:"/_next/static/chunks/11nau5woaxgxv.js"
+e:"/_next/static/chunks/16em3gw18v9iq.js"
+f:I[552576,["$a","$b","$c","$d","$e"],"default",1]
+:HL["/_next/static/chunks/3ij6fl1kqv7_b.css","style"]
+:HL["/_next/static/chunks/3d3cxrvn9qkvn.css","style"]
+:HL["/_next/static/media/GeistMono_Variable-s.p.3ms9vq719j3f8.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/GeistPixel_Circle.p.0rqe0db4f0cia.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/GeistPixel_Grid.p.2ss63b6eqyzy4.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/GeistPixel_Line.p.1gvmpev-r-ty_.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/GeistPixel_Square.p.2hsizu-z_gncm.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/GeistPixel_Triangle.p.04xw1z5oncddb.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/Geist_Variable-s.p.0mrjj4bg00-he.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+2:Td56,
+    (function () {
+      try {
+        var root = document.documentElement;
+        var PERSISTENCE = {"theme_mode":"client-cookie","theme_preset":"client-cookie","font":"client-cookie","content_layout":"client-cookie","navbar_style":"client-cookie","sidebar_variant":"client-cookie","sidebar_collapsible":"client-cookie"};
+        var DEFAULTS = {"theme_mode":"light","theme_preset":"default","font":"geist","content_layout":"full-width","navbar_style":"sticky","sidebar_variant":"floating","sidebar_collapsible":"icon"};
+
+        function readCookie(name) {
+          var match = document.cookie.split("; ").find(function(c) {
+            return c.startsWith(name + "=");
+          });
+          return match ? decodeURIComponent(match.split("=")[1]) : null;
+        }
+
+        function readLocal(name) {
+          try {
+            return window.localStorage.getItem(name);
+          } catch (e) {
+            return null;
+          }
+        }
+
+        function readPreference(key, fallback) {
+          var mode = PERSISTENCE[key];
+          var value = null;
+
+          if (mode === "localStorage") {
+            value = readLocal(key);
+          }
+
+          if (!value && (mode === "client-cookie" || mode === "server-cookie")) {
+            value = readCookie(key);
+          }
+
+          if (!value || typeof value !== "string") {
+            return fallback;
+          }
+
+          return value;
+        }
+
+        var rawMode = readPreference("theme_mode", DEFAULTS.theme_mode);
+        var rawPreset = readPreference("theme_preset", DEFAULTS.theme_preset);
+        var rawFont = readPreference("font", DEFAULTS.font);
+        var rawContentLayout = readPreference("content_layout", DEFAULTS.content_layout);
+        var rawNavbarStyle = readPreference("navbar_style", DEFAULTS.navbar_style);
+        var rawSidebarVariant = readPreference("sidebar_variant", DEFAULTS.sidebar_variant);
+        var rawSidebarCollapsible = readPreference("sidebar_collapsible", DEFAULTS.sidebar_collapsible);
+
+        var isValidMode = rawMode === "dark" || rawMode === "light" || rawMode === "system";
+        var mode = isValidMode ? rawMode : DEFAULTS.theme_mode;
+        var resolvedMode =
+          mode === "system" && window.matchMedia
+            ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : mode;
+        var preset = rawPreset || DEFAULTS.theme_preset;
+        var font = rawFont || DEFAULTS.font;
+        var contentLayout = rawContentLayout || DEFAULTS.content_layout;
+        var navbarStyle = rawNavbarStyle || DEFAULTS.navbar_style;
+        var sidebarVariant = rawSidebarVariant || DEFAULTS.sidebar_variant;
+        var sidebarCollapsible = rawSidebarCollapsible || DEFAULTS.sidebar_collapsible;
+
+        root.classList.toggle("dark", resolvedMode === "dark");
+        root.setAttribute("data-theme-mode", mode);
+        root.setAttribute("data-theme-preset", preset);
+        root.setAttribute("data-font", font);
+        root.setAttribute("data-content-layout", contentLayout);
+        root.setAttribute("data-navbar-style", navbarStyle);
+        root.setAttribute("data-sidebar-variant", sidebarVariant);
+        root.setAttribute("data-sidebar-collapsible", sidebarCollapsible);
+
+        root.style.colorScheme = resolvedMode === "dark" ? "dark" : "light";
+
+      } catch (e) {
+        console.warn("ThemeBootScript error:", e);
+      }
+    })();
+  6:X
+7:[["children",{"s":"__PAGE__","h":512,"d":{"r":"$L8","p":false,"v":null}}]]
+4:[["children",{"s":"(external)","h":512,"d":{"r":"$L5","p":false,"v":"$6"},"c":"$Q7"}]]
+0:{"P":null,"c":["",""],"q":"","i":false,"t":{"t":{"s":"","h":528,"d":{"r":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/3ij6fl1kqv7_b.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}],["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/3d3cxrvn9qkvn.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}],["$","script","script-0",{"src":"/_next/static/chunks/3w7s8kbtumcpg.js","async":true,"nonce":"$undefined"}],["$","script","script-1",{"src":"/_next/static/chunks/2x1xen_9sot64.js","async":true,"nonce":"$undefined"}],["$","script","script-2",{"src":"/_next/static/chunks/33b6yl3cnnkgz.js","async":true,"nonce":"$undefined"}],["$","script","script-3",{"src":"/_next/static/chunks/11nau5woaxgxv.js","async":true,"nonce":"$undefined"}],["$","script","script-4",{"src":"/_next/static/chunks/16em3gw18v9iq.js","async":true,"nonce":"$undefined"}]],["$","html",null,{"lang":"en","data-theme-mode":"light","data-theme-preset":"default","data-content-layout":"full-width","data-navbar-style":"sticky","data-sidebar-variant":"floating","data-sidebar-collapsible":"icon","data-font":"geist","suppressHydrationWarning":true,"children":[["$","head",null,{"children":["$","script",null,{"dangerouslySetInnerHTML":{"__html":"$2"}}]}],"$L3"]}]]}],"p":false,"v":null},"c":"$Q4"},"h":{"r":"$L9","p":false,"v":null}},"m":"$undefined","G":["$f",["$L10","$L11"]],"S":true,"r":"$undefined","s":"$undefined","a":"$undefined","l":"$undefined","p":"$undefined","d":"$undefined","b":"teKrBVHD3zOXkD9Zin_kQ"}
+12:I[80377,["$a","$b","$c","$d","$e"],"LocaleProvider"]
+13:I[87614,["$a","$b","$c","$d","$e"],"TooltipProvider"]
+14:"PreferencesStoreProvider"
+15:I[130679,["$a","$b","$c","$d","$e"],"$14"]
+16:I[488287,["$a","$b","$c","$d","$e"],"default"]
+17:I[174895,["$a","$b","$c","$d","$e"],"default"]
+18:"/_next/static/chunks/3b68_ns8m1v57.js"
+19:I[790998,["$a","$b","$c","$d","$e","$18"],"default"]
+1a:I[283798,["$a","$b","$c","$d","$e"],"Toaster"]
+1c:I[151858,["$a","$b","$c","$d","$e"],"OutletBoundary"]
+1d:"$Sreact.suspense"
+1f:"ViewportBoundary"
+20:I[151858,["$a","$b","$c","$d","$e"],"$1f"]
+22:"MetadataBoundary"
+23:I[151858,["$a","$b","$c","$d","$e"],"$22"]
+3:["$","body",null,{"className":"BokyCa_variable Gn9MAq_variable KyuqbW_variable DTASsq_variable HLUHiG_variable iKiAua_variable HjCa-a_variable ziBemW_variable QyP4uq_variable lkWI8q_variable FS8MbW_variable pfzg3G_variable df1S4G_variable _7BgLgq_variable aV22nW_variable hfijzq_variable _84-Yma_variable _4p6lza_variable min-h-screen antialiased","children":["$","$L12",null,{"children":["$","$L13",null,{"children":["$","$L15",null,{"themeMode":"light","themePreset":"default","contentLayout":"full-width","navbarStyle":"sticky","font":"geist","children":[["$","$L16",null,{"parallelRouterKey":"children","error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$L17",null,{}],"templateStyles":"$undefined","templateScripts":"$undefined","notFound":[["$","$L19",null,{}],[]],"forbidden":"$undefined","unauthorized":"$undefined"}],["$","$L1a",null,{}]]}]}]}]}]
+5:["$","$1","c",{"children":[null,["$","$L16",null,{"parallelRouterKey":"children","error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$L17",null,{}],"templateStyles":"$undefined","templateScripts":"$undefined","notFound":[["$","$L19",null,{}],[]],"forbidden":"$undefined","unauthorized":"$undefined"}]]}]
+8:["$","$1","c",{"children":["$L1b",null,["$","$L1c",null,{"children":["$","$1d",null,{"name":"Next.MetadataOutlet","children":"$@1e"}]}]]}]
+9:["$","$1","h",{"children":[null,["$","$L20",null,{"children":"$L21"}],["$","$L23",null,{"children":[["$","div",null,{"hidden":true,"children":["$","$1d",null,{"name":"Next.Metadata","children":"$L24"}]}],null]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}]
+10:["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/3ij6fl1kqv7_b.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}]
+11:["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/3d3cxrvn9qkvn.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}]
+1b:E{"digest":"NEXT_REDIRECT;replace;/function/tasks;307;"}
+6:C
+21:[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]
+25:I[349310,["$a","$b","$c","$d","$e"],"IconMark"]
+1e:null
+24:[["$","title","0",{"children":"ScopeWeaver — Autonomous Penetration Testing Console"}],["$","meta","1",{"name":"description","content":"Console for an LLM-driven autonomous penetration testing system"}],["$","link","2",{"rel":"icon","href":"/favicon.ico?favicon.1uboyqwm7-s27.ico","sizes":"48x48","type":"image/x-icon"}],["$","link","3",{"rel":"icon","href":"/icon.svg?icon.0uz8ud2z16c8f.svg","sizes":"any","type":"image/svg+xml"}],["$","$L25","4",{}]]

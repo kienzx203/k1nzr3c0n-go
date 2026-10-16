@@ -388,6 +388,8 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/approvals/{id}", s.handleApprovalDetail)
 	m.HandleFunc("POST /api/v1/system/update/rollback", s.handleUpdateRollback)
 
+	// ScopeWeaver UI adapter (/api/* boot + catch-all), then static serving
+	s.mountSWAdapter(m)
 	// static SPA
 	s.mountStatic(m)
 }
