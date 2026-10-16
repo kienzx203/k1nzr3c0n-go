@@ -214,9 +214,11 @@ func Exec(st *store.Store, r *runner.Runner, call FunctionCall) string {
 		want := arg("name")
 		for _, sk := range LoadSkillsDir() {
 			if sk.Name == want || strings.EqualFold(sk.Name, want) {
+				st.InsertSkillUsage(sk.Name, "recon-agent", "", len(call.Arguments), true)
 				return okJSON(map[string]any{"name": sk.Name, "instructions": sk.Instructions})
 			}
 		}
+		st.InsertSkillUsage(want, "recon-agent", "", len(call.Arguments), false)
 		return `{"error": "unknown skill ` + want + `"}`
 
 	case "list_workflows":

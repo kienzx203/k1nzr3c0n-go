@@ -81,6 +81,18 @@ export const api = {
   deleteAgentRule:(id) => req('DELETE', `/agent/rules/${id}`),
   agentAudit:     (limit) => req('GET', `/agent/audit?limit=${limit || 50}`),
   skillsList:     () => req('GET', '/skills'),
+  skillOverview:  () => req('GET', '/skills/overview'),
+  skillFiles:     (name) => req('GET', `/skills/${encodeURIComponent(name)}/files`),
+  skillFileGet:   (name, file) => req('GET', `/skills/${encodeURIComponent(name)}/files/${file}`),
+  skillUsage:     (name) => req('GET', `/skills/${encodeURIComponent(name)}/usage`),
+  createSkill:    (body) => req('POST', '/skills', body),
+  deleteSkill:    (name) => req('DELETE', `/skills/${encodeURIComponent(name)}`),
+  uploadSkill:    async (file) => {
+    const fd = new FormData(); fd.append('file', file)
+    const res = await fetch(BASE + '/skills/upload', { method: 'POST', headers: headers(), body: fd })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText)
+    return res.json()
+  },
   agentPrompt:    () => req('GET', '/agent/prompt'),
   llmUsageList:   (limit) => req('GET', `/llm/usage/list?limit=${limit || 100}`),
   workspaceList:  () => req('GET', '/workspace'),
