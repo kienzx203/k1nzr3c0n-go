@@ -20,6 +20,7 @@ import CommandPalette from './components/CommandPalette.jsx'
 import StatusFooter from './components/StatusFooter.jsx'
 import { getTheme, applyTheme } from './theme.js'
 import { useI18n } from './i18n.jsx'
+import { api } from './api.js'
 
 /* ── Inline icon set (16px, stroke) ───────────────────────────────────────── */
 const I = {
@@ -99,6 +100,8 @@ const NAV_GROUPS = (t) => [
 
 export default function App() {
   const { lang, setLang, t } = useI18n()
+  const [version, setVersion] = React.useState('')
+  React.useEffect(() => { api.systemVersion().then(v => setVersion(v.version || '')).catch(() => {}) }, [])
   const [theme, setTheme] = React.useState(getTheme())
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
@@ -155,27 +158,13 @@ export default function App() {
               </div>
             </div>
           ))}
-
-          {/* External */}
-          <div className="pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
-            <a
-              href="http://127.0.0.1:4040/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="nav-idle flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-[12px] font-medium transition-colors mt-1.5"
-            >
-              <Icon d={I.spark} />
-              OpenCode
-              <span className="ml-auto text-[9px] opacity-60">↗</span>
-            </a>
-          </div>
         </nav>
 
         {/* Footer */}
         <div className="px-4 py-3 border-t flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--green)' }} />
-            <span className="text-[10px] font-mono" style={{ color: 'var(--text-3)' }}>v3.1.0</span>
+            <span className="text-[10px] font-mono" style={{ color: 'var(--text-3)' }}>{version ? `v${String(version).replace(/^v/, '')}` : ''}</span>
           </div>
           <button
             onClick={toggleTheme}
