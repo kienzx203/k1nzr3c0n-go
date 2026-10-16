@@ -4,8 +4,10 @@ import {
   Ban,
   BellRing,
   Bot,
+  Boxes,
   Brain,
   Bug,
+  CalendarClock,
   ClipboardList,
   FolderOpen,
   FolderSync,
@@ -13,6 +15,8 @@ import {
   type LucideIcon,
   MessageSquare,
   Network,
+  PackageOpen,
+  PlayCircle,
   Plug,
   Radio,
   ScrollText,
@@ -21,6 +25,7 @@ import {
   Sparkles,
   Target,
   Terminal,
+  Workflow,
   Wrench,
 } from "lucide-react";
 
@@ -94,6 +99,18 @@ export const sidebarItems: NavGroup[] = [
       { id: "approvals", get title() { return swt("interface.m2145"); }, url: "/system/intercept/approvals", icon: ClipboardList },
       { id: "logs", get title() { return swt("interface.m2873"); }, url: "/system/logs", icon: ScrollText },
       { id: "settings", get title() { return swt("interface.m1644"); }, url: "/system/settings", icon: Settings2 },
+    ],
+  },
+  {
+    id: 3,
+    label: "Workflow Runner",
+    items: [
+      { id: "runs", title: "Runs", url: "/runner/runs", icon: PlayCircle },
+      { id: "workflows", title: "Workflows", url: "/runner/workflows", icon: Workflow },
+      { id: "targets", title: "Targets", url: "/runner/targets", icon: Target },
+      { id: "schedules", title: "Schedules", url: "/runner/schedules", icon: CalendarClock },
+      { id: "inventory", title: "Inventory", url: "/runner/inventory", icon: Boxes },
+      { id: "tool-versions", title: "Tool versions", url: "/runner/tools", icon: PackageOpen },
     ],
   },
 ];

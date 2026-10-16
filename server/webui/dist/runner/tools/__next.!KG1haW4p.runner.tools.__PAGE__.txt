@@ -1,0 +1,144 @@
+1:"$Sreact.fragment"
+:HL["/_next/static/chunks/3ij6fl1kqv7_b.css","style"]
+:HL["/_next/static/chunks/1k24_i588u_em.css","style"]
+2:Td56,
+    (function () {
+      try {
+        var root = document.documentElement;
+        var PERSISTENCE = {"theme_mode":"client-cookie","theme_preset":"client-cookie","font":"client-cookie","content_layout":"client-cookie","navbar_style":"client-cookie","sidebar_variant":"client-cookie","sidebar_collapsible":"client-cookie"};
+        var DEFAULTS = {"theme_mode":"light","theme_preset":"default","font":"geist","content_layout":"full-width","navbar_style":"sticky","sidebar_variant":"floating","sidebar_collapsible":"icon"};
+
+        function readCookie(name) {
+          var match = document.cookie.split("; ").find(function(c) {
+            return c.startsWith(name + "=");
+          });
+          return match ? decodeURIComponent(match.split("=")[1]) : null;
+        }
+
+        function readLocal(name) {
+          try {
+            return window.localStorage.getItem(name);
+          } catch (e) {
+            return null;
+          }
+        }
+
+        function readPreference(key, fallback) {
+          var mode = PERSISTENCE[key];
+          var value = null;
+
+          if (mode === "localStorage") {
+            value = readLocal(key);
+          }
+
+          if (!value && (mode === "client-cookie" || mode === "server-cookie")) {
+            value = readCookie(key);
+          }
+
+          if (!value || typeof value !== "string") {
+            return fallback;
+          }
+
+          return value;
+        }
+
+        var rawMode = readPreference("theme_mode", DEFAULTS.theme_mode);
+        var rawPreset = readPreference("theme_preset", DEFAULTS.theme_preset);
+        var rawFont = readPreference("font", DEFAULTS.font);
+        var rawContentLayout = readPreference("content_layout", DEFAULTS.content_layout);
+        var rawNavbarStyle = readPreference("navbar_style", DEFAULTS.navbar_style);
+        var rawSidebarVariant = readPreference("sidebar_variant", DEFAULTS.sidebar_variant);
+        var rawSidebarCollapsible = readPreference("sidebar_collapsible", DEFAULTS.sidebar_collapsible);
+
+        var isValidMode = rawMode === "dark" || rawMode === "light" || rawMode === "system";
+        var mode = isValidMode ? rawMode : DEFAULTS.theme_mode;
+        var resolvedMode =
+          mode === "system" && window.matchMedia
+            ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : mode;
+        var preset = rawPreset || DEFAULTS.theme_preset;
+        var font = rawFont || DEFAULTS.font;
+        var contentLayout = rawContentLayout || DEFAULTS.content_layout;
+        var navbarStyle = rawNavbarStyle || DEFAULTS.navbar_style;
+        var sidebarVariant = rawSidebarVariant || DEFAULTS.sidebar_variant;
+        var sidebarCollapsible = rawSidebarCollapsible || DEFAULTS.sidebar_collapsible;
+
+        root.classList.toggle("dark", resolvedMode === "dark");
+        root.setAttribute("data-theme-mode", mode);
+        root.setAttribute("data-theme-preset", preset);
+        root.setAttribute("data-font", font);
+        root.setAttribute("data-content-layout", contentLayout);
+        root.setAttribute("data-navbar-style", navbarStyle);
+        root.setAttribute("data-sidebar-variant", sidebarVariant);
+        root.setAttribute("data-sidebar-collapsible", sidebarCollapsible);
+
+        root.style.colorScheme = resolvedMode === "dark" ? "dark" : "light";
+
+      } catch (e) {
+        console.warn("ThemeBootScript error:", e);
+      }
+    })();
+  5:X
+c:X
+c:C
+10:[["children",{"s":"__PAGE__","h":160,"d":{"r":"$L11","p":"$@12","v":null,"s":"$5"}}]]
+d:[["children",{"s":"tools","h":96,"d":{"r":"$Le","p":"$@f","v":"$c","s":"$5"},"c":"$Q10"}]]
+9:[["children",{"s":"runner","h":96,"d":{"r":"$La","p":"$@b","v":"$c","s":"$5"},"c":"$Qd"}]]
+6:[["children",{"s":"(main)","h":96,"d":{"r":"$L7","p":"$@8","v":null,"s":"$5"},"c":"$Q9"}]]
+0:{"t":{"t":{"s":"","h":80,"d":{"r":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/3ij6fl1kqv7_b.css","precedence":"next"}],["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/1k24_i588u_em.css","precedence":"next"}],["$","script","script-0",{"src":"/_next/static/chunks/3w7s8kbtumcpg.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/165pg9vjshyx1.js","async":true}],["$","script","script-2",{"src":"/_next/static/chunks/2x1xen_9sot64.js","async":true}],["$","script","script-3",{"src":"/_next/static/chunks/3x96rbl281zvc.js","async":true}],["$","script","script-4",{"src":"/_next/static/chunks/33b6yl3cnnkgz.js","async":true}],["$","script","script-5",{"src":"/_next/static/chunks/1o755b381jri-.js","async":true}]],["$","html",null,{"lang":"en","data-theme-mode":"light","data-theme-preset":"default","data-content-layout":"full-width","data-navbar-style":"sticky","data-sidebar-variant":"floating","data-sidebar-collapsible":"icon","data-font":"geist","suppressHydrationWarning":true,"children":[["$","head",null,{"children":["$","script",null,{"dangerouslySetInnerHTML":{"__html":"$2"}}]}],"$L3"]}]]}],"p":"$@4","v":null,"s":"$5"},"c":"$Q6"},"h":{"r":"$L13","p":"$@14","v":null,"s":"$5"}},"a":"$@15","u":"$@16","b":"CpPGkW3GBXITO3jDJbIAb"}
+17:"/_next/static/chunks/3w7s8kbtumcpg.js"
+18:"/_next/static/chunks/165pg9vjshyx1.js"
+19:"/_next/static/chunks/2x1xen_9sot64.js"
+1a:"/_next/static/chunks/3x96rbl281zvc.js"
+1b:"/_next/static/chunks/33b6yl3cnnkgz.js"
+1c:"/_next/static/chunks/1o755b381jri-.js"
+1d:I[80377,["$17","$18","$19","$1a","$1b","$1c"],"LocaleProvider"]
+1e:I[87614,["$17","$18","$19","$1a","$1b","$1c"],"TooltipProvider"]
+1f:"PreferencesStoreProvider"
+20:I[130679,["$17","$18","$19","$1a","$1b","$1c"],"$1f"]
+21:I[488287,["$17","$18","$19","$1a","$1b","$1c"],"default"]
+22:I[174895,["$17","$18","$19","$1a","$1b","$1c"],"default"]
+23:"/_next/static/chunks/3b68_ns8m1v57.js"
+24:I[790998,["$17","$18","$19","$1a","$1b","$1c","$23"],"default"]
+25:I[283798,["$17","$18","$19","$1a","$1b","$1c"],"Toaster"]
+26:"ClientSegmentRoot"
+27:I[808719,["$17","$18","$19","$1a","$1b","$1c"],"$26"]
+28:"/_next/static/chunks/3suthrx1k7iv_.js"
+29:"/_next/static/chunks/2m2twz02x937p.js"
+2a:"/_next/static/chunks/156gj5oeiqyor.js"
+2b:"/_next/static/chunks/0aafpza0tb3p8.js"
+2c:"/_next/static/chunks/2-l3hvus20f5r.js"
+2d:"/_next/static/chunks/1zurac2ymhgo9.js"
+2e:"/_next/static/chunks/1b_6qwe6s3fk-.js"
+2f:"/_next/static/chunks/1v06bmzlcl2nx.js"
+30:I[138134,["$17","$18","$19","$1a","$1b","$1c","$28","$29","$2a","$2b","$2c","$2d","$2e","$2f"],"default"]
+32:I[683380,["$17","$18","$19","$1a","$1b","$1c"],"ClientPageRoot"]
+33:"/_next/static/chunks/3flvz9m2rakw6.js"
+34:I[829483,["$17","$18","$19","$1a","$1b","$1c","$28","$29","$2a","$2b","$2c","$2d","$2e","$2f","$33"],"default"]
+37:I[151858,["$17","$18","$19","$1a","$1b","$1c"],"OutletBoundary"]
+38:"$Sreact.suspense"
+3a:"ViewportBoundary"
+3b:I[151858,["$17","$18","$19","$1a","$1b","$1c"],"$3a"]
+3c:"MetadataBoundary"
+3d:I[151858,["$17","$18","$19","$1a","$1b","$1c"],"$3c"]
+3e:I[349310,["$17","$18","$19","$1a","$1b","$1c"],"IconMark"]
+3:["$","body",null,{"className":"BokyCa_variable Gn9MAq_variable KyuqbW_variable DTASsq_variable HLUHiG_variable iKiAua_variable HjCa-a_variable ziBemW_variable QyP4uq_variable lkWI8q_variable FS8MbW_variable pfzg3G_variable df1S4G_variable _7BgLgq_variable aV22nW_variable hfijzq_variable _84-Yma_variable _4p6lza_variable min-h-screen antialiased","children":["$","$L1d",null,{"children":["$","$L1e",null,{"children":["$","$L20",null,{"themeMode":"light","themePreset":"default","contentLayout":"full-width","navbarStyle":"sticky","font":"geist","children":[["$","$L21",null,{"parallelRouterKey":"children","template":["$","$L22",null,{}],"notFound":[["$","$L24",null,{}],[]]}],["$","$L25",null,{}]]}]}]}]}]
+7:["$","$1","c",{"children":[[["$","script","script-0",{"src":"/_next/static/chunks/3suthrx1k7iv_.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/2m2twz02x937p.js","async":true}],["$","script","script-2",{"src":"/_next/static/chunks/156gj5oeiqyor.js","async":true}],["$","script","script-3",{"src":"/_next/static/chunks/0aafpza0tb3p8.js","async":true}],["$","script","script-4",{"src":"/_next/static/chunks/2-l3hvus20f5r.js","async":true}],["$","script","script-5",{"src":"/_next/static/chunks/1zurac2ymhgo9.js","async":true}],["$","script","script-6",{"src":"/_next/static/chunks/1b_6qwe6s3fk-.js","async":true}],["$","script","script-7",{"src":"/_next/static/chunks/1v06bmzlcl2nx.js","async":true}]],["$","$L27",null,{"Component":"$30","slots":{"children":["$","$L21",null,{"parallelRouterKey":"children","template":["$","$L22",null,{}],"notFound":[["$","$L24",null,{}],[]]}]},"serverProvidedParams":{"params":{},"promises":["$@31"]}}]]}]
+a:["$","$1","c",{"children":[null,["$","$L21",null,{"parallelRouterKey":"children","template":["$","$L22",null,{}]}]]}]
+e:["$","$1","c",{"children":[null,["$","$L21",null,{"parallelRouterKey":"children","template":["$","$L22",null,{}]}]]}]
+11:["$","$1","c",{"children":[["$","$L32",null,{"Component":"$34","serverProvidedParams":{"searchParams":{},"params":"$7:props:children:1:props:serverProvidedParams:params","promises":["$@35","$@36"]}}],[["$","script","script-0",{"src":"/_next/static/chunks/3flvz9m2rakw6.js","async":true}]],["$","$L37",null,{"children":["$","$38",null,{"name":"Next.MetadataOutlet","children":"$@39"}]}]]}]
+13:["$","$1","h",{"children":[null,["$","$L3b",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","$L3d",null,{"children":[["$","div",null,{"hidden":true,"children":["$","$38",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"ScopeWeaver — Autonomous Penetration Testing Console"}],["$","meta","1",{"name":"description","content":"Console for an LLM-driven autonomous penetration testing system"}],["$","link","2",{"rel":"icon","href":"/favicon.ico?favicon.1uboyqwm7-s27.ico","sizes":"48x48","type":"image/x-icon"}],["$","link","3",{"rel":"icon","href":"/icon.svg?icon.0uz8ud2z16c8f.svg","sizes":"any","type":"image/svg+xml"}],["$","$L3e","4",{}]]}]}],null]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}]
+31:"$7:props:children:1:props:serverProvidedParams:params"
+35:{}
+36:"$7:props:children:1:props:serverProvidedParams:params"
+39:null
+16:true
+5:300
+5:C
+15:0
+f:"$undefined"
+b:"$undefined"
+14:"$undefined"
+12:"$undefined"
+8:"$undefined"
+4:"$undefined"
