@@ -16,6 +16,7 @@ import (
 	"k1nzr3c0n/internal/bus"
 	"k1nzr3c0n/internal/capture"
 	"k1nzr3c0n/internal/config"
+	"k1nzr3c0n/internal/notify"
 	"k1nzr3c0n/internal/runner"
 	"k1nzr3c0n/internal/schedule"
 	"k1nzr3c0n/internal/store"
@@ -79,6 +80,7 @@ func serve() {
 	}
 
 	agent.SeedAgentRules(st)
+	notify.DBWebhookURL = func() string { return st.GetNotifySettings().WebhookURL }
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

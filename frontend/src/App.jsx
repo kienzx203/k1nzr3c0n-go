@@ -16,6 +16,21 @@ import Targets from './pages/Targets.jsx'
 import Agent from './pages/Agent.jsx'
 import AssetGraph from './pages/AssetGraph.jsx'
 import Traffic from './pages/Traffic.jsx'
+import Tasks from './pages/sys/Tasks.jsx'
+import LLMRecordings from './pages/sys/LLMRecordings.jsx'
+import Workspace from './pages/sys/Workspace.jsx'
+import AssetSync from './pages/sys/AssetSync.jsx'
+import SysLLM from './pages/sys/SysLLM.jsx'
+import SysAgents from './pages/sys/SysAgents.jsx'
+import SysMCP from './pages/sys/SysMCP.jsx'
+import SysSkills from './pages/sys/SysSkills.jsx'
+import SysNotifications from './pages/sys/SysNotifications.jsx'
+import SysIntercept from './pages/sys/SysIntercept.jsx'
+import SysAssetBlocking from './pages/sys/SysAssetBlocking.jsx'
+import SysApprovals from './pages/sys/SysApprovals.jsx'
+import SysToolExec from './pages/sys/SysToolExec.jsx'
+import SysLogs from './pages/sys/SysLogs.jsx'
+import SysSettings from './pages/sys/SysSettings.jsx'
 import CommandPalette from './components/CommandPalette.jsx'
 import StatusFooter from './components/StatusFooter.jsx'
 import { getTheme, applyTheme } from './theme.js'
@@ -71,29 +86,41 @@ const NAV_GROUPS = (t) => [
   {
     title: t('nav.operations'),
     items: [
-      { to: '/agent',     label: t('nav.agent'),  icon: I.spark },
-      { to: '/runs',      label: t('nav.runs'),      icon: I.radar },
+      { to: '/agent',     label: 'Chat',       icon: I.spark },
+      { to: '/tasks',     label: 'Tasks',      icon: I.radar },
+      { to: '/runs',      label: t('nav.runs'),      icon: I.flow },
       { to: '/workflows', label: t('nav.workflows'), icon: I.flow },
       { to: '/findings',  label: t('nav.findings'),  icon: I.flag },
+      { to: '/graph',     label: 'Assets',     icon: I.boxes },
       { to: '/inventory', label: t('nav.inventory'), icon: I.boxes },
+      { to: '/traffic',   label: t('nav.traffic'),   icon: I.upload },
       { to: '/targets',   label: t('nav.targets'),   icon: I.target },
-      { to: '/graph',     label: t('nav.graph'), icon: I.boxes },
       { to: '/schedules', label: t('nav.schedules'), icon: I.clock },
     ],
   },
   {
-    title: t('nav.capture'),
+    title: 'Intelligence',
     items: [
-      { to: '/traffic', label: t('nav.traffic'), icon: I.upload },
-      { to: '/upload',  label: t('nav.upload'),  icon: I.upload },
+      { to: '/llm-records', label: 'LLM Recordings', icon: I.key },
+      { to: '/asset-sync',  label: 'Asset Sync',     icon: I.boxes },
+      { to: '/workspace',   label: 'Workspace',      icon: I.upload },
     ],
   },
   {
     title: t('nav.system'),
     items: [
-      { to: '/terminal', label: t('nav.terminal'), icon: I.terminal },
-      { to: '/keys',     label: t('nav.keys'), icon: I.key },
-      { to: '/tools',    label: t('nav.tools'),    icon: I.wrench },
+      { to: '/sys/llm',       label: 'LLM',               icon: I.spark },
+      { to: '/sys/agents',    label: 'Agent',             icon: I.target },
+      { to: '/sys/mcp',       label: 'MCP',               icon: I.wrench },
+      { to: '/sys/skills',    label: 'Skills',            icon: I.key },
+      { to: '/tools',         label: t('nav.tools'),      icon: I.wrench },
+      { to: '/sys/notify',    label: 'Notifications',     icon: I.clock },
+      { to: '/sys/intercept', label: 'Intercept Rules',   icon: I.wrench },
+      { to: '/sys/blocking',  label: 'Asset Blocking',    icon: I.target },
+      { to: '/sys/approvals', label: 'Approvals',         icon: I.flag },
+      { to: '/sys/exec',      label: 'Tool Executions',   icon: I.terminal },
+      { to: '/sys/logs',      label: 'Logs',              icon: I.clock },
+      { to: '/sys/settings',  label: 'Settings',          icon: I.wrench },
     ],
   },
 ]
@@ -192,6 +219,21 @@ export default function App() {
           <Route path="/agent"                 element={<Agent />} />
           <Route path="/graph"                 element={<AssetGraph />} />
           <Route path="/traffic"               element={<Traffic />} />
+          <Route path="/tasks"                element={<Tasks />} />
+          <Route path="/llm-records"          element={<LLMRecordings />} />
+          <Route path="/asset-sync"           element={<AssetSync />} />
+          <Route path="/workspace"            element={<Workspace />} />
+          <Route path="/sys/llm"              element={<SysLLM />} />
+          <Route path="/sys/agents"           element={<SysAgents />} />
+          <Route path="/sys/mcp"              element={<SysMCP />} />
+          <Route path="/sys/skills"           element={<SysSkills />} />
+          <Route path="/sys/notify"           element={<SysNotifications />} />
+          <Route path="/sys/intercept"        element={<SysIntercept />} />
+          <Route path="/sys/blocking"         element={<SysAssetBlocking />} />
+          <Route path="/sys/approvals"        element={<SysApprovals />} />
+          <Route path="/sys/exec"             element={<SysToolExec />} />
+          <Route path="/sys/logs"             element={<SysLogs />} />
+          <Route path="/sys/settings"         element={<SysSettings />} />
           <Route path="/runs"                  element={<Runs />} />
           <Route path="/runs/:id"              element={<RunDetail />} />
           <Route path="/workflows"             element={<Workflows />} />
