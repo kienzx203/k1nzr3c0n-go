@@ -1,4 +1,4 @@
-// Command artex runs the ScopeWeaver backend: the PostgreSQL graph stores,
+// Command artex runs the K1nzr3c0n backend: the PostgreSQL graph stores,
 // the event-driven exploration engine, and the JSON HTTP API consumed by the
 // shadcn/ui frontend.
 package main
@@ -29,7 +29,7 @@ import (
 var version = "dev"
 
 const banner = `
-  ScopeWeaver
+  K1nzr3c0n
 `
 
 // printBanner writes the startup banner + version/runtime info to stdout.
@@ -115,7 +115,7 @@ func run() int {
 	srv := server.New(ctx, mgr, skillDir, *dataDir, config.BaseDir())
 
 	// Mount k1nzr3c0n's workflow-runner backend under /api/v1/* + /ws/* (its own
-	// SQLite store + runner); ScopeWeaver owns everything else.
+	// SQLite store + runner); K1nzr3c0n owns everything else.
 	k1zHandler, k1zShutdown, k1zErr := k1z.BuildHandler(ctx)
 	if k1zErr != nil {
 		log.Printf("[k1z] workflow-runner unavailable: %v", k1zErr)
@@ -131,7 +131,7 @@ func run() int {
 	}
 
 	go func() {
-		log.Printf("ScopeWeaver %s backend listening on %s (data=%s, workers=%d)", version, *addr, *dataDir, mgr.Workers())
+		log.Printf("K1nzr3c0n %s backend listening on %s (data=%s, workers=%d)", version, *addr, *dataDir, mgr.Workers())
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("serve: %v", err)
 		}

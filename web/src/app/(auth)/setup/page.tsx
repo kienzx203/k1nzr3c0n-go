@@ -74,7 +74,7 @@ export default function SetupPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/scopeweaver.svg"
-            alt="ScopeWeaver"
+            alt="K1nzr3c0n"
             width={160}
             height={160}
             className="relative"

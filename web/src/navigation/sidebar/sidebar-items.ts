@@ -111,6 +111,7 @@ export const sidebarItems: NavGroup[] = [
       { id: "schedules", title: "Schedules", url: "/runner/schedules", icon: CalendarClock },
       { id: "inventory", title: "Inventory", url: "/runner/inventory", icon: Boxes },
       { id: "tool-versions", title: "Tool versions", url: "/runner/tools", icon: PackageOpen },
+      { id: "keys", title: "API Keys", url: "/runner/keys", icon: Wrench },
     ],
   },
 ];
