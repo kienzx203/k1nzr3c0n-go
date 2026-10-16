@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"k1nzr3c0n/internal/agent"
 	"k1nzr3c0n/internal/api"
 	"k1nzr3c0n/internal/bus"
 	"k1nzr3c0n/internal/capture"
@@ -76,6 +77,8 @@ func serve() {
 			"NO_PROXY":    "localhost,127.0.0.1",
 		}
 	}
+
+	agent.SeedAgentRules(st)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

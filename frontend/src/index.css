@@ -17,6 +17,12 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 }
 .fade-in { animation: fade-up .22s ease-out both; }
 
+  .btn { transition: transform .08s ease, filter .15s ease, background .15s ease; }
+  .btn:active:not(:disabled) { transform: scale(.97); }
+  .card { transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+  .card-hover:hover { transform: translateY(-1px); }
+  tr { transition: background .12s ease; }
+
 @keyframes shimmer {
   0% { background-position: -400px 0; }
   100% { background-position: 400px 0; }
