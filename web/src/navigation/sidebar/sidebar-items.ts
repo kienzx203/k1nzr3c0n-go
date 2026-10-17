@@ -26,7 +26,6 @@ import {
   Target,
   Terminal,
   Upload,
-  Waypoints,
   Workflow,
   Wrench,
 } from "lucide-react";
@@ -109,7 +108,6 @@ export const sidebarItems: NavGroup[] = [
     items: [
       { id: "runs", title: "Runs", url: "/runner/runs", icon: PlayCircle },
       { id: "workflows", title: "Workflows", url: "/runner/workflows", icon: Workflow },
-      { id: "editor", title: "Workflow editor", url: "/runner/editor", icon: Waypoints },
       { id: "targets", title: "Targets", url: "/runner/targets", icon: Target },
       { id: "schedules", title: "Schedules", url: "/runner/schedules", icon: CalendarClock },
       { id: "inventory", title: "Inventory", url: "/runner/inventory", icon: Boxes },
