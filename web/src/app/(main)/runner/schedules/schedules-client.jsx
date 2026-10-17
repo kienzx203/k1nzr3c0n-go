@@ -133,7 +133,7 @@ export default function Schedules() {
   const [modal, setModal] = useState(null)   // {editId?, initial?} | null
   const [lastStatus, setLastStatus] = useState({})
   const [error, setError] = useState('')
-  const [params, setParams] = useSearchParams()
+  const params = useSearchParams()
 
   const load = useCallback(() => {
     api.getSchedules().then(setData).catch(e => setError(e.message))
@@ -276,8 +276,8 @@ export default function Schedules() {
 
       {modal && (
         <ScheduleModal workflows={workflows} editId={modal.editId} initial={modal.initial}
-                       onClose={() => { setModal(null); if (params.get('new')) setParams({}) }}
-                       onSaved={() => { setModal(null); if (params.get('new')) setParams({}); load() }} />
+                       onClose={() => setModal(null)}
+                       onSaved={() => { setModal(null); load() }} />
       )}
     </div>
   )
