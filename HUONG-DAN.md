@@ -16,6 +16,8 @@
 7. [Cập nhật & build lại](#7-cập-nhật--build-lại)
 8. [Xử lý sự cố](#8-xử-lý-sự-cố)
 9. [Bảo mật](#9-bảo-mật)
+10. [Scripts tiện ích](#10-scripts-tiện-ích)
+11. [Bổ sung xử lý sự cố](#11-bổ-sung-xử-lý-sự-cố)
 
 ---
 
@@ -191,5 +193,52 @@ như trên. (Chỉ sửa backend Go thì bỏ qua bước này.)
 - Giữ LLM key/API key trong biến môi trường hoặc UI, không commit vào git.
 
 ---
+
+---
+
+## 10. Scripts tiện ích
+
+Có sẵn trong `scripts/`. ARTEX `/api/*` **cần token đăng nhập**; lấy token bằng 1 trong 2:
+- Trình duyệt (đang đăng nhập) → F12 → Console → `localStorage.getItem('artex_token')`.
+- Hoặc để script tự login bằng mật khẩu. **Tên đăng nhập của ARTEX là `ARTEX`** (không phải `admin`); mật khẩu là cái bạn đặt ở `/setup`.
+
+### 10.1 Thêm API keys recon hàng loạt — `scripts/add-api-keys.sh`
+Nạp key cho các provider (Shodan, Censys, FOFA, Chaos, SecurityTrails, Netlas, LeakIX, CriminalIP, IntelX, DNSDumpster, WhoisXML, URLScan, CertSpotter, BeVigil, VirusTotal, GitHub, Google CSE/CX) vào DB qua `PUT /api/v1/keys/{provider}`.
+```bash
+cp scripts/api-keys.env.example scripts/api-keys.env   # rồi điền key thật (file này đã GITIGNORE)
+BASE_URL=http://192.168.52.103:8000 ./scripts/add-api-keys.sh
+```
+> `scripts/api-keys.env` **không bao giờ commit** (chứa secret). Censys nhập dạng `API_ID` + `API_SECRET` (script tự ghép `ID:SECRET`). Kiểm tra: `curl -s $BASE_URL/api/v1/keys/stats`.
+
+### 10.2 Tạo Task templates chuyên gia — `scripts/add-task-templates.sh`
+Tạo sẵn **4 template** cho engine tự hành (Tasks), mỗi cái là playbook của senior operator:
+- **Bug Bounty** — tư duy threat-model, recon broad→deep, attack surface xếp ROI (IDOR/SSRF/authn/injection/client-side/infra) + kỹ thuật từng lớp, chuẩn validate CVSS/PoC.
+- **Penetration Test** — PTES + OWASP WSTG, enum từng protocol, exploit có kiểm soát, post-ex AD/BloodHound, RoE + approvals.
+- **Red Team** — objective-driven, MITRE ATT&CK kill chain, OPSEC/LOTL, detection-gap output.
+- **Recon — All Endpoints** — đào mọi endpoint: passive history (gau/waymore/wayback/urlscan/otx/vt), crawl (katana/gospider), **JavaScript sâu** (gom all JS + inline, JS lịch sử diff, linkfinder/jsluice, resolve relative path, dựng **source maps**, webpack chunk, secret), API (swagger/graphql/wadl/ws/grpc), param (arjun/x8), brute-force common.txt → endpoint inventory dedupe + phân loại.
+
+```bash
+# token nhanh:
+BASE_URL=http://192.168.52.103:8000 ARTEX_TOKEN='<token>' ./scripts/add-task-templates.sh
+# hoặc mật khẩu (username ARTEX mặc định):
+BASE_URL=http://192.168.52.103:8000 ARTEX_PASSWORD='mật_khẩu' ./scripts/add-task-templates.sh
+```
+Thấy `ok ...` → mở **Tasks → New task → Task template** (hoặc *Manage templates*) chọn template → chỉ cần điền **Target** + đặt **asset block/allow rules** đúng scope → **Create**. (Advanced khuyến nghị: coverage ON cho bounty/pentest/recon, OFF cho red team; Dispatch first intent OFF.)
+
+> Lưu ý: endpoint template của UI Tasks là `POST /api/task-templates` (ARTEX, cần token) — KHÁC `/api/v1/task-templates` (backend k1z runner). Nếu "No templates yet" sau khi chạy, gần như chắc chắn do sai endpoint hoặc thiếu token.
+
+---
+
+## 11. Bổ sung xử lý sự cố
+
+| Triệu chứng | Xử lý |
+|---|---|
+| **Tasks: "No templates yet"** dù đã chạy script | Script phải trỏ `POST /api/task-templates` (ARTEX) + có token. Dùng `scripts/add-task-templates.sh` bản mới. |
+| **`error: no token`** khi chạy seeder | Đặt `ARTEX_TOKEN=` (từ `localStorage.artex_token`) hoặc `ARTEX_PASSWORD=` (login username **ARTEX**). |
+| **HTTP 401/403** khi tạo template/key | Token/mật khẩu sai hoặc hết hạn, hoặc sai username (phải là `ARTEX`). Lấy token mới. |
+| **Script lỗi `syntax error near <<<`** | File dính **git conflict markers** (`<<<<<<< ======= >>>>>>>`). Trên server: `git merge --abort 2>/dev/null; git fetch origin; git reset --hard origin/main`. |
+| **Truyền biến môi trường không ăn** | Đặt biến **trước** lệnh: `ARTEX_PASSWORD='...' bash ./script.sh` (KHÔNG phải tham số sau script). |
+
+> Bảo mật: đừng dán mật khẩu/token/API key dạng plaintext ra nơi công khai; nếu lỡ lộ, **đổi mật khẩu** (`/setup` lại hoặc System settings) và **rotate** các key liên quan.
 
 *Tài liệu này mô tả hệ thống tại thời điểm viết; kiểm tra lại tên file/cờ nếu bản build của bạn mới hơn.*
