@@ -1,5 +1,5 @@
 :HL["/_next/static/chunks/3ij6fl1kqv7_b.css","style"]
-:HL["/_next/static/chunks/3mrmn1hm5185k.css","style"]
+:HL["/_next/static/chunks/2f-hrgcpc5xx2.css","style"]
 :HL["/_next/static/media/GeistMono_Variable-s.p.3ms9vq719j3f8.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
 :HL["/_next/static/media/GeistPixel_Circle.p.0rqe0db4f0cia.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
 :HL["/_next/static/media/GeistPixel_Grid.p.2ss63b6eqyzy4.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
@@ -10,4 +10,4 @@
 3:[["children",{"s":"__PAGE__","h":160}]]
 2:[["children",{"s":"chat","h":96,"c":"$Q3"}]]
 1:[["children",{"s":"(main)","h":96,"c":"$Q2"}]]
-0:{"b":"6bOsVVL4b9_3m6iiUZyH7","t":{"t":{"s":"","h":80,"c":"$Q1"}}}
+0:{"b":"q9AfsL0kyMW96LnwM0o_n","t":{"t":{"s":"","h":80,"c":"$Q1"}}}
