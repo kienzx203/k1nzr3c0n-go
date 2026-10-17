@@ -69,3 +69,6 @@ Thumbs.db
 # Large third-party offline skills (contain example secrets flagged by GitHub push protection; deploy by copying, not via git)
 skills/hacktricks/
 skills/payloads-all-the-things/
+
+# Real recon API keys (never commit) — see scripts/api-keys.env.example
+scripts/api-keys.env
