@@ -1,5 +1,8 @@
 "use client";
+import { getIntlLocale } from "@/i18n/runtime";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import Link from "next/link";
@@ -19,13 +22,13 @@ import { api } from "@/lib/api";
 import type { FindingRetest } from "@/lib/types";
 
 const statusLabels = {
-  pending: "等待启动",
-  running: "复测中",
-  completed: "已完成",
-  failed: "复测失败",
-  stopped: "已停止",
+  get pending() { return swt("interface.m2216"); },
+  get running() { return swt("interface.m0330"); },
+  get completed() { return swt("interface.m0809"); },
+  get failed() { return swt("interface.m2217"); },
+  get stopped() { return swt("interface.m2218"); },
 };
-const verdictLabels = { reproduced: "仍可复现", fixed: "已修复", inconclusive: "无法确认" };
+const verdictLabels = { get reproduced() { return swt("interface.m2219"); }, get fixed() { return swt("interface.m2220"); }, get inconclusive() { return swt("interface.m2221"); } };
 
 function active(r: FindingRetest) {
   return r.status === "pending" || r.status === "running";
@@ -42,6 +45,9 @@ export function FindingRetestPanel({
   readOnly?: boolean;
   onCompleted?: () => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [items, setItems] = React.useState<FindingRetest[] | null>(null);
   const [error, setError] = React.useState("");
   const [open, setOpen] = React.useState(false);
@@ -84,32 +90,29 @@ export function FindingRetestPanel({
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1.5">
-          <CardTitle>漏洞复测</CardTitle>
-          <CardDescription>在独立会话中验证当前状态，保留每次复测的结论与证据。</CardDescription>
+          <CardTitle>{swt("interface.m2222")}</CardTitle>
+          <CardDescription>{swt("interface.m2223")}</CardDescription>
         </div>
         {running?.conversation_id != null ? (
           <Button asChild variant="outline" size="sm">
-            <Link href={`/chat?c=${running.conversation_id}`} title="查看正在进行的复测会话">
+            <Link href={`/chat?c=${running.conversation_id}`} title={swt("interface.m0329")}>
               <Spinner data-icon="inline-start" aria-hidden="true" />
-              复测中
-            </Link>
+              {swt("interface.m0330")}</Link>
           </Button>
         ) : null}
         {!running && !readOnly ? (
           <Button size="sm" onClick={() => setOpen(true)} disabled={items === null || !!error}>
             <RotateCcwIcon data-icon="inline-start" />
-            发起复测
-          </Button>
+            {swt("interface.m2224")}</Button>
         ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {error ? (
           <Alert variant="destructive">
             <AlertDescription>
-              加载复测记录失败：{error}
+              {swt("interface.m2225")}{error}
               <Button variant="outline" size="sm" onClick={() => void load()}>
-                重试
-              </Button>
+                {swt("interface.m0682")}</Button>
             </AlertDescription>
           </Alert>
         ) : null}
@@ -117,8 +120,8 @@ export function FindingRetestPanel({
         {!error && items?.length === 0 ? (
           <Empty>
             <EmptyHeader>
-              <EmptyTitle>暂无复测记录</EmptyTitle>
-              <EmptyDescription>修复部署完成后，可发起复测并比较新旧证据。</EmptyDescription>
+              <EmptyTitle>{swt("interface.m2226")}</EmptyTitle>
+              <EmptyDescription>{swt("interface.m2227")}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : null}
@@ -134,14 +137,14 @@ export function FindingRetestPanel({
                       : statusLabels[item.status]}
                   </Badge>
                   <span className="text-muted-foreground text-xs">
-                    #{item.id} · {new Date(item.created_at).toLocaleString("zh-CN")}
+                    #{item.id} · {new Date(item.created_at).toLocaleString(getIntlLocale())}
                   </span>
                   {item.conversation_id != null ? (
                     <Button asChild variant="ghost" size="sm" className="ml-auto">
-                      <Link href={`/chat?c=${item.conversation_id}`}>查看会话</Link>
+                      <Link href={`/chat?c=${item.conversation_id}`}>{swt("interface.m2228")}</Link>
                     </Button>
                   ) : (
-                    <span className="text-muted-foreground text-xs">会话已删除</span>
+                    <span className="text-muted-foreground text-xs">{swt("interface.m2229")}</span>
                   )}
                 </div>
                 {item.status === "completed" && item.summary ? (
@@ -152,12 +155,12 @@ export function FindingRetestPanel({
                 ) : null}
                 {item.notes ? (
                   <p className="whitespace-pre-wrap break-words text-muted-foreground text-xs">
-                    补充说明：{item.notes}
+                    {swt("interface.m2230")}{item.notes}
                   </p>
                 ) : null}
                 {item.status === "completed" && item.evidence ? (
                   <details className="min-w-0">
-                    <summary className="cursor-pointer text-sm">复测证据</summary>
+                    <summary className="cursor-pointer text-sm">{swt("interface.m2231")}</summary>
                     <div className="mt-3 overflow-x-auto">
                       <Markdown text={item.evidence} />
                     </div>

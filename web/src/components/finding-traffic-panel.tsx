@@ -1,5 +1,8 @@
 "use client";
+import { getIntlLocale } from "@/i18n/runtime";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon } from "lucide-react";
@@ -28,10 +31,10 @@ import { api } from "@/lib/api";
 import type { FindingTraffic, FindingTrafficBinding, TrafficEvidenceRole } from "@/lib/types";
 
 const ROLES: Record<TrafficEvidenceRole, string> = {
-  baseline: "正常对照",
-  proof: "漏洞证明",
-  verification: "补充验证",
-  supporting: "辅助证据",
+  get baseline() { return swt("interface.m2232"); },
+  get proof() { return swt("interface.m2233"); },
+  get verification() { return swt("interface.m2234"); },
+  get supporting() { return swt("interface.m2235"); },
 };
 
 export function FindingTrafficPanel({
@@ -45,6 +48,9 @@ export function FindingTrafficPanel({
   readOnly?: boolean;
   onChanged: () => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [data, setData] = React.useState<FindingTraffic | null>(null);
   const [error, setError] = React.useState("");
   const [adding, setAdding] = React.useState(false);
@@ -78,7 +84,7 @@ export function FindingTrafficPanel({
       setData(await action());
       setEditing(null);
       onChanged();
-      toast.success("流量证据已更新");
+      toast.success(swt("interface.m2236"));
     } catch (e) {
       toast.error((e as Error).message);
       setReload((n) => n + 1);
@@ -99,17 +105,16 @@ export function FindingTrafficPanel({
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>关联流量 {data ? `(${data.bindings.length})` : ""}</CardTitle>
+            <CardTitle>{swt("interface.m0946")}{" "}{data ? `(${data.bindings.length})` : ""}</CardTitle>
             {!readOnly ? (
               <Button variant="outline" size="sm" disabled={!data || busy} onClick={() => setAdding(true)}>
                 <PlusIcon data-icon="inline-start" />
-                绑定流量
-              </Button>
+                {swt("interface.m2237")}</Button>
             ) : (
-              <Badge variant="outline">继承证据 · 只读</Badge>
+              <Badge variant="outline">{swt("interface.m2238")}</Badge>
             )}
           </div>
-          <CardDescription>按复现顺序组织请求与响应。清理原始流量后，已绑定证据仍然保留。</CardDescription>
+          <CardDescription>{swt("interface.m2239")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {error ? (
@@ -117,8 +122,7 @@ export function FindingTrafficPanel({
               <AlertDescription>
                 {error}
                 <Button variant="link" onClick={() => setReload((n) => n + 1)}>
-                  重试
-                </Button>
+                  {swt("interface.m0682")}</Button>
               </AlertDescription>
             </Alert>
           ) : null}
@@ -127,8 +131,8 @@ export function FindingTrafficPanel({
           ) : data.bindings.length === 0 ? (
             <Empty>
               <EmptyHeader>
-                <EmptyTitle>暂无关联流量</EmptyTitle>
-                <EmptyDescription>可绑定正常对照、漏洞证明和补充验证请求。</EmptyDescription>
+                <EmptyTitle>{swt("interface.m2240")}</EmptyTitle>
+                <EmptyDescription>{swt("interface.m2241")}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
@@ -141,7 +145,7 @@ export function FindingTrafficPanel({
                   <Badge variant="secondary">
                     {b.snapshot.method} · {b.snapshot.status}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">证据 #{b.id}</span>
+                  <span className="text-xs text-muted-foreground">{swt("interface.m2242")}{b.id}</span>
                 </div>
                 <Button
                   variant="link"
@@ -153,12 +157,11 @@ export function FindingTrafficPanel({
                 {b.note ? <p className="text-sm whitespace-pre-wrap">{b.note}</p> : null}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground">
-                    {new Date(b.snapshot.captured_at * 1000).toLocaleString("zh-CN")}
+                    {new Date(b.snapshot.captured_at * 1000).toLocaleString(getIntlLocale())}
                   </span>
                   <div className="flex flex-wrap gap-1">
                     <Button variant="outline" size="sm" onClick={() => setPreview(b.id)}>
-                      查看报文
-                    </Button>
+                      {swt("interface.m2243")}</Button>
                     {!readOnly ? (
                       <>
                         <Button
@@ -171,12 +174,11 @@ export function FindingTrafficPanel({
                             setNote(b.note);
                           }}
                         >
-                          编辑说明
-                        </Button>
+                          {swt("interface.m2244")}</Button>
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={`上移证据 ${b.id}`}
+                          aria-label={swt("interface.m2245", { p0: b.id })}
                           disabled={busy || index === 0}
                           onClick={() => move(index, -1)}
                         >
@@ -185,7 +187,7 @@ export function FindingTrafficPanel({
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={`下移证据 ${b.id}`}
+                          aria-label={swt("interface.m2246", { p0: b.id })}
                           disabled={busy || index === data.bindings.length - 1}
                           onClick={() => move(index, 1)}
                         >
@@ -199,8 +201,7 @@ export function FindingTrafficPanel({
                             void mutate(() => api.removeFindingTraffic(findingId, b.id, data.version, contextTask))
                           }
                         >
-                          解除绑定
-                        </Button>
+                          {swt("interface.m2247")}</Button>
                       </>
                     ) : null}
                   </div>
@@ -236,12 +237,12 @@ export function FindingTrafficPanel({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>编辑流量证据</DialogTitle>
-            <DialogDescription>说明这组请求/响应如何支持漏洞结论。</DialogDescription>
+            <DialogTitle>{swt("interface.m2248")}</DialogTitle>
+            <DialogDescription>{swt("interface.m2249")}</DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="evidence-role">用途</FieldLabel>
+              <FieldLabel htmlFor="evidence-role">{swt("interface.m2250")}</FieldLabel>
               <Select value={role} onValueChange={(v) => setRole(v as TrafficEvidenceRole)}>
                 <SelectTrigger id="evidence-role">
                   <SelectValue />
@@ -258,14 +259,13 @@ export function FindingTrafficPanel({
               </Select>
             </Field>
             <Field>
-              <FieldLabel htmlFor="evidence-note">证据说明</FieldLabel>
+              <FieldLabel htmlFor="evidence-note">{swt("interface.m2251")}</FieldLabel>
               <Textarea id="evidence-note" value={note} onChange={(e) => setNote(e.target.value)} />
             </Field>
           </FieldGroup>
           <DialogFooter>
             <Button variant="outline" disabled={busy} onClick={() => setEditing(null)}>
-              取消
-            </Button>
+              {swt("interface.m0063")}</Button>
             <Button
               disabled={busy || !editing || !data}
               onClick={() => {
@@ -275,8 +275,7 @@ export function FindingTrafficPanel({
                   );
               }}
             >
-              保存说明
-            </Button>
+              {swt("interface.m2252")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

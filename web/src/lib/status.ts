@@ -1,5 +1,6 @@
+import { translate as swt } from "@/i18n/runtime";
 // Centralised status → color/label semantics, reused across the whole app.
-// Spec §8.3: 意图 / 覆盖 / 任务 / 严重度 each have a consistent color set.
+// Spec 8.3: intents, coverage, tasks, and severity each use consistent colors.
 
 export type Tone = "neutral" | "blue" | "green" | "amber" | "red" | "rose" | "violet" | "slate";
 
@@ -9,7 +10,7 @@ export const toneClasses: Record<Tone, string> = {
   green: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
   amber: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20",
   red: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20",
-  // rose 用作「严重」——实心高强调,视觉上明显高于「高危」的软红描边。
+  // Rose indicates Critical with solid emphasis, visually stronger than High's soft red outline.
   rose: "bg-rose-600 text-white border-rose-600 dark:bg-rose-600 dark:text-white",
   violet: "bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/20",
   slate: "bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/20",
@@ -32,81 +33,81 @@ interface StatusMeta {
 }
 
 const intent: Record<string, StatusMeta> = {
-  open: { label: "待领", tone: "slate" },
-  running: { label: "执行中", tone: "blue" },
-  paused: { label: "已暂停", tone: "amber" },
-  done: { label: "已完成", tone: "green" },
-  // blocked = 模型/API/网络故障重试用尽，这条意图基本没真正探成（非目标拦截）。
-  blocked: { label: "执行出错", tone: "red" },
-  // exhausted = 达到步数/时间预算被中途掐断、只写回部分结果（非方向已探尽）。
-  exhausted: { label: "预算耗尽", tone: "violet" },
-  // stopped = 历史软删除状态（保留,历史数据）。
-  stopped: { label: "已停止", tone: "slate" },
-  // deleted = 用户假删除了该意图（保留节点与血缘，删除原因见 delete_reason 字段）。
-  deleted: { label: "已删除", tone: "slate" },
+  open: { get label() { return swt("interface.m2842"); }, tone: "slate" },
+  running: { get label() { return swt("interface.m0648"); }, tone: "blue" },
+  paused: { get label() { return swt("interface.m0564"); }, tone: "amber" },
+  done: { get label() { return swt("interface.m0809"); }, tone: "green" },
+  // blocked means exhausted model/API/network retries, not target interception; exploration did not really complete.
+  blocked: { get label() { return swt("interface.m2843"); }, tone: "red" },
+  // exhausted means interrupted by time/step budget with partial results, not an exhausted direction.
+  exhausted: { get label() { return swt("interface.m2844"); }, tone: "violet" },
+  // stopped is the retained legacy soft-deletion state.
+  stopped: { get label() { return swt("interface.m2218"); }, tone: "slate" },
+  // deleted means user soft-deletion; preserve node/lineage and store the reason in delete_reason.
+  deleted: { get label() { return swt("interface.m0700"); }, tone: "slate" },
 };
 
 const task: Record<string, StatusMeta> = {
-  created: { label: "已创建", tone: "slate" },
-  queued: { label: "排队中", tone: "amber" },
-  running: { label: "运行中", tone: "blue" },
-  paused: { label: "已暂停", tone: "amber" },
-  done: { label: "已完成", tone: "green" },
-  failed: { label: "失败", tone: "red" },
-  timeout: { label: "已超时", tone: "amber" },
+  created: { get label() { return swt("interface.m0826"); }, tone: "slate" },
+  queued: { get label() { return swt("interface.m0827"); }, tone: "amber" },
+  running: { get label() { return swt("interface.m0096"); }, tone: "blue" },
+  paused: { get label() { return swt("interface.m0564"); }, tone: "amber" },
+  done: { get label() { return swt("interface.m0809"); }, tone: "green" },
+  failed: { get label() { return swt("interface.m0294"); }, tone: "red" },
+  timeout: { get label() { return swt("interface.m0828"); }, tone: "amber" },
 };
 
 const severity: Record<string, StatusMeta> = {
-  critical: { label: "严重", tone: "rose" },
-  high: { label: "高危", tone: "red" },
-  medium: { label: "中危", tone: "amber" },
-  low: { label: "低危", tone: "slate" },
+  critical: { get label() { return swt("interface.m0154"); }, tone: "rose" },
+  high: { get label() { return swt("interface.m0155"); }, tone: "red" },
+  medium: { get label() { return swt("interface.m0156"); }, tone: "amber" },
+  low: { get label() { return swt("interface.m0157"); }, tone: "slate" },
 };
 
 const finding: Record<string, StatusMeta> = {
-  pending: { label: "待处理", tone: "amber" },
-  in_progress: { label: "处理中", tone: "blue" },
-  confirmed: { label: "已确认", tone: "red" },
-  resolved: { label: "已处理", tone: "green" },
-  fixed: { label: "已修复", tone: "green" },
-  false_positive: { label: "误报", tone: "slate" },
-  ignored: { label: "忽略", tone: "neutral" },
-  duplicate: { label: "重复", tone: "neutral" },
-  risk_accepted: { label: "风险接受", tone: "violet" },
+  pending: { get label() { return swt("interface.m0384"); }, tone: "amber" },
+  in_progress: { get label() { return swt("interface.m2845"); }, tone: "blue" },
+  confirmed: { get label() { return swt("interface.m0533"); }, tone: "red" },
+  resolved: { get label() { return swt("interface.m2846"); }, tone: "green" },
+  fixed: { get label() { return swt("interface.m2220"); }, tone: "green" },
+  false_positive: { get label() { return swt("interface.m2847"); }, tone: "slate" },
+  ignored: { get label() { return swt("interface.m2848"); }, tone: "neutral" },
+  duplicate: { get label() { return swt("interface.m2849"); }, tone: "neutral" },
+  risk_accepted: { get label() { return swt("interface.m2850"); }, tone: "violet" },
 };
 
 const engine: Record<string, StatusMeta> = {
-  exploring: { label: "探索中", tone: "blue" },
-  paused: { label: "已暂停", tone: "amber" },
-  stalled: { label: "停滞", tone: "red" },
-  idle: { label: "空闲", tone: "neutral" },
+  exploring: { get label() { return swt("interface.m2851"); }, tone: "blue" },
+  paused: { get label() { return swt("interface.m0564"); }, tone: "amber" },
+  stalled: { get label() { return swt("interface.m2852"); }, tone: "red" },
+  idle: { get label() { return swt("interface.m2853"); }, tone: "neutral" },
 };
 
 const goal: Record<string, StatusMeta> = {
-  open: { label: "进行中", tone: "blue" },
-  met: { label: "已达成", tone: "green" },
-  abandoned: { label: "已放弃", tone: "slate" },
+  open: { get label() { return swt("interface.m2854"); }, tone: "blue" },
+  met: { get label() { return swt("interface.m2855"); }, tone: "green" },
+  abandoned: { get label() { return swt("interface.m2856"); }, tone: "slate" },
 };
 
 const audit: Record<string, StatusMeta> = {
-  allow: { label: "放行", tone: "green" },
-  block: { label: "拦截", tone: "red" },
+  allow: { get label() { return swt("interface.m1223"); }, tone: "green" },
+  block: { get label() { return swt("interface.m0673"); }, tone: "red" },
 };
 
 const node: Record<string, StatusMeta> = {
-  observed: { label: "观测", tone: "slate" },
-  confirmed: { label: "确认", tone: "green" },
-  tombstoned: { label: "废弃", tone: "neutral" },
+  observed: { get label() { return swt("interface.m2857"); }, tone: "slate" },
+  confirmed: { get label() { return swt("interface.m2858"); }, tone: "green" },
+  tombstoned: { get label() { return swt("interface.m2859"); }, tone: "neutral" },
 };
 
-// 推送投递状态。sending 用 blue 而不是 amber：它不是「有问题」，
-// 而是「已被领取、正在发」，与 pending 的等待语义要能区分开。
+// Notification delivery states: sending is blue rather than amber because it indicates active delivery,
+// not a problem, and differs from pending's waiting semantics.
 const delivery: Record<string, StatusMeta> = {
-  pending: { label: "待发送", tone: "amber" },
-  sending: { label: "发送中", tone: "blue" },
-  sent: { label: "已送达", tone: "green" },
-  failed: { label: "失败", tone: "red" },
-  skipped: { label: "已跳过", tone: "neutral" },
+  pending: { get label() { return swt("interface.m1547"); }, tone: "amber" },
+  sending: { get label() { return swt("interface.m2860"); }, tone: "blue" },
+  sent: { get label() { return swt("interface.m2861"); }, tone: "green" },
+  failed: { get label() { return swt("interface.m0294"); }, tone: "red" },
+  skipped: { get label() { return swt("interface.m2323"); }, tone: "neutral" },
 };
 
 const maps = {

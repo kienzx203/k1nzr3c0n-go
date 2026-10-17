@@ -1,5 +1,7 @@
 "use client"
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
@@ -10,24 +12,40 @@ import { XIcon } from "lucide-react"
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
 function DialogTrigger({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
 }
 
 function DialogPortal({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
 }
 
 function DialogClose({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Close>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
@@ -35,6 +53,10 @@ function DialogOverlay({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
@@ -56,17 +78,21 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
-        // 关闭对话框的唯一条件:点击的是遮罩(灰色背景)本身,且此刻没有任何 Radix 弹层
-        // (Select 下拉等)开着。其余"外部交互"一律挡掉(Esc、右上角 ✕ 仍可关):
-        //  · 点弹层里的选项 → target 不是遮罩 → 挡;
-        //  · 弹层开着时点对话框外/遮罩想收起它 → 有弹层开着 → 挡(只收弹层,不关对话框);
-        //  · 弹层收起时焦点移动被 Radix 误判为焦点移出 → target 不是遮罩 → 挡。
-        // (onInteractOutside 在指针/焦点两条路径都会触发。)调用方仍可追加逻辑。
+        // Close only when the pointer targets the overlay itself and no Radix popup
+        // such as Select is open. Block other outside interactions; Escape and the close button still work.
+        // Clicking a popup option does not target the overlay, so block closing.
+        // Clicking outside with a popup open closes only the popup, not the dialog.
+        // Focus moves while popups close do not target the overlay, so block closing.
+        // onInteractOutside fires for pointer and focus paths. Callers may add further handling.
         onInteractOutside={(e) => {
           const target = e.detail.originalEvent.target as Element | null
           const onOverlay = !!target?.closest?.("[data-slot='dialog-overlay']")
@@ -89,7 +115,7 @@ function DialogContent({
             >
               <XIcon
               />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">{swt("english.e154")}</span>
             </Button>
           </DialogPrimitive.Close>
         )}
@@ -99,6 +125,10 @@ function DialogContent({
 }
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <div
       data-slot="dialog-header"
@@ -116,6 +146,10 @@ function DialogFooter({
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <div
       data-slot="dialog-footer"
@@ -128,7 +162,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
+          <Button variant="outline">{swt("english.e154")}</Button>
         </DialogPrimitive.Close>
       )}
     </div>
@@ -139,6 +173,10 @@ function DialogTitle({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Title>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
@@ -155,6 +193,10 @@ function DialogDescription({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Description>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"

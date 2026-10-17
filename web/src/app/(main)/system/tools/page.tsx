@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 import { toast } from "sonner";
 import { PlayIcon, PlusIcon, RotateCcwIcon, SaveIcon, SearchIcon, Trash2Icon } from "lucide-react";
@@ -37,7 +39,7 @@ import {
 import { api } from "@/lib/api";
 import type { Agent, Tool } from "@/lib/types";
 
-// Traffic tools are host tools gated by the global 流量捕获 switch: bindable, but
+// Traffic tools are host tools gated by global traffic capture: bindable, but
 // only usable when capture is on. Keep in sync with traffic.SeedToolMetas.
 const TRAFFIC_TOOL_KEYS = new Set(["traffic_search", "traffic_get"]);
 
@@ -154,7 +156,10 @@ function ToolEditor({
   onSaved: () => void;
   onClose: () => void;
 }) {
-  // traffic tools can't be bound/enabled until the global 流量捕获 switch is on.
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+  // cannot be bound/enabled until global traffic capture is on.
   const trafficGated = TRAFFIC_TOOL_KEYS.has(tool.key) && !captureOn;
   const [description, setDescription] = React.useState(tool.description);
   const [bound, setBound] = React.useState<string[]>(tool.agents);
@@ -176,11 +181,11 @@ function ToolEditor({
         agents: bound,
         enabled,
       });
-      toast.success(`已保存工具「${tool.key}」`);
+      toast.success(swt("interface.m1832", { p0: tool.key }));
       onSaved();
       onClose();
     } catch (e) {
-      toast.error("保存失败：" + (e as Error).message);
+      toast.error(swt("interface.m1450") + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -188,11 +193,11 @@ function ToolEditor({
   async function reset() {
     try {
       await api.resetTool(tool.key);
-      toast.success(`已恢复「${tool.key}」为代码默认`);
+      toast.success(swt("interface.m1833", { p0: tool.key }));
       onSaved();
       onClose();
     } catch (e) {
-      toast.error("恢复失败：" + (e as Error).message);
+      toast.error(swt("interface.m1834") + (e as Error).message);
     }
   }
 
@@ -201,13 +206,12 @@ function ToolEditor({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
         {trafficGated && (
           <div className="border-amber-500/40 bg-amber-500/10 text-muted-foreground rounded-md border px-3 py-2 text-xs">
-            该工具依赖<b>流量捕获</b>。请先在「系统配置」开启流量捕获，才能绑定给 Agent 并启用。
-          </div>
+            {swt("interface.m1835")}<b>{swt("interface.m0209")}</b>{swt("interface.m1836")}</div>
         )}
         {/* binding + switch */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <div className="grid gap-1.5">
-            <Label className="text-muted-foreground text-xs">绑定 Agent（决定该工具给哪些 Agent）</Label>
+            <Label className="text-muted-foreground text-xs">{swt("interface.m1837")}</Label>
             <div className="flex flex-wrap gap-3">
               {agents.map((ag) => (
                 <label key={ag.key} className="flex items-center gap-2 text-sm">
@@ -220,20 +224,19 @@ function ToolEditor({
                   <span className="text-muted-foreground font-mono text-xs">{ag.key}</span>
                 </label>
               ))}
-              {agents.length === 0 && <span className="text-muted-foreground text-xs">（无 Agent）</span>}
+              {agents.length === 0 && <span className="text-muted-foreground text-xs">{swt("interface.m1838")}</span>}
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={enabled} onCheckedChange={setEnabled} id={`en-${tool.key}`} />
             <Label htmlFor={`en-${tool.key}`} className="text-sm">
-              启用
-            </Label>
+              {swt("interface.m1174")}</Label>
           </div>
         </div>
 
         {/* description */}
         <div className="grid gap-1.5">
-          <Label className="text-muted-foreground text-xs">工具描述（发送给模型）</Label>
+          <Label className="text-muted-foreground text-xs">{swt("interface.m1839")}</Label>
           <Textarea
             className="font-mono text-xs"
             rows={6}
@@ -245,9 +248,8 @@ function ToolEditor({
         {/* params */}
         <div className="grid gap-2">
           <Label className="text-muted-foreground text-xs">
-            参数（名称 / 类型 / 必填只读；描述与默认值可改）
-          </Label>
-          {rows.length === 0 && <span className="text-muted-foreground text-xs">（无参数）</span>}
+            {swt("interface.m1840")}</Label>
+          {rows.length === 0 && <span className="text-muted-foreground text-xs">{swt("interface.m1841")}</span>}
           {rows.map((r, i) => (
             <div
               key={(r.parentKey ?? "") + "." + r.name}
@@ -264,16 +266,15 @@ function ToolEditor({
                 </Badge>
                 {r.required && (
                   <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-                    必填
-                  </Badge>
+                    {swt("interface.m1842")}</Badge>
                 )}
                 {r.parentKey && (
-                  <span className="text-muted-foreground text-[10px]">items 子字段</span>
+                  <span className="text-muted-foreground text-[10px]">{swt("interface.m1843")}</span>
                 )}
               </div>
               <div className="grid gap-2">
                 <div className="grid gap-1">
-                  <Label className="text-muted-foreground text-[11px]">描述</Label>
+                  <Label className="text-muted-foreground text-[11px]">{swt("interface.m0605")}</Label>
                   <Input
                     className="text-xs"
                     value={r.description}
@@ -281,10 +282,10 @@ function ToolEditor({
                   />
                 </div>
                 <div className="grid gap-1">
-                  <Label className="text-muted-foreground text-[11px]">默认值</Label>
+                  <Label className="text-muted-foreground text-[11px]">{swt("interface.m1844")}</Label>
                   <Input
                     className="text-xs"
-                    placeholder={r.scalar ? "（空=无默认）" : "仅标量支持"}
+                    placeholder={r.scalar ? swt("interface.m1845") : swt("interface.m1846")}
                     disabled={!r.scalar}
                     value={r.defaultStr}
                     onChange={(e) => setRow(i, { defaultStr: e.target.value })}
@@ -299,11 +300,9 @@ function ToolEditor({
       <Separator className="mt-4" />
       <div className="flex flex-wrap gap-2 p-4">
         <Button size="sm" onClick={save} disabled={saving}>
-          <SaveIcon /> 保存
-        </Button>
+          <SaveIcon /> {swt("interface.m0273")}</Button>
         <Button size="sm" variant="outline" onClick={reset}>
-          <RotateCcwIcon /> 恢复默认
-        </Button>
+          <RotateCcwIcon /> {swt("interface.m1847")}</Button>
       </div>
     </div>
   );
@@ -311,6 +310,9 @@ function ToolEditor({
 
 // ToolGridCard is one clickable tile in the catalog grid.
 function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return (
     <button
       type="button"
@@ -321,37 +323,34 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
         <span className="font-mono text-sm font-medium">{tool.key}</span>
         {tool.system ? (
           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-            系统
-          </Badge>
+            {swt("interface.m1848")}</Badge>
         ) : (
           <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-            自定义·{tool.kind}
+            {swt("interface.m1849")}{tool.kind}
           </Badge>
         )}
         {tool.deferred && (
           <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-            deferred
-          </Badge>
+            {swt("english.e138")}</Badge>
         )}
         {!tool.enabled && (
           <Badge variant="outline" className="text-destructive px-1.5 py-0 text-[10px]">
-            已停用
-          </Badge>
+            {swt("interface.m1069")}</Badge>
         )}
         <Badge
           variant="secondary"
           className="ml-auto px-1.5 py-0 text-[10px] tabular-nums"
-          title={`累计调用 ${tool.calls ?? 0} 次`}
+          title={swt("interface.m1850", { p0: tool.calls ?? 0 })}
         >
-          调用 {tool.calls ?? 0}
+          {swt("interface.m0628")}{" "}{tool.calls ?? 0}
         </Badge>
       </div>
       <p className="text-muted-foreground line-clamp-1 h-4 text-xs">
-        {tool.description || "（无描述）"}
+        {tool.description || swt("interface.m1136")}
       </p>
       <div className="mt-auto flex flex-wrap gap-1 pt-1">
         {tool.agents.length === 0 && (
-          <span className="text-muted-foreground text-[10px]">（未绑定 Agent）</span>
+          <span className="text-muted-foreground text-[10px]">{swt("interface.m1851")}</span>
         )}
         {tool.agents.map((a) => (
           <Badge key={a} variant="outline" className="px-1.5 py-0 text-[10px]">
@@ -364,6 +363,9 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
 }
 
 export default function ToolsPage() {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [tools, setTools] = React.useState<Tool[]>([]);
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [captureOn, setCaptureOn] = React.useState(false);
@@ -402,14 +404,14 @@ export default function ToolsPage() {
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">工具</h1>
-          <p className="text-muted-foreground text-sm">系统工具的描述/绑定，以及自定义工具(command/script/http)</p>
+          <h1 className="text-xl font-semibold tracking-tight">{swt("interface.m0292")}</h1>
+          <p className="text-muted-foreground text-sm">{swt("interface.m1852")}</p>
         </div>
         <div className="relative w-64">
           <SearchIcon className="text-muted-foreground absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
           <Input
             className="h-8 pl-8 text-sm"
-            placeholder="搜索工具名、描述、Agent…"
+            placeholder={swt("interface.m1853")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -418,24 +420,24 @@ export default function ToolsPage() {
 
       <Tabs defaultValue="system">
         <TabsList>
-          <TabsTrigger value="system">系统工具</TabsTrigger>
-          <TabsTrigger value="custom">自定义工具</TabsTrigger>
+          <TabsTrigger value="system">{swt("interface.m1198")}</TabsTrigger>
+          <TabsTrigger value="custom">{swt("interface.m1199")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="system">
           <Card>
             <CardHeader>
-              <CardTitle>系统工具</CardTitle>
+              <CardTitle>{swt("interface.m1198")}</CardTitle>
               <CardDescription>
                 {query.trim()
-                  ? `${systemTools.length} / ${allSystemCount} 个匹配，点击卡片编辑描述、参数默认值与 Agent 绑定`
-                  : `共 ${allSystemCount} 个，点击卡片编辑描述、参数默认值与 Agent 绑定`}
+                  ? swt("interface.m1854", { p0: systemTools.length, p1: allSystemCount })
+                  : swt("interface.m1855", { p0: allSystemCount })}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {systemTools.length === 0 ? (
                 <p className="text-muted-foreground py-6 text-center text-sm">
-                  {query.trim() ? "没有匹配的系统工具" : "（暂无系统工具，等待后端 seed）"}
+                  {query.trim() ? swt("interface.m1856") : swt("interface.m1857")}
                 </p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -453,22 +455,21 @@ export default function ToolsPage() {
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <CardTitle>自定义工具</CardTitle>
+                  <CardTitle>{swt("interface.m1199")}</CardTitle>
                   <CardDescription>
                     {query.trim()
-                      ? `shell/command/script/http，${customTools.length} / ${allCustomCount} 个匹配，点击卡片编辑`
-                      : `shell(bash 声明) / command(命令) / script(Python) / http(API)，共 ${allCustomCount} 个，点击卡片编辑`}
+                      ? swt("interface.m1858", { p0: customTools.length, p1: allCustomCount })
+                      : swt("interface.m1859", { p0: allCustomCount })}
                   </CardDescription>
                 </div>
                 <Button size="sm" onClick={() => setCustomEdit("new")}>
-                  <PlusIcon /> 新建自定义工具
-                </Button>
+                  <PlusIcon /> {swt("interface.m1860")}</Button>
               </div>
             </CardHeader>
             <CardContent>
               {customTools.length === 0 ? (
                 <p className="text-muted-foreground py-6 text-center text-sm">
-                  {query.trim() ? "没有匹配的自定义工具" : "（暂无自定义工具，点击右上角「新建自定义工具」）"}
+                  {query.trim() ? swt("interface.m1861") : swt("interface.m1862")}
                 </p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -491,7 +492,7 @@ export default function ToolsPage() {
             <>
               <SheetHeader className="px-4">
                 <SheetTitle className="font-mono">{selected.key}</SheetTitle>
-                <SheetDescription>编辑描述、参数默认值与 Agent 绑定</SheetDescription>
+                <SheetDescription>{swt("interface.m1863")}</SheetDescription>
               </SheetHeader>
               <ToolEditor
                 key={selected.key}
@@ -519,7 +520,7 @@ export default function ToolsPage() {
   );
 }
 
-// ---- 自定义工具编辑器 ----
+// Custom tool editor.
 
 type ExecState = {
   command: string;
@@ -544,6 +545,9 @@ function CustomToolDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const isNew = edit === "new";
   const tool = edit && edit !== "new" ? edit : null;
   const [key, setKey] = React.useState("");
@@ -609,20 +613,20 @@ function CustomToolDialog({
 
   async function save() {
     if (isNew && !/^[a-z][a-z0-9_]*$/.test(key.trim())) {
-      toast.error("key 需小写字母开头，仅含小写字母/数字/下划线");
+      toast.error(swt("interface.m1864"));
       return;
     }
     let schema: Record<string, unknown> = {};
     if (schemaText.trim()) {
-      try { schema = JSON.parse(schemaText); } catch { toast.error("参数 JSON Schema 格式错误"); return; }
+      try { schema = JSON.parse(schemaText); } catch { toast.error(swt("interface.m1865")); return; }
     }
     if (kind === "http" && ex.headers.trim()) {
-      try { JSON.parse(ex.headers); } catch { toast.error("headers JSON 格式错误"); return; }
+      try { JSON.parse(ex.headers); } catch { toast.error(swt("interface.m1866")); return; }
     }
     if (kind === "http") {
       const props = (schema as { properties?: Record<string, unknown> }).properties;
       if (!props || Object.keys(props).length === 0) {
-        toast.error("http 工具必须提供参数 JSON Schema（含 properties，不能留空）");
+        toast.error(swt("interface.m1867"));
         return;
       }
     }
@@ -631,10 +635,10 @@ function CustomToolDialog({
     try {
       if (isNew) await api.createCustomTool({ key: key.trim(), ...payload });
       else await api.updateCustomTool(tool!.key, payload);
-      toast.success(isNew ? "已创建自定义工具" : "已保存");
+      toast.success(isNew ? swt("interface.m1868") : swt("interface.m0377"));
       onSaved();
     } catch (e) {
-      toast.error("保存失败：" + (e as Error).message);
+      toast.error(swt("interface.m1450") + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -643,10 +647,10 @@ function CustomToolDialog({
     if (!tool) return;
     try {
       await api.deleteCustomTool(tool.key);
-      toast.success("已删除");
+      toast.success(swt("interface.m0700"));
       onSaved();
     } catch (e) {
-      toast.error("删除失败：" + (e as Error).message);
+      toast.error(swt("interface.m0110") + (e as Error).message);
     }
   }
   // runTest dry-runs the CURRENT form (unsaved) with the sample params, so a
@@ -654,10 +658,10 @@ function CustomToolDialog({
   async function runTest() {
     let params: Record<string, unknown> = {};
     if (paramsText.trim()) {
-      try { params = JSON.parse(paramsText); } catch { toast.error("测试参数 JSON 格式错误"); return; }
+      try { params = JSON.parse(paramsText); } catch { toast.error(swt("interface.m1869")); return; }
     }
     if (kind === "http" && ex.headers.trim()) {
-      try { JSON.parse(ex.headers); } catch { toast.error("headers JSON 格式错误"); return; }
+      try { JSON.parse(ex.headers); } catch { toast.error(swt("interface.m1866")); return; }
     }
     setTesting(true);
     setTestResult(null);
@@ -678,47 +682,47 @@ function CustomToolDialog({
         className="flex flex-col gap-0 p-0 data-[side=right]:w-[45vw] data-[side=right]:sm:max-w-[45vw] data-[side=right]:min-w-[480px]"
       >
         <SheetHeader className="px-4">
-          <SheetTitle>{isNew ? "新建自定义工具" : `编辑 ${tool?.key}`}</SheetTitle>
-          <SheetDescription>shell=bash 环境声明(只需名称+描述，告知模型可用 bash 调用)；command/script/http 需写执行规格。</SheetDescription>
+          <SheetTitle>{isNew ? swt("interface.m1860") : swt("interface.m1870", { p0: tool?.key })}</SheetTitle>
+          <SheetDescription>{swt("interface.m1871")}</SheetDescription>
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
           <div className="grid gap-1.5">
-            <Label className="text-xs">Key</Label>
-            <Input className="font-mono" placeholder="如 nmap_scan" value={key} disabled={!isNew}
+            <Label className="text-xs">{swt("english.e085")}</Label>
+            <Input className="font-mono" placeholder={swt("interface.m1872")} value={key} disabled={!isNew}
               onChange={(e) => setKey(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
-            <Label className="text-xs">描述(发给模型)</Label>
+            <Label className="text-xs">{swt("interface.m1873")}</Label>
             <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
 
           <div className="grid gap-1.5">
-            <Label className="text-xs">类型</Label>
+            <Label className="text-xs">{swt("interface.m0546")}</Label>
             <Select value={kind} onValueChange={(v) => setKind(v as "shell" | "command" | "script" | "http")}>
               <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="shell">shell（bash 环境声明）</SelectItem>
-                <SelectItem value="command">command（shell 命令模板）</SelectItem>
-                <SelectItem value="script">script（Python 脚本）</SelectItem>
-                <SelectItem value="http">http（API 请求）</SelectItem>
+                <SelectItem value="shell">{swt("interface.m1874")}</SelectItem>
+                <SelectItem value="command">{swt("interface.m1875")}</SelectItem>
+                <SelectItem value="script">{swt("interface.m1876")}</SelectItem>
+                <SelectItem value="http">{swt("interface.m1877")}</SelectItem>
               </SelectContent>
             </Select>
             {kind === "shell" && (
-              <p className="text-muted-foreground text-xs">适合 nmap、sqlmap、ffuf 等出名工具——模型已知用法，只需声明"可在 bash 中调用"即可。名称+描述会追加到 Bash 工具描述里。</p>
+              <p className="text-muted-foreground text-xs">{swt("interface.m1878")}</p>
             )}
           </div>
 
           {kind === "command" && (
             <div className="grid gap-1.5">
-              <Label className="text-xs">命令模板（占位符 {"{param}"}，如 nmap -p {"{ports}"} {"{target}"}）</Label>
+              <Label className="text-xs">{swt("interface.m1879")}{" "}{"{param}"}{swt("interface.m1880")}{" "}{"{ports}"} {"{target}"}）</Label>
               <Textarea className="font-mono text-xs" rows={2} value={ex.command}
                 onChange={(e) => setEx({ ...ex, command: e.target.value })} />
             </div>
           )}
           {kind === "script" && (
             <div className="grid gap-1.5">
-              <Label className="text-xs">Python 正文（参数走 stdin JSON / os.environ["TOOL_X"]）</Label>
+              <Label className="text-xs">{swt("interface.m1881")}</Label>
               <Textarea className="font-mono text-xs" rows={10} value={ex.code}
                 placeholder={'import json,sys\nargs=json.load(sys.stdin)\nprint(...)'}
                 onChange={(e) => setEx({ ...ex, code: e.target.value })} />
@@ -728,32 +732,31 @@ function CustomToolDialog({
             <div className="grid gap-2">
               <div className="flex gap-2">
                 <div className="grid gap-1.5">
-                  <Label className="text-xs">Method</Label>
+                  <Label className="text-xs">{swt("english.e139")}</Label>
                   <Input className="w-24" value={ex.method} onChange={(e) => setEx({ ...ex, method: e.target.value })} />
                 </div>
                 <div className="grid flex-1 gap-1.5">
-                  <Label className="text-xs">URL（可含 {"{param}"}）</Label>
+                  <Label className="text-xs">{swt("interface.m1882")}{" "}{"{param}"}）</Label>
                   <Input className="font-mono text-xs" value={ex.url} onChange={(e) => setEx({ ...ex, url: e.target.value })} />
                 </div>
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-xs">Headers（JSON，可含 {"{param}"}）</Label>
+                <Label className="text-xs">{swt("interface.m1883")}{" "}{"{param}"}）</Label>
                 <Textarea className="font-mono text-xs" rows={2} value={ex.headers}
                   placeholder={'{"Authorization": "Bearer {token}"}'} onChange={(e) => setEx({ ...ex, headers: e.target.value })} />
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-xs">Body（可含 {"{param}"}）</Label>
+                <Label className="text-xs">{swt("interface.m1884")}{" "}{"{param}"}）</Label>
                 <Textarea className="font-mono text-xs" rows={2} value={ex.body} onChange={(e) => setEx({ ...ex, body: e.target.value })} />
               </div>
               <div className="flex items-center gap-4">
                 <div className="grid gap-1.5">
-                  <Label className="text-xs">代理 URL（空=直连）</Label>
+                  <Label className="text-xs">{swt("interface.m1885")}</Label>
                   <Input className="font-mono text-xs w-56" value={ex.proxy} onChange={(e) => setEx({ ...ex, proxy: e.target.value })} />
                 </div>
                 <label className="mt-4 flex items-center gap-2 text-sm">
                   <Checkbox checked={ex.use_recording_proxy} onCheckedChange={(v) => setEx({ ...ex, use_recording_proxy: !!v })} />
-                  走记录代理
-                </label>
+                  {swt("interface.m1886")}</label>
               </div>
             </div>
           )}
@@ -761,7 +764,7 @@ function CustomToolDialog({
           {kind !== "shell" && (
             <div className="flex items-center gap-3">
               <div className="grid gap-1.5">
-                <Label className="text-xs">超时(ms，空=默认)</Label>
+                <Label className="text-xs">{swt("interface.m1887")}</Label>
                 <Input type="number" className="w-32" value={ex.timeout_ms} onChange={(e) => setEx({ ...ex, timeout_ms: e.target.value })} />
               </div>
             </div>
@@ -770,7 +773,7 @@ function CustomToolDialog({
           {kind !== "shell" && (
             <div className="grid gap-1.5">
               <Label className="text-xs">
-                参数 JSON Schema{kind === "http" ? "（http 工具必填，需含 properties）" : "（留空 = 自动给 {args} 薄壳）"}
+                {swt("interface.m1888")}{" "}{kind === "http" ? swt("interface.m1889") : swt("interface.m1890")}
               </Label>
               <Textarea className="font-mono text-xs" rows={4} value={schemaText}
                 placeholder={'{"type":"object","properties":{"target":{"type":"string"}},"required":["target"]}'}
@@ -779,7 +782,7 @@ function CustomToolDialog({
           )}
 
           <div className="grid gap-1.5">
-            <Label className="text-muted-foreground text-xs">绑定 Agent</Label>
+            <Label className="text-muted-foreground text-xs">{swt("interface.m1891")}</Label>
             <div className="flex flex-wrap gap-3">
               {agents.map((a) => (
                 <label key={a.key} className="flex items-center gap-2 text-sm">
@@ -792,24 +795,22 @@ function CustomToolDialog({
 
           <div className="flex items-center gap-6">
             <label className="flex items-center gap-2 text-sm">
-              <Switch checked={enabled} onCheckedChange={setEnabled} /> 启用
-            </label>
+              <Switch checked={enabled} onCheckedChange={setEnabled} /> {swt("interface.m1174")}</label>
             {kind !== "shell" && (
               <label className="flex items-center gap-2 text-sm">
-                <Switch checked={deferred} onCheckedChange={setDeferred} /> deferred（大量不常用工具才开）
-              </label>
+                <Switch checked={deferred} onCheckedChange={setDeferred} /> {swt("interface.m1892")}</label>
             )}
           </div>
 
           {kind !== "shell" && (
             <div className="grid gap-1.5 rounded-md border p-3">
-              <Label className="text-xs font-medium">测试运行（用当前表单，不会保存）</Label>
+              <Label className="text-xs font-medium">{swt("interface.m1893")}</Label>
               <Textarea className="font-mono text-xs" rows={2} value={paramsText}
-                placeholder={'示例参数 JSON，如 {"target":"example.com"}'}
+                placeholder={swt("interface.m1894")}
                 onChange={(e) => setParamsText(e.target.value)} />
               <div>
                 <Button size="sm" variant="outline" onClick={runTest} disabled={testing}>
-                  <PlayIcon /> {testing ? "运行中…" : "测试运行"}
+                  <PlayIcon /> {testing ? swt("interface.m1895") : swt("interface.m1896")}
                 </Button>
               </div>
               {testResult && (
@@ -819,7 +820,7 @@ function CustomToolDialog({
                     (testResult.is_error ? "text-destructive" : "")
                   }
                 >
-                  {testResult.output || "（无输出）"}
+                  {testResult.output || swt("interface.m1897")}
                 </pre>
               )}
             </div>
@@ -829,12 +830,11 @@ function CustomToolDialog({
         <Separator />
         <div className="flex items-center gap-2 p-4">
           <Button size="sm" onClick={save} disabled={saving}>
-            <SaveIcon /> {isNew ? "创建" : "保存"}
+            <SaveIcon /> {isNew ? swt("interface.m0995") : swt("interface.m0273")}
           </Button>
           {!isNew && (
             <Button size="sm" variant="outline" className="text-destructive" onClick={del}>
-              <Trash2Icon /> 删除
-            </Button>
+              <Trash2Icon /> {swt("interface.m0101")}</Button>
           )}
         </div>
       </SheetContent>

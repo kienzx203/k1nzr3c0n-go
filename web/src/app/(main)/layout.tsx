@@ -1,4 +1,5 @@
 "use client";
+import { useI18n } from "@/i18n";
 
 import type { ReactNode } from "react";
 import * as React from "react";
@@ -29,6 +30,9 @@ function readPref<T extends string>(key: string, allowed: readonly T[], fallback
 }
 
 export default function Layout({ children }: Readonly<{ children: ReactNode }>) {
+  "use no memo";
+  const { locale: swLocale } = useI18n();
+
   // Client-side auth gate — replaces the Next proxy/middleware that static export
   // disables. No token → bounce to /login; render nothing until confirmed so no
   // protected UI (or its API calls) flashes for a logged-out visitor.
@@ -37,9 +41,9 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
     if (auth.getToken()) {
       setAuthed(true);
     } else {
-      // 客户端守卫认为未登录时，必须同时清掉 cookie：否则 proxy.ts 仅凭
-      // “cookie 存在”就把我们从 /login 又重定向回主界面，与本守卫来回弹跳
-      // 形成无限重定向 → 白屏（cookie 与 localStorage 不一致时触发）。
+      // When the client guard finds no login, also clear the cookie. Otherwise proxy.ts sees its presence
+      // and redirects /login back to the app, while this guard redirects back again,
+      // creating an infinite redirect and blank screen when cookie and localStorage disagree.
       auth.clearToken();
       window.location.href = "/login";
     }

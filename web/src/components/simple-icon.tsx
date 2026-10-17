@@ -1,4 +1,5 @@
 "use client";
+import { useI18n } from "@/i18n";
 
 import type * as React from "react";
 
@@ -12,6 +13,9 @@ type SimpleIconProps = {
 } & React.SVGProps<SVGSVGElement>;
 
 export function SimpleIcon({ icon, className, ...props }: SimpleIconProps) {
+  "use no memo";
+  const { locale: swLocale } = useI18n();
+
   const { title, path } = icon;
 
   return (

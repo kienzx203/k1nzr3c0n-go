@@ -1,5 +1,8 @@
 "use client";
+import { getIntlLocale } from "@/i18n/runtime";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { toast } from "sonner";
@@ -24,6 +27,9 @@ export function TrafficEvidenceViewer({
   contextTask?: string;
   onClose: () => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [detail, setDetail] = React.useState<FindingTrafficDetail | null>(null);
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -71,9 +77,9 @@ export function TrafficEvidenceViewer({
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>流量证据 #{bindingId}</DialogTitle>
+          <DialogTitle>{swt("interface.m2372")}{bindingId}</DialogTitle>
           <DialogDescription className="break-all">
-            {detail?.binding.snapshot.url ?? "查看绑定时保存的请求与响应"}
+            {detail?.binding.snapshot.url ?? swt("interface.m2373")}
           </DialogDescription>
         </DialogHeader>
         {error ? (
@@ -83,14 +89,14 @@ export function TrafficEvidenceViewer({
         ) : detail ? (
           <Tabs defaultValue="request">
             <TabsList>
-              <TabsTrigger value="request">请求 Request</TabsTrigger>
-              <TabsTrigger value="response">响应 Response</TabsTrigger>
+              <TabsTrigger value="request">{swt("interface.m1100")}</TabsTrigger>
+              <TabsTrigger value="response">{swt("interface.m1101")}</TabsTrigger>
             </TabsList>
             {(["request", "response"] as const).map((side) => (
               <TabsContent key={side} value={side}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground">
-                    正文 {detail[side].total.toLocaleString()} 字节{detail[side].truncated ? " · 当前为预览" : ""}
+                    {swt("interface.m1826")}{" "}{detail[side].total.toLocaleString(getIntlLocale())} {swt("interface.m2374")}{" "}{detail[side].truncated ? swt("interface.m2375") : ""}
                   </span>
                   <Button
                     variant="outline"
@@ -101,16 +107,14 @@ export function TrafficEvidenceViewer({
                         .catch((e: Error) => toast.error(e.message))
                     }
                   >
-                    下载完整{side === "request" ? "请求" : "响应"}正文
-                  </Button>
+                    {swt("interface.m2376")}{" "}{side === "request" ? swt("interface.m2377") : swt("interface.m2378")}{" "}{swt("interface.m1826")}</Button>
                 </div>
                 <HttpCodeBlock
                   raw={`${(side === "request" ? detail.binding.snapshot.req_head : detail.binding.snapshot.resp_head)?.trimEnd() ?? ""}\n\n${detail[side].content}`}
                 />
                 {detail[side].truncated && !detail[side].binary ? (
                   <Button variant="outline" size="sm" disabled={busy} onClick={() => void more(side)}>
-                    加载更多正文
-                  </Button>
+                    {swt("interface.m2379")}</Button>
                 ) : null}
               </TabsContent>
             ))}
@@ -124,6 +128,9 @@ export function TrafficEvidenceViewer({
 }
 
 export function CapturedTrafficViewer({ id, onClose }: { id: string | null; onClose: () => void }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [detail, setDetail] = React.useState<TrafficDetail | null>(null);
   const [error, setError] = React.useState("");
   React.useEffect(() => {
@@ -152,8 +159,8 @@ export function CapturedTrafficViewer({ id, onClose }: { id: string | null; onCl
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>预览流量</DialogTitle>
-          <DialogDescription>流量 ID：{id}。绑定时会保存完整正文。</DialogDescription>
+          <DialogTitle>{swt("interface.m2380")}</DialogTitle>
+          <DialogDescription>{swt("interface.m2381")}{id}{swt("interface.m2382")}</DialogDescription>
         </DialogHeader>
         {error ? (
           <Alert variant="destructive">
@@ -162,8 +169,8 @@ export function CapturedTrafficViewer({ id, onClose }: { id: string | null; onCl
         ) : detail ? (
           <Tabs defaultValue="request">
             <TabsList>
-              <TabsTrigger value="request">请求 Request</TabsTrigger>
-              <TabsTrigger value="response">响应 Response</TabsTrigger>
+              <TabsTrigger value="request">{swt("interface.m1100")}</TabsTrigger>
+              <TabsTrigger value="response">{swt("interface.m1101")}</TabsTrigger>
             </TabsList>
             <TabsContent value="request">
               <HttpCodeBlock raw={detail.req} />

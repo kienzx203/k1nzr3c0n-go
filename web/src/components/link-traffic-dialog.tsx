@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { toast } from "sonner";
@@ -28,6 +30,9 @@ export function LinkTrafficDialog({
   onClose: () => void;
   onBound: () => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [query, setQuery] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [data, setData] = React.useState<FindingsPage | null>(null);
@@ -66,7 +71,7 @@ export function LinkTrafficDialog({
         selected.finding_id,
         trafficIds.map((traffic_id) => ({ traffic_id })),
       );
-      toast.success(`已关联 ${trafficIds.length} 条流量到漏洞 #${selected.finding_id}`);
+      toast.success(swt("interface.m2259", { p0: trafficIds.length, p1: selected.finding_id }));
       onBound();
       onClose();
     } catch (e) {
@@ -84,15 +89,15 @@ export function LinkTrafficDialog({
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>关联到漏洞</DialogTitle>
-          <DialogDescription>将所选 {trafficIds.length} 条流量保存为已有漏洞的证据。</DialogDescription>
+          <DialogTitle>{swt("interface.m1095")}</DialogTitle>
+          <DialogDescription>{swt("interface.m2260")}{" "}{trafficIds.length} {swt("interface.m2261")}</DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="link-finding-query">查找漏洞</FieldLabel>
+            <FieldLabel htmlFor="link-finding-query">{swt("interface.m2262")}</FieldLabel>
             <Input
               id="link-finding-query"
-              placeholder="名称 / 摘要 / 漏洞类别"
+              placeholder={swt("interface.m2263")}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -126,35 +131,31 @@ export function LinkTrafficDialog({
           ))}
           {!data?.items.length ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              {loading ? "加载中…" : "没有匹配的漏洞，请先登记漏洞"}
+              {loading ? swt("interface.m0260") : swt("interface.m2264")}
             </p>
           ) : null}
         </div>
         <div className="flex items-center justify-between gap-2">
           <Button variant="outline" size="sm" disabled={loading || page <= 1} onClick={() => setPage((p) => p - 1)}>
-            上一页
-          </Button>
+            {swt("interface.m0488")}</Button>
           <span className="text-xs">
-            第 {page} 页 · 共 {data?.total ?? 0} 条
-          </span>
+            {swt("interface.m0489")}{" "}{page} {swt("interface.m2265")}{" "}{data?.total ?? 0} {swt("interface.m0328")}</span>
           <Button
             variant="outline"
             size="sm"
             disabled={loading || page * 20 >= (data?.total ?? 0)}
             onClick={() => setPage((p) => p + 1)}
           >
-            下一页
-          </Button>
+            {swt("interface.m0491")}</Button>
         </div>
         <p className="text-sm">
-          {selected ? `已选漏洞：#${selected.finding_id} ${selected.name || selected.vulnclass}` : "请选择一个漏洞"}
+          {selected ? swt("interface.m2266", { p0: selected.finding_id, p1: selected.name || selected.vulnclass }) : swt("interface.m2267")}
         </p>
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={onClose}>
-            取消
-          </Button>
+            {swt("interface.m0063")}</Button>
           <Button disabled={busy || !selected} onClick={() => void save()}>
-            {busy ? "保存中…" : "确认关联"}
+            {busy ? swt("interface.m0272") : swt("interface.m2268")}
           </Button>
         </DialogFooter>
       </DialogContent>

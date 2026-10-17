@@ -1,5 +1,8 @@
 "use client";
+import { getIntlLocale } from "@/i18n/runtime";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { BarChart3Icon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, SearchIcon, TerminalIcon } from "lucide-react";
@@ -17,7 +20,7 @@ import type { CommandRecord, ToolStat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN", {
+  return new Date(ts).toLocaleString(getIntlLocale(), {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -50,6 +53,9 @@ const PAGE_SIZES = [25, 50, 100];
 const CMD_MAX_LEN = 80;
 
 export default function CommandsPage() {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [page, setPage] = React.useState(0);
   const [size, setSize] = React.useState(50);
   const [query, setQuery] = React.useState("");
@@ -60,7 +66,7 @@ export default function CommandsPage() {
   const [total, setTotal] = React.useState(0);
   const [loading, setLoading] = React.useState(false);
 
-  // 各工具调用次数。弹窗打开时才拉取（多一次聚合查询，不必每次翻页都付）。
+  // Fetch tool call counts only while the dialog is open; avoid aggregation on every page change.
   const [statsOpen, setStatsOpen] = React.useState(false);
   const [stats, setStats] = React.useState<ToolStat[]>([]);
   const [statsLoading, setStatsLoading] = React.useState(false);
@@ -102,7 +108,7 @@ export default function CommandsPage() {
     };
   }, [page, size, queryQ, taskFilter]);
 
-  // 统计跟随筛选条件走，和表格描述的是同一批记录（但不分页）。
+  // Statistics follow table filters over all matching records without pagination.
   React.useEffect(() => {
     if (!statsOpen) return;
     let alive = true;
@@ -130,7 +136,7 @@ export default function CommandsPage() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <TerminalIcon className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-xl font-semibold tracking-tight">工具执行</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{swt("interface.m0287")}</h1>
           <Badge variant="secondary">{total}</Badge>
         </div>
       </div>
@@ -140,14 +146,14 @@ export default function CommandsPage() {
         <div className="relative max-w-sm flex-1">
           <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="搜索工具 / 参数..."
+            placeholder={swt("interface.m0288")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="h-8 pl-8"
           />
         </div>
         <Input
-          placeholder="任务 ID"
+          placeholder={swt("interface.m0289")}
           className="h-8 w-28"
           value={taskFilter}
           onChange={(e) => setTaskFilter(e.target.value.replace(/\D/g, ""))}
@@ -159,16 +165,14 @@ export default function CommandsPage() {
           <SelectContent>
             {PAGE_SIZES.map((n) => (
               <SelectItem key={n} value={String(n)}>
-                {n} / 页
-              </SelectItem>
+                {n} {swt("interface.m0261")}</SelectItem>
             ))}
           </SelectContent>
         </Select>
 
         <Button variant="outline" size="sm" className="h-8" onClick={() => setStatsOpen(true)}>
           <BarChart3Icon className="size-4" />
-          统计
-        </Button>
+          {swt("interface.m0290")}</Button>
 
         <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">
@@ -205,12 +209,12 @@ export default function CommandsPage() {
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
-                  <TableHead className="w-[130px]">时间</TableHead>
-                  <TableHead className="w-[60px]">任务</TableHead>
-                  <TableHead className="w-[90px]">Worker</TableHead>
-                  <TableHead className="w-[110px]">工具</TableHead>
-                  <TableHead>输入</TableHead>
-                  <TableHead className="w-[60px]">状态</TableHead>
+                  <TableHead className="w-[130px]">{swt("interface.m0291")}</TableHead>
+                  <TableHead className="w-[60px]">{swt("interface.m0190")}</TableHead>
+                  <TableHead className="w-[90px]">{swt("english.e057")}</TableHead>
+                  <TableHead className="w-[110px]">{swt("interface.m0292")}</TableHead>
+                  <TableHead>{swt("interface.m0135")}</TableHead>
+                  <TableHead className="w-[60px]">{swt("interface.m0191")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -223,8 +227,7 @@ export default function CommandsPage() {
                 ) : commands.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
-                      暂无工具执行记录
-                    </TableCell>
+                      {swt("interface.m0293")}</TableCell>
                   </TableRow>
                 ) : (
                   commands.map((cmd) => (
@@ -255,12 +258,10 @@ export default function CommandsPage() {
                       <TableCell>
                         {cmd.is_error ? (
                           <Badge variant="destructive" className="text-xs">
-                            失败
-                          </Badge>
+                            {swt("interface.m0294")}</Badge>
                         ) : (
                           <Badge variant="secondary" className="text-xs text-emerald-600">
-                            成功
-                          </Badge>
+                            {swt("interface.m0295")}</Badge>
                         )}
                       </TableCell>
                     </TableRow>
@@ -272,21 +273,20 @@ export default function CommandsPage() {
         </Card>
       </div>
 
-      {/* 工具调用统计：与表格同一批记录（同筛选、不分页） */}
+      {/* Tool statistics cover the table's filters over all records without pagination. */}
       <Dialog open={statsOpen} onOpenChange={setStatsOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>工具调用统计</DialogTitle>
+            <DialogTitle>{swt("interface.m0296")}</DialogTitle>
             <DialogDescription>
-              {taskFilter || queryQ ? "当前筛选条件下的全部记录" : "全部工具执行记录"}
+              {taskFilter || queryQ ? swt("interface.m0297") : swt("interface.m0298")}
               {stats.length > 0 && (
                 <>
                   {" · "}
-                  <span className="tabular-nums">{stats.length}</span> 个工具 ·{" "}
-                  <span className="tabular-nums">{statsTotal}</span> 次调用
-                  {statsErrors > 0 && (
+                  <span className="tabular-nums">{stats.length}</span> {swt("interface.m0299")}{" "}
+                  <span className="tabular-nums">{statsTotal}</span> {swt("interface.m0300")}{" "}{statsErrors > 0 && (
                     <>
-                      {" · 失败 "}
+                      {swt("interface.m0301")}
                       <span className="tabular-nums text-red-600 dark:text-red-400">{statsErrors}</span>
                     </>
                   )}
@@ -300,7 +300,7 @@ export default function CommandsPage() {
               <Loader2Icon className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : stats.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">暂无统计数据</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">{swt("interface.m0302")}</div>
           ) : (
             <div className="-mr-2 max-h-[55vh] space-y-1 overflow-auto pr-2">
               {stats.map((s) => (
@@ -309,7 +309,7 @@ export default function CommandsPage() {
                     <div className="flex items-center gap-2">
                       <span className="truncate font-mono text-xs font-medium">{s.tool}</span>
                       {s.errors > 0 && (
-                        <span className="text-[11px] tabular-nums text-red-600 dark:text-red-400">失败 {s.errors}</span>
+                        <span className="text-[11px] tabular-nums text-red-600 dark:text-red-400">{swt("interface.m0294")}{" "}{s.errors}</span>
                       )}
                     </div>
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -337,7 +337,7 @@ export default function CommandsPage() {
           {selected && (
             <>
               <SheetHeader className="border-b px-5 py-4">
-                <SheetTitle className="pr-8">工具执行详情</SheetTitle>
+                <SheetTitle className="pr-8">{swt("interface.m0303")}</SheetTitle>
                 <SheetDescription>{fmtTime(selected.created_at)}</SheetDescription>
                 <div className="flex flex-wrap items-center gap-2 pt-2">
                   <Badge variant="outline" className="text-xs font-mono">
@@ -351,18 +351,16 @@ export default function CommandsPage() {
                   </Badge>
                   {selected.is_error ? (
                     <Badge variant="destructive" className="text-xs">
-                      失败
-                    </Badge>
+                      {swt("interface.m0294")}</Badge>
                   ) : (
                     <Badge variant="secondary" className="text-xs text-emerald-600">
-                      成功
-                    </Badge>
+                      {swt("interface.m0295")}</Badge>
                   )}
                 </div>
               </SheetHeader>
               <div className="grid min-h-0 flex-1 grid-rows-2 divide-y">
                 <div className="flex min-h-0 min-w-0 flex-col">
-                  <div className="border-b px-5 py-2 text-xs font-medium text-muted-foreground">输入 Input</div>
+                  <div className="border-b px-5 py-2 text-xs font-medium text-muted-foreground">{swt("interface.m0304")}</div>
                   <div className="min-h-0 flex-1 overflow-auto">
                     <pre className="p-5 font-mono text-xs break-all whitespace-pre-wrap">
                       {toolInput(selected.command)}
@@ -370,7 +368,7 @@ export default function CommandsPage() {
                   </div>
                 </div>
                 <div className="flex min-h-0 min-w-0 flex-col">
-                  <div className="border-b px-5 py-2 text-xs font-medium text-muted-foreground">输出 Output</div>
+                  <div className="border-b px-5 py-2 text-xs font-medium text-muted-foreground">{swt("interface.m0305")}</div>
                   <div className="min-h-0 flex-1 overflow-auto">
                     <pre
                       className={cn(
@@ -378,7 +376,7 @@ export default function CommandsPage() {
                         selected.is_error && "text-red-600 dark:text-red-400",
                       )}
                     >
-                      {selected.output || "（空）"}
+                      {selected.output || swt("interface.m0306")}
                     </pre>
                   </div>
                 </div>

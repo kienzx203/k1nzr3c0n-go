@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { AtSignIcon, ChevronRightIcon, Loader2Icon, XIcon } from "lucide-react";
@@ -26,6 +28,9 @@ type Props = Omit<React.ComponentProps<"textarea">, "value" | "onChange" | "ref"
 };
 
 export function MentionTextarea({ value, onValueChange, onKeyDown, className, inputGroup, disabled, ...props }: Props) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const textarea = React.useRef<HTMLTextAreaElement>(null);
   const composing = React.useRef(false);
   const pendingKeyboardIndex = React.useRef<number | null>(null);
@@ -198,7 +203,7 @@ export function MentionTextarea({ value, onValueChange, onKeyDown, className, in
               value={value}
               disabled={disabled}
               className={className}
-              aria-label={props["aria-label"] ?? "消息，输入 @ 引用记录"}
+              aria-label={props["aria-label"] ?? swt("interface.m2269")}
               aria-autocomplete="list"
               aria-controls={open ? listId : undefined}
               aria-expanded={open}
@@ -230,20 +235,20 @@ export function MentionTextarea({ value, onValueChange, onKeyDown, className, in
           onInteractOutside={(event) => {
             if (event.target === textarea.current) event.preventDefault();
           }}
-          aria-label="选择引用记录"
+          aria-label={swt("interface.m2270")}
         >
           <div className="flex items-center justify-between px-2 py-1 text-muted-foreground text-xs">
             <span>
               {categories.length
-                ? "选择引用类型"
-                : `搜索${mentionKinds.find((kind) => kind.kind === search.kind)?.label ?? "全部记录"}`}
+                ? swt("interface.m2271")
+                : swt("interface.m2272", { p0: mentionKinds.find((kind) => kind.kind === search.kind)?.label ?? swt("interface.m2160") })}
             </span>
-            <span>↑↓ 选择 · Enter 确认 · Esc 关闭</span>
+            <span>{swt("interface.m2273")}</span>
           </div>
           <div
             id={listId}
             role="listbox"
-            aria-label="引用候选"
+            aria-label={swt("interface.m2274")}
             className="max-h-60 overflow-y-auto"
             onScroll={(event) => {
               const list = event.currentTarget;
@@ -272,18 +277,15 @@ export function MentionTextarea({ value, onValueChange, onKeyDown, className, in
             {!categories.length && loading && (
               <div role="status" className="flex items-center gap-2 p-3 text-muted-foreground text-sm">
                 <Loader2Icon className="size-4 animate-spin" />
-                搜索中…
-              </div>
+                {swt("interface.m2195")}</div>
             )}
             {!categories.length && !loading && error && (
               <div role="alert" className="p-3 text-destructive text-sm">
-                搜索失败：{error}。请重新输入重试。
-              </div>
+                {swt("interface.m2275")}{error}{swt("interface.m2276")}</div>
             )}
             {!categories.length && !loading && !error && !items.length && (
               <div role="status" className="p-3 text-muted-foreground text-sm">
-                没有匹配记录，请更换名称、地址或 ID
-              </div>
+                {swt("interface.m2277")}</div>
             )}
             {items.map((item, index) => (
               <button
@@ -310,17 +312,17 @@ export function MentionTextarea({ value, onValueChange, onKeyDown, className, in
           </div>
           {!categories.length && (
             <p className="px-2 py-1 text-muted-foreground text-xs">
-              {loadingMore && <span role="status">正在加载更多…</span>}
+              {loadingMore && <span role="status">{swt("interface.m2278")}</span>}
               {!loadingMore && nextCursor && (
                 <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={loadMore}>
-                  {pageError ? "加载失败，点击重试" : `已显示 ${items.length} 条，向下滚动加载更多`}
+                  {pageError ? swt("interface.m2279") : swt("interface.m2280", { p0: items.length })}
                 </button>
               )}
-              {!loadingMore && !nextCursor && !loading && !error && items.length > 0 && `已显示全部 ${items.length} 条`}
+              {!loadingMore && !nextCursor && !loading && !error && items.length > 0 && swt("interface.m2281", { p0: items.length })}
               {!loadingMore &&
                 !nextCursor &&
                 (loading || !!error || items.length === 0) &&
-                "输入名称、地址或 ID 搜索记录"}
+                swt("interface.m2282")}
             </p>
           )}
         </PopoverContent>
@@ -335,7 +337,7 @@ export function MentionTextarea({ value, onValueChange, onKeyDown, className, in
               <button
                 type="button"
                 disabled={disabled}
-                aria-label={`移除引用 ${item.label}`}
+                aria-label={swt("interface.m2283", { p0: item.label })}
                 onClick={() => {
                   onValueChange(value.slice(0, item.start) + value.slice(item.start + item.token.length));
                   setCursor(null);
@@ -345,7 +347,7 @@ export function MentionTextarea({ value, onValueChange, onKeyDown, className, in
               </button>
             </Badge>
           ))}
-          <span className="text-muted-foreground text-xs">发送时读取最新详情 · 最多 10 条</span>
+          <span className="text-muted-foreground text-xs">{swt("interface.m2284")}</span>
         </div>
       )}
     </div>

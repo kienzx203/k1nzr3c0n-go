@@ -1,5 +1,8 @@
 "use client";
+import { getIntlLocale } from "@/i18n/runtime";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import {
@@ -131,14 +134,16 @@ function groupByAgent(conversations: Conversation[], agentByKey: Map<string, Age
   return [...groups.values()];
 }
 
-// LiveBadge is the small pulsing "实时" chip reused from the task's main-agent
+// LiveBadge is the small pulsing Live chip reused from the task's main-agent
 // console — shown while a turn is streaming.
 function LiveBadge() {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return (
     <span className="inline-flex items-center gap-1 rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
       <span className="size-1 animate-pulse rounded-full bg-blue-500" />
-      实时
-    </span>
+      {swt("interface.m0068")}</span>
   );
 }
 
@@ -169,16 +174,19 @@ function Composer({
   running?: boolean;
   onStop?: () => void;
   stopDisabled?: boolean;
-  // 方式1 文件上传:传了 onPickFiles 才显示回形针按钮 + 附件 chip 预览。
+  // File upload mode: show the attachment button and preview chips only when onPickFiles is supplied.
   attachments?: ChatAttachment[];
   onPickFiles?: (files: File[]) => void;
   onRemoveAttachment?: (path: string) => void;
   uploading?: boolean;
   allowBtw?: boolean;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const atts = attachments ?? [];
-  // 发送键位由系统设置决定（localStorage），默认 Enter 发送。
+  // The send shortcut follows localStorage settings; Enter sends by default.
   const sendMode = useChatSendMode();
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (!shouldSubmitOnKey(e, sendMode)) return;
@@ -203,7 +211,7 @@ function Composer({
                   type="button"
                   className="ml-0.5 text-muted-foreground hover:text-foreground"
                   onClick={() => onRemoveAttachment(a.path)}
-                  title="移除"
+                  title={swt("interface.m0069")}
                 >
                   <XIcon className="size-3" />
                 </button>
@@ -222,8 +230,8 @@ function Composer({
               multiple
               className="hidden"
               onChange={(e) => {
-                // FileList 与 input 元素活绑定:必须先快照成数组,再清空 value,
-                // 否则异步的 onPickFiles(比如草稿态要先建会话)恢复执行时会拿到空列表。
+                // FileList is live-bound to the input. Snapshot it before clearing value,
+                // or asynchronous onPickFiles handlers that create a session first will receive an empty list.
                 const picked = Array.from(e.target.files ?? []);
                 e.target.value = ""; // allow re-picking the same file
                 if (picked.length > 0) onPickFiles(picked);
@@ -234,7 +242,7 @@ function Composer({
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled || uploading}
-              title="上传文件"
+              title={swt("interface.m0070")}
             >
               {uploading ? <Loader2Icon className="size-4 animate-spin" /> : <PaperclipIcon className="size-4" />}
             </Button>
@@ -250,14 +258,14 @@ function Composer({
           onKeyDown={onKeyDown}
         />
         {running && allowBtw && isBtwCommand(value) && (
-          <Button size="icon" onClick={onSend} aria-label="发送旁路问题" title="发送旁路问题">
+          <Button size="icon" onClick={onSend} aria-label={swt("interface.m0071")} title={swt("interface.m0071")}>
             <ArrowUpIcon />
           </Button>
         )}
         {running ? (
           // while a run is in flight the send button becomes a stop button —
           // aborts just this session (the trigger queue keeps going).
-          <Button size="icon" variant="destructive" onClick={onStop} disabled={stopDisabled} title="停止本次运行">
+          <Button size="icon" variant="destructive" onClick={onStop} disabled={stopDisabled} title={swt("interface.m0072")}>
             <Square className="size-3.5 fill-current" />
           </Button>
         ) : (
@@ -265,8 +273,8 @@ function Composer({
             size="icon"
             onClick={onSend}
             disabled={disabled || (!value.trim() && atts.length === 0)}
-            title="发送消息"
-            aria-label="发送消息"
+            title={swt("interface.m0073")}
+            aria-label={swt("interface.m0073")}
           >
             <ArrowUpIcon />
           </Button>
@@ -291,10 +299,13 @@ function LLMProfileRow({
   disabled?: boolean;
   rightSlot?: React.ReactNode;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [open, setOpen] = React.useState(false);
   const activeDefault = profiles.find((p) => p.is_default);
   const current = selected != null ? profiles.find((p) => Number(p.id) === selected) : null;
-  const label = current ? current.name : `默认${activeDefault ? `（${activeDefault.name}）` : ""}`;
+  const label = current ? current.name : swt("interface.m0074", { p0: activeDefault ? `（${activeDefault.name}）` : "" });
 
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-1 px-1 pt-0.5 pb-1">
@@ -309,12 +320,11 @@ function LLMProfileRow({
             disabled={disabled}
             className="flex shrink-0 items-center gap-0.5 text-primary text-xs hover:underline disabled:pointer-events-none disabled:opacity-40"
           >
-            更换
-            <ChevronDownIcon className="size-3" />
+            {swt("interface.m0075")}<ChevronDownIcon className="size-3" />
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-64 p-1">
-          <p className="text-muted-foreground px-2 py-1 text-[11px] font-medium">选择 LLM 配置</p>
+          <p className="text-muted-foreground px-2 py-1 text-[11px] font-medium">{swt("interface.m0076")}</p>
           {/* default option */}
           <button
             type="button"
@@ -327,7 +337,7 @@ function LLMProfileRow({
               selected == null && "bg-accent",
             )}
           >
-            <span className="text-sm">默认{activeDefault ? `（${activeDefault.name}）` : ""}</span>
+            <span className="text-sm">{swt("interface.m0077")}{" "}{activeDefault ? `（${activeDefault.name}）` : ""}</span>
             {activeDefault && (
               <span className="text-muted-foreground text-[11px]">
                 {activeDefault.format} · {activeDefault.model}
@@ -373,6 +383,9 @@ function DraftChat({
   profiles: LLMProfile[];
   onStarted: (c: Conversation, pending?: { input?: string; attachments?: ChatAttachment[] }) => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [agentKey, setAgentKey] = React.useState("");
   const [llmProfileId, setLlmProfileId] = React.useState<number | null>(null);
   const [input, setInput] = React.useState("");
@@ -395,7 +408,7 @@ function DraftChat({
       await api.sendConversationMessage(c.id, msg);
       onStarted(c);
     } catch (e) {
-      toast.error("发送失败：" + (e as Error).message);
+      toast.error(swt("interface.m0078") + (e as Error).message);
       setSending(false);
     }
   }
@@ -413,7 +426,7 @@ function DraftChat({
       const r = await api.chatUpload("session", `conv-${c.id}`, files);
       onStarted(c, { input, attachments: r.attachments });
     } catch (e) {
-      toast.error("上传失败：" + (e as Error).message);
+      toast.error(swt("interface.m0079") + (e as Error).message);
       setUploading(false);
     }
   }
@@ -421,7 +434,7 @@ function DraftChat({
   const agentPicker = (
     <Select value={agentKey} onValueChange={setAgentKey}>
       <SelectTrigger className="w-full sm:w-40">
-        <SelectValue placeholder="选择 Agent…" />
+        <SelectValue placeholder={swt("interface.m0080")} />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
@@ -432,8 +445,7 @@ function DraftChat({
                 {a.name}
                 {!a.builtin && (
                   <Badge variant="outline" className="px-1 py-0 text-[9px]">
-                    自定义
-                  </Badge>
+                    {swt("interface.m0081")}</Badge>
                 )}
               </span>
             </SelectItem>
@@ -450,7 +462,7 @@ function DraftChat({
         <div className="bg-primary/10 flex size-12 items-center justify-center rounded-full">
           <Bot className="text-primary size-6" />
         </div>
-        <div className="text-sm font-medium">开始和「{agent?.name ?? "Agent"}」对话</div>
+        <div className="text-sm font-medium">{swt("interface.m0082")}{agent?.name ?? "Agent"}{swt("interface.m0083")}</div>
         {agent?.description && <p className="text-muted-foreground max-w-md text-xs">{agent.description}</p>}
       </div>
 
@@ -459,7 +471,7 @@ function DraftChat({
         onChange={setInput}
         onSend={send}
         disabled={sending || uploading || !agentKey}
-        placeholder="输入消息，@ 引用记录，Enter 发送"
+        placeholder={swt("interface.m0084")}
         leftSlot={agentPicker}
         onPickFiles={pickFiles}
         uploading={uploading}
@@ -494,13 +506,16 @@ function ChatView({
   onTitleMaybeChanged: () => void;
   onConvUpdated: () => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const approvalFocus = useApprovalFocus({ conversationId: conv.id });
   const [messages, setMessages] = React.useState<Activity[]>([]);
   const [running, setRunning] = React.useState(false);
   const [input, setInput] = React.useState(initial?.input ?? "");
   const [sending, setSending] = React.useState(false);
   const [stopping, setStopping] = React.useState(false);
-  // 方式1 文件上传:已上传的附件(落到 sessions/conv-<id>/uploads/),随下条消息一起发。
+  // Uploaded attachments live in sessions/conv-<id>/uploads/ and accompany the next message.
   const [attachments, setAttachments] = React.useState<ChatAttachment[]>(initial?.attachments ?? []);
   const [uploading, setUploading] = React.useState(false);
   const cursorRef = React.useRef(0); // newest loaded id — incremental-tail anchor
@@ -518,7 +533,7 @@ function ChatView({
       await api.updateConversationProfile(conv.id, id);
       onConvUpdated();
     } catch (e) {
-      toast.error("切换 LLM 失败：" + (e as Error).message);
+      toast.error(swt("interface.m0085") + (e as Error).message);
     }
   }
 
@@ -532,7 +547,7 @@ function ChatView({
       if (a.kind === "tool_use" && a.tool === "TodoWrite") return a.seq;
     }
     return null;
-  }, [messages]);
+  }, [swLocale, messages]);
 
   // reset + load whenever the selected conversation changes. Load only the LATEST
   // page on open — a long thread's final answer sits at the very end, so the newest
@@ -687,7 +702,7 @@ function ChatView({
     let li = 0,
       lo = 0,
       lcr = 0;
-    let turns = 0; // agent 循环轮次 = 模型调用次数（每次一条 kind='usage'）
+    let turns = 0; // Agent loop count equals model calls, each represented by one kind='usage' entry.
     for (const a of messages) {
       if (a.kind === "result") {
         i += a.input_tokens ?? 0;
@@ -705,7 +720,7 @@ function ChatView({
       O = o + lo,
       CR = cr + lcr;
     return { i: I, o: O, cr: CR, turns, any: I + O + CR > 0 };
-  }, [messages]);
+  }, [swLocale, messages]);
 
   // pickFiles uploads into this conversation's session dir (sessions/conv-<id>/
   // uploads/) and queues the returned metadata to send with the next message.
@@ -716,7 +731,7 @@ function ChatView({
       const r = await api.chatUpload("session", `conv-${conv.id}`, files);
       setAttachments((prev) => [...prev, ...r.attachments]);
     } catch (e) {
-      toast.error("上传失败：" + (e as Error).message);
+      toast.error(swt("interface.m0079") + (e as Error).message);
     } finally {
       setUploading(false);
     }
@@ -736,7 +751,7 @@ function ChatView({
       // fetch avoids racing a separate post-send request against the poller.
       setRunning(true);
     } catch (e) {
-      toast.error("发送失败：" + (e as Error).message);
+      toast.error(swt("interface.m0078") + (e as Error).message);
       setInput(msg); // restore so the user doesn't lose their text
       setAttachments(atts); // and their attachments
     } finally {
@@ -753,7 +768,7 @@ function ChatView({
     try {
       await api.stopConversation(conv.id);
     } catch (e) {
-      toast.error("停止失败：" + (e as Error).message);
+      toast.error(swt("interface.m0086") + (e as Error).message);
     } finally {
       setStopping(false);
     }
@@ -768,8 +783,7 @@ function ChatView({
         <span className="text-muted-foreground hidden shrink-0 font-mono text-xs sm:inline">{conv.agent_key}</span>
         {agent && !agent.builtin && (
           <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px]">
-            自定义
-          </Badge>
+            {swt("interface.m0081")}</Badge>
         )}
         {agent?.description && (
           <span className="text-muted-foreground min-w-0 truncate text-xs">{agent.description}</span>
@@ -778,13 +792,12 @@ function ChatView({
         <SideQuestionButton side={side} />
         <div className="text-muted-foreground ml-auto flex min-w-0 max-w-full items-center justify-end gap-x-3 gap-y-1 text-xs max-sm:w-full max-sm:flex-wrap">
           {tokenTotal.turns > 0 && (
-            <span title="agent 循环轮次（模型调用次数）" className="tabular-nums">
-              {tokenTotal.turns} 轮
-            </span>
+            <span title={swt("interface.m0087")} className="tabular-nums">
+              {tokenTotal.turns} {swt("interface.m0088")}</span>
           )}
           {tokenTotal.any && (
-            <span title="input / cache(read) / output tokens" className="min-w-0 truncate tabular-nums">
-              input {fmtTokens(tokenTotal.i)} · cache {fmtTokens(tokenTotal.cr)} · output {fmtTokens(tokenTotal.o)}
+            <span title={swt("english.e052")} className="min-w-0 truncate tabular-nums">
+              {swt("english.e053")}{" "}{fmtTokens(tokenTotal.i)} {swt("english.e054")}{" "}{fmtTokens(tokenTotal.cr)} {swt("english.e055")}{" "}{fmtTokens(tokenTotal.o)}
             </span>
           )}
         </div>
@@ -797,12 +810,11 @@ function ChatView({
         <div className="min-w-0 max-w-full px-4 py-3" ref={contentRef}>
           {messages.length === 0 && !running ? (
             <div className="text-muted-foreground py-10 text-center text-sm">
-              开始和「{agent?.name ?? conv.agent_key}」对话
-            </div>
+              {swt("interface.m0082")}{agent?.name ?? conv.agent_key}{swt("interface.m0083")}</div>
           ) : (
             <>
               {hasMore && (
-                <div className="text-muted-foreground/70 pb-2 text-center text-[11px]">向上滚动加载更早的消息…</div>
+                <div className="text-muted-foreground/70 pb-2 text-center text-[11px]">{swt("interface.m0089")}</div>
               )}
               <Transcript activity={messages} live={running} chat fetchDetail={fetchDetail} focusedSeq={focusHistory.ready ? approvalFocus.state?.source?.seq : undefined} />
             </>
@@ -816,7 +828,7 @@ function ChatView({
         onSend={send}
         disabled={running || sending}
         allowBtw
-        placeholder={running ? "Agent 正在回复，可输入 /btw 提问…" : "输入消息，@ 引用记录，Enter 发送"}
+        placeholder={running ? swt("interface.m0090") : swt("interface.m0084")}
         running={running}
         onStop={stop}
         stopDisabled={stopping}
@@ -874,6 +886,9 @@ const ConversationItem = React.memo(function ConversationItem({
   selectedForDelete: boolean;
   onSelectedForDeleteChange: (id: number, checked: boolean) => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const renameInputRef = React.useRef<HTMLInputElement>(null);
   const cancelRenameRef = React.useRef(false);
@@ -897,7 +912,7 @@ const ConversationItem = React.memo(function ConversationItem({
         <Checkbox
           checked={selectedForDelete}
           onCheckedChange={(checked) => onSelectedForDeleteChange(conv.id, checked === true)}
-          aria-label={`选择对话「${conv.title || "新对话"}」`}
+          aria-label={swt("interface.m0091", { p0: conv.title || swt("interface.m0092") })}
           className="ml-1 shrink-0"
         />
       )}
@@ -924,17 +939,16 @@ const ConversationItem = React.memo(function ConversationItem({
           type="button"
           onClick={() => onSelect(conv.id)}
           onDoubleClick={() => onStartRename(conv)}
-          title="双击重命名"
+          title={swt("interface.m0093")}
           className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-left"
         >
           <div className="flex min-w-0 items-center gap-1.5">
-            {pinned && <PinIcon className="text-primary size-3 shrink-0" aria-label="已置顶" />}
-            <div className="truncate text-sm">{conv.title || "新对话"}</div>
+            {pinned && <PinIcon className="text-primary size-3 shrink-0" aria-label={swt("interface.m0094")} />}
+            <div className="truncate text-sm">{conv.title || swt("interface.m0092")}</div>
             {conv.running ? (
-              <Badge variant="secondary" className="shrink-0 gap-1" title="Agent 正在运行">
+              <Badge variant="secondary" className="shrink-0 gap-1" title={swt("interface.m0095")}>
                 <Spinner className="size-3" aria-hidden="true" />
-                运行中
-              </Badge>
+                {swt("interface.m0096")}</Badge>
             ) : null}
           </div>
           <div className="text-muted-foreground flex min-w-0 items-center gap-1 text-[11px]">
@@ -946,7 +960,7 @@ const ConversationItem = React.memo(function ConversationItem({
               </>
             )}
             <span className="shrink-0">
-              {new Date(conv.created_at).toLocaleDateString("zh-CN", {
+              {new Date(conv.created_at).toLocaleDateString(getIntlLocale(), {
                 month: "numeric",
                 day: "numeric",
                 hour: "2-digit",
@@ -963,7 +977,7 @@ const ConversationItem = React.memo(function ConversationItem({
             variant="ghost"
             size="icon-sm"
             className="text-muted-foreground shrink-0"
-            aria-label={`管理对话「${conv.title || "新对话"}」`}
+            aria-label={swt("interface.m0097", { p0: conv.title || swt("interface.m0092") })}
           >
             <MoreHorizontalIcon />
           </Button>
@@ -972,31 +986,29 @@ const ConversationItem = React.memo(function ConversationItem({
           <DropdownMenuGroup>
             <DropdownMenuItem onSelect={() => onStartRename(conv)}>
               <PencilIcon />
-              重命名
-            </DropdownMenuItem>
+              {swt("interface.m0098")}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onTogglePinned(conv)}>
               {pinned ? <PinOffIcon /> : <PinIcon />}
-              {pinned ? "取消置顶" : "置顶"}
+              {pinned ? swt("interface.m0099") : swt("interface.m0100")}
             </DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
               <Trash2Icon />
-              删除
-            </DropdownMenuItem>
+              {swt("interface.m0101")}</DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除对话「{conv.title || "新对话"}」？</AlertDialogTitle>
-            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+            <AlertDialogTitle>{swt("interface.m0102")}{conv.title || swt("interface.m0092")}」？</AlertDialogTitle>
+            <AlertDialogDescription>{swt("interface.m0103")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => onDelete(conv.id)}>删除</AlertDialogAction>
+            <AlertDialogCancel>{swt("interface.m0063")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => onDelete(conv.id)}>{swt("interface.m0101")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1017,12 +1029,15 @@ function AgentGroupHeader({
   hasActive: boolean;
   onToggle: (key: string) => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return (
     <button
       type="button"
       onClick={() => onToggle(group.key)}
       aria-expanded={!collapsed}
-      title={collapsed ? `展开「${group.name}」` : `收起「${group.name}」`}
+      title={collapsed ? swt("interface.m0104", { p0: group.name }) : swt("interface.m0105", { p0: group.name })}
       className={cn(
         "sticky top-0 z-10 flex min-w-0 items-center gap-1.5 rounded-md bg-card px-1.5 py-1 text-left font-medium text-[11px] transition-colors hover:bg-accent/50",
         collapsed && hasActive ? "text-foreground" : "text-muted-foreground",
@@ -1032,10 +1047,10 @@ function AgentGroupHeader({
       <Bot className="size-3 shrink-0" />
       <span className="min-w-0 flex-1 truncate">{group.name}</span>
       {collapsed && hasActive && (
-        <span className="size-1.5 shrink-0 rounded-full bg-primary" title="当前对话在此分组内" />
+        <span className="size-1.5 shrink-0 rounded-full bg-primary" title={swt("interface.m0106")} />
       )}
       {group.runningCount > 0 && (
-        <Spinner className="size-3 shrink-0" aria-label={`${group.runningCount} 个对话运行中`} />
+        <Spinner className="size-3 shrink-0" aria-label={swt("interface.m0107", { p0: group.runningCount })} />
       )}
       <span className="shrink-0 tabular-nums opacity-60">{group.conversations.length}</span>
     </button>
@@ -1043,6 +1058,9 @@ function AgentGroupHeader({
 }
 
 export default function ChatPage() {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [convs, setConvs] = React.useState<Conversation[]>([]);
@@ -1064,7 +1082,7 @@ export default function ChatPage() {
   const [renameText, setRenameText] = React.useState("");
   const [selectedConversationIds, setSelectedConversationIds] = React.useState<Set<number>>(() => new Set());
   // selectionMode gates the multi-select UI: off by default (clean list, no
-  // checkboxes); the header "多选" button turns it on, "完成" turns it off and
+  // checkboxes); the header Select multiple button enables it, and Done disables it and
   // clears the selection.
   const [selectionMode, setSelectionMode] = React.useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
@@ -1173,21 +1191,21 @@ export default function ChatPage() {
     window.history.replaceState(null, "", url);
   }, [selectedId]);
 
-  const selected = React.useMemo(() => convs.find((c) => c.id === selectedId) ?? null, [convs, selectedId]);
-  const agentByKey = React.useMemo(() => new Map(agents.map((agent) => [agent.key, agent])), [agents]);
+  const selected = React.useMemo(() => convs.find((c) => c.id === selectedId) ?? null, [swLocale, convs, selectedId]);
+  const agentByKey = React.useMemo(() => new Map(agents.map((agent) => [agent.key, agent])), [swLocale, agents]);
   const filteredConversations = React.useMemo(
     () => (agentFilter === null ? convs : convs.filter((conversation) => conversation.agent_key === agentFilter)),
-    [convs, agentFilter],
+    [swLocale, convs, agentFilter],
   );
   const visibleConversations = React.useMemo(
     () => filteredConversations.slice(0, visibleConversationCount),
-    [filteredConversations, visibleConversationCount],
+    [swLocale, filteredConversations, visibleConversationCount],
   );
   // Pinned rows stay a flat block above the groups (server order = pinned_at DESC);
   // everything else is bucketed per agent, most-recently-active agent first.
   const pinnedConversations = React.useMemo(
     () => visibleConversations.filter(conversationIsPinned),
-    [visibleConversations],
+    [swLocale, visibleConversations],
   );
   const agentGroups = React.useMemo(
     () =>
@@ -1195,12 +1213,12 @@ export default function ChatPage() {
         visibleConversations.filter((c) => !conversationIsPinned(c)),
         agentByKey,
       ),
-    [visibleConversations, agentByKey],
+    [swLocale, visibleConversations, agentByKey],
   );
   // conversation agents: custom agents + conversational built-ins (role=assistant,
-  // e.g. Auto / 渗透测试). The orchestration built-ins (goals/planner/mainagent/worker)
+  // e.g. Auto / Penetration testing). The orchestration built-ins (goals/planner/mainagent/worker)
   // are task-specific and stay hidden from the chat page.
-  const chatAgents = React.useMemo(() => agents.filter((a) => !a.builtin || a.role === "assistant"), [agents]);
+  const chatAgents = React.useMemo(() => agents.filter((a) => !a.builtin || a.role === "assistant"), [swLocale, agents]);
   const agentFilterOptions = React.useMemo(() => {
     const counts = new Map<string, number>();
     for (const conversation of convs) {
@@ -1211,10 +1229,10 @@ export default function ChatPage() {
     if (agentFilter !== null) keys.add(agentFilter);
     return [...keys]
       .map((key) => ({ key, name: agentByKey.get(key)?.name || key, count: counts.get(key) ?? 0 }))
-      .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
-  }, [convs, chatAgents, agentByKey, agentFilter]);
+      .sort((a, b) => a.name.localeCompare(b.name, getIntlLocale()));
+  }, [swLocale, convs, chatAgents, agentByKey, agentFilter]);
   const conversationCountLabel =
-    agentFilter === null ? `共 ${convs.length} 个` : `${filteredConversations.length} / ${convs.length} 个`;
+    agentFilter === null ? swt("interface.m0108", { p0: convs.length }) : swt("interface.m0109", { p0: filteredConversations.length, p1: convs.length });
 
   function changeAgentFilter(key: string | null) {
     setAgentFilter(key);
@@ -1265,10 +1283,10 @@ export default function ChatPage() {
         });
         void reloadConvs();
       } catch (e) {
-        toast.error("删除失败：" + (e as Error).message);
+        toast.error(swt("interface.m0110") + (e as Error).message);
       }
     },
-    [reloadConvs],
+    [swLocale, reloadConvs],
   );
 
   async function deleteSelectedConversations() {
@@ -1282,7 +1300,7 @@ export default function ChatPage() {
         const result = await api.deleteConversations(ids.slice(offset, offset + 100));
         for (const item of result.items) {
           if (item.ok) deleted.add(item.id);
-          else failed.push({ id: item.id, error: item.error ?? "对话不存在" });
+          else failed.push({ id: item.id, error: item.error ?? swt("interface.m0111") });
         }
       }
       if (deleted.has(selectedId ?? -1)) selectConversation(null);
@@ -1291,13 +1309,13 @@ export default function ChatPage() {
         for (const id of deleted) next.delete(id);
         return next;
       });
-      if (deleted.size > 0) toast.success(`已删除 ${deleted.size} 个对话`);
+      if (deleted.size > 0) toast.success(swt("interface.m0112", { p0: deleted.size }));
       if (failed.length > 0) {
         const details = failed
           .slice(0, 3)
           .map((item) => `#${item.id}（${item.error}）`)
           .join("；");
-        toast.error(`${failed.length} 个对话删除失败：${details}${failed.length > 3 ? " 等" : ""}`);
+        toast.error(swt("interface.m0113", { p0: failed.length, p1: details, p2: failed.length > 3 ? swt("interface.m0114") : "" }));
       }
       setBulkDeleteOpen(false);
       // Fully successful → return to the clean list; keep selection mode on if
@@ -1305,7 +1323,7 @@ export default function ChatPage() {
       if (failed.length === 0) setSelectionMode(false);
       void reloadConvs();
     } catch (error) {
-      toast.error(`批量删除失败：${(error as Error).message}`);
+      toast.error(swt("interface.m0115", { p0: (error as Error).message }));
       void reloadConvs();
     } finally {
       setBulkDeleting(false);
@@ -1319,10 +1337,10 @@ export default function ChatPage() {
         await api.pinConversation(conversation.id, !pinned);
         void reloadConvs();
       } catch (e) {
-        toast.error(`${pinned ? "取消置顶" : "置顶"}失败：${(e as Error).message}`);
+        toast.error(swt("interface.m0116", { p0: pinned ? swt("interface.m0099") : swt("interface.m0100"), p1: (e as Error).message }));
       }
     },
-    [reloadConvs],
+    [swLocale, reloadConvs],
   );
 
   const startRename = React.useCallback((c: Conversation) => {
@@ -1338,10 +1356,10 @@ export default function ChatPage() {
         await api.renameConversation(id, title);
         void reloadConvs();
       } catch (e) {
-        toast.error("重命名失败：" + (e as Error).message);
+        toast.error(swt("interface.m0117") + (e as Error).message);
       }
     },
-    [reloadConvs],
+    [swLocale, reloadConvs],
   );
   const cancelRename = React.useCallback(() => setRenamingId(null), []);
 
@@ -1355,20 +1373,19 @@ export default function ChatPage() {
         <div className="bg-card flex flex-col overflow-hidden rounded-lg border">
           <div className="flex flex-col gap-2 border-b p-2">
             <Button size="sm" className="w-full" onClick={() => selectConversation(null)}>
-              <PlusIcon /> 新建对话
-            </Button>
+              <PlusIcon /> {swt("interface.m0118")}</Button>
             <Select
               value={agentFilter === null ? "all" : `agent:${agentFilter}`}
               onValueChange={(value) => changeAgentFilter(value === "all" ? null : value.slice(6))}
               disabled={bulkDeleting}
             >
-              <SelectTrigger size="sm" className="w-full min-w-0" aria-label="按 Agent 筛选对话">
+              <SelectTrigger size="sm" className="w-full min-w-0" aria-label={swt("interface.m0119")}>
                 <Bot />
-                <SelectValue placeholder="全部 Agent" />
+                <SelectValue placeholder={swt("interface.m0120")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="all">全部 Agent</SelectItem>
+                  <SelectItem value="all">{swt("interface.m0120")}</SelectItem>
                   {agentFilterOptions.map((agent) => (
                     <SelectItem key={agent.key} value={`agent:${agent.key}`}>
                       {agent.name}（{agent.count}）
@@ -1383,11 +1400,11 @@ export default function ChatPage() {
                   <Checkbox
                     checked={conversationHeaderChecked}
                     onCheckedChange={(checked) => toggleAllConversations(checked === true)}
-                    aria-label="选择当前筛选的全部对话"
+                    aria-label={swt("interface.m0121")}
                     disabled={filteredConversations.length === 0 || bulkDeleting}
                   />
                   <span className="text-muted-foreground min-w-0 flex-1 text-xs tabular-nums">
-                    {selectedConversationCount > 0 ? `已选 ${selectedConversationCount} 个` : conversationCountLabel}
+                    {selectedConversationCount > 0 ? swt("interface.m0122", { p0: selectedConversationCount }) : conversationCountLabel}
                   </span>
                   {selectedConversationCount > 0 && (
                     <Button
@@ -1397,12 +1414,10 @@ export default function ChatPage() {
                       onClick={() => setBulkDeleteOpen(true)}
                     >
                       <Trash2Icon data-icon="inline-start" />
-                      删除
-                    </Button>
+                      {swt("interface.m0101")}</Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={exitSelectionMode}>
-                    完成
-                  </Button>
+                    {swt("interface.m0123")}</Button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 px-1">
@@ -1417,8 +1432,7 @@ export default function ChatPage() {
                     disabled={filteredConversations.length === 0}
                   >
                     <ListChecksIcon data-icon="inline-start" />
-                    多选
-                  </Button>
+                    {swt("interface.m0124")}</Button>
                 </div>
               ))}
           </div>
@@ -1430,7 +1444,7 @@ export default function ChatPage() {
             <div className="flex min-w-0 flex-col gap-0.5 p-2">
               {filteredConversations.length === 0 && (
                 <p className="text-muted-foreground px-2 py-6 text-center text-xs">
-                  {agentFilter === null ? "暂无对话" : "该 Agent 暂无对话"}
+                  {agentFilter === null ? swt("interface.m0125") : swt("interface.m0126")}
                 </p>
               )}
               {pinnedConversations.map((c) => (
@@ -1496,8 +1510,7 @@ export default function ChatPage() {
                   className="mt-1 w-full"
                   onClick={() => setVisibleConversationCount((count) => count + CONVERSATION_LIST_PAGE)}
                 >
-                  加载更多
-                </Button>
+                  {swt("interface.m0127")}</Button>
               )}
             </div>
           </ScrollArea>
@@ -1517,7 +1530,7 @@ export default function ChatPage() {
             />
           ) : sourceRequested ? (
             <div role="status" className="p-6 text-sm text-muted-foreground">
-              {convsLoaded ? "对话已被删除" : "正在加载对应对话…"}
+              {convsLoaded ? swt("interface.m0128") : swt("interface.m0129")}
             </div>
           ) : (
             <DraftChat
@@ -1545,11 +1558,11 @@ export default function ChatPage() {
       <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除选中的 {selectedConversationCount} 个对话？</AlertDialogTitle>
-            <AlertDialogDescription>对话消息和执行记录将一并删除，此操作不可撤销。</AlertDialogDescription>
+            <AlertDialogTitle>{swt("interface.m0130")}{" "}{selectedConversationCount} {swt("interface.m0131")}</AlertDialogTitle>
+            <AlertDialogDescription>{swt("interface.m0132")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkDeleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={bulkDeleting}>{swt("interface.m0063")}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={bulkDeleting || selectedConversationCount === 0}
@@ -1559,7 +1572,7 @@ export default function ChatPage() {
               }}
             >
               {bulkDeleting && <Loader2Icon data-icon="inline-start" className="animate-spin" />}
-              {bulkDeleting ? "删除中" : "确认删除"}
+              {bulkDeleting ? swt("interface.m0133") : swt("interface.m0134")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

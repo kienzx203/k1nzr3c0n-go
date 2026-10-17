@@ -1,3 +1,7 @@
+"use client";
+
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react"
 import { Slot } from "radix-ui"
 
@@ -5,9 +9,12 @@ import { cn } from "@/lib/utils"
 import { ChevronRightIcon, MoreHorizontalIcon } from "lucide-react"
 
 function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return (
     <nav
-      aria-label="breadcrumb"
+      aria-label={swt("english.e151")}
       data-slot="breadcrumb"
       className={cn(className)}
       {...props}
@@ -16,6 +23,9 @@ function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
 }
 
 function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return (
     <ol
       data-slot="breadcrumb-list"
@@ -29,6 +39,9 @@ function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
 }
 
 function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return (
     <li
       data-slot="breadcrumb-item"
@@ -45,6 +58,9 @@ function BreadcrumbLink({
 }: React.ComponentProps<"a"> & {
   asChild?: boolean
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const Comp = asChild ? Slot.Root : "a"
 
   return (
@@ -57,6 +73,9 @@ function BreadcrumbLink({
 }
 
 function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return (
     <span
       data-slot="breadcrumb-page"
@@ -74,6 +93,9 @@ function BreadcrumbSeparator({
   className,
   ...props
 }: React.ComponentProps<"li">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return (
     <li
       data-slot="breadcrumb-separator"
@@ -93,6 +115,9 @@ function BreadcrumbEllipsis({
   className,
   ...props
 }: React.ComponentProps<"span">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return (
     <span
       data-slot="breadcrumb-ellipsis"
@@ -106,7 +131,7 @@ function BreadcrumbEllipsis({
     >
       <MoreHorizontalIcon
       />
-      <span className="sr-only">More</span>
+      <span className="sr-only">{swt("english.e041")}</span>
     </span>
   )
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import Link from "next/link";
@@ -67,14 +69,14 @@ import {
 
 const FINDING_LIST_PREFERENCE_KEY = "artex_finding_list_preferences";
 
-// 列表视图:flat = 跨任务平铺大表(默认);grouped = 按任务分组折叠;
-// asset = 左侧资产树 + 右侧该子树下的发现。
+// List modes: flat cross-task table (default), grouped collapsible task sections,
+// or asset tree on the left with subtree findings on the right.
 type FindingView = "flat" | "grouped" | "asset";
 
 const FINDING_VIEWS: FindingView[] = ["flat", "grouped", "asset"];
 
-// 资产树的一次性快照。与另外两个视图不同,资产视图不轮询:进入视图、改筛选、
-// 或本页改动了发现之后才重新查询。
+// The asset tree is a one-time snapshot; unlike other views, it does not poll.
+// Reload on entry, filter changes, or local finding mutations.
 interface AssetTreeState {
   nodes: FindingAssetNode[];
   findingTotal: number;
@@ -93,7 +95,7 @@ const EMPTY_ASSET_TREE: AssetTreeState = {
   loading: false,
 };
 
-// 分组视图里每个已展开任务组自带一份分页状态,彼此独立。
+// Each expanded task group maintains independent pagination state.
 interface GroupFindingsState {
   items: Finding[];
   total: number;
@@ -103,7 +105,7 @@ interface GroupFindingsState {
   loading: boolean;
 }
 
-// 平铺视图的页码单独放 state(而非塞进快照),筛选一变就能连带重置并触发重新加载。
+// Keep flat page state outside the snapshot so filter changes reset it and trigger loading.
 interface FlatFindingsState {
   items: Finding[];
   total: number;
@@ -129,6 +131,9 @@ const EMPTY_STATS: FindingStats = {
 };
 
 export default function FindingsPage() {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [view, setView] = React.useState<FindingView>("flat");
   const [severity, setSeverity] = React.useState<"all" | Severity>("all");
   const [status, setStatus] = React.useState<"all" | FindingStatus>("all");
@@ -166,7 +171,7 @@ export default function FindingsPage() {
   const activeFilterFingerprint = React.useRef(filterFingerprint);
   activeFilterFingerprint.current = filterFingerprint;
 
-  // 一个轻量请求覆盖所有行/视图，避免逐行拉取完整复测历史；等待上一轮完成再轮询。
+  // One lightweight request covers all rows/views instead of fetching retest history per row; poll after completion.
   React.useEffect(() => {
     let disposed = false;
     let failed = false;
@@ -179,7 +184,7 @@ export default function FindingsPage() {
         setActiveRetests(Object.fromEntries(rows.map((item) => [item.finding_id, item])));
         failed = false;
       } catch (error) {
-        if (!disposed && !failed) toast.error(`加载复测状态失败：${(error as Error).message}`);
+        if (!disposed && !failed) toast.error(swt("interface.m0371", { p0: (error as Error).message }));
         failed = true;
       } finally {
         if (!disposed) timer = setTimeout(() => void refreshRetests(), 3000);
@@ -234,7 +239,7 @@ export default function FindingsPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  // setFindings 同时改写两个视图缓存里的同一条发现,切换视图不会看到过期状态。
+  // setFindings updates the same finding in both view caches to prevent stale values on switching.
   const setFindings = React.useCallback((update: (current: Finding[]) => Finding[]) => {
     setFlat((current) => ({ ...current, items: update(current.items) }));
     setGroupFindings((current) => {
@@ -246,9 +251,9 @@ export default function FindingsPage() {
     });
   }, []);
 
-  // 勾选导出:按 finding_id(独立表 id)记选中项,跨页保留。
+  // Track export selections by independent finding_id and retain selections across pages.
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
-  // 导出弹窗状态:范围(当前筛选/全部/选中) × 格式(md 单文件/md 分文件 zip/csv/json)。
+  // Export dialog: current/all/selected scope and single Markdown/ZIP Markdown/CSV/JSON format.
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exportScope, setExportScope] = React.useState<"filtered" | "all" | "selected">("filtered");
   const [exportFormat, setExportFormat] = React.useState<"md-single" | "md-zip" | "csv" | "json">("md-single");
@@ -274,7 +279,7 @@ export default function FindingsPage() {
     });
   }, []);
 
-  // 打开导出弹窗时,若有勾选项则默认范围切到「选中」,否则「当前筛选」。
+  // Default export scope to selected records when any are checked; otherwise use current filters.
   function openExport() {
     setExportScope(selectedIds.size > 0 ? "selected" : "filtered");
     setExportOpen(true);
@@ -290,9 +295,9 @@ export default function FindingsPage() {
         ids: [...selectedIds],
       });
       setExportOpen(false);
-      toast.success("已开始下载导出文件");
+      toast.success(swt("interface.m0372"));
     } catch (e) {
-      toast.error(`导出失败：${(e as Error).message}`);
+      toast.error(swt("interface.m0373", { p0: (e as Error).message }));
     } finally {
       setExporting(false);
     }
@@ -311,10 +316,10 @@ export default function FindingsPage() {
   groupFindingsRef.current = groupFindings;
   visibleGroupKeysRef.current = new Set(groups.map(findingGroupKey));
 
-  // 资产视图右侧列表 = 平铺列表 + 选中子树的筛选,所以两个视图共用一份列表状态。
+  // The asset view reuses flat-list state with an additional selected-subtree filter.
   const activeAssetScope = view === "asset" ? assetScope : null;
 
-  // loadFlat 拉取平铺视图的当前页;task 筛选交给后端,与分组视图共用同一批筛选条件。
+  // loadFlat fetches the current page; backend task filtering shares the grouped view's filters.
   const loadFlat = React.useCallback(async () => {
     const requestFilter = filterFingerprint;
     if (activeFilterFingerprint.current !== requestFilter) return;
@@ -341,8 +346,8 @@ export default function FindingsPage() {
     }
   }, [activeAssetScope, filterFingerprint, flatPage, flatPageSize, severity, status, vulnclass, task, query, sort]);
 
-  // loadAssetTree 取整棵资产树。树不随选中节点变化(否则选一下就塌成一条链),
-  // 所以这里不带 assetScope。
+  // loadAssetTree loads the whole tree, independent of selected nodes so selection does not collapse it into a chain.
+  // Do not include assetScope here.
   const loadAssetTree = React.useCallback(async () => {
     const requestFilter = filterFingerprint;
     if (activeFilterFingerprint.current !== requestFilter) return;
@@ -362,9 +367,9 @@ export default function FindingsPage() {
     } catch (e) {
       if (request !== assetTreeRequest.current || activeFilterFingerprint.current !== requestFilter) return;
       setAssetTree((current) => ({ ...current, loading: false }));
-      toast.error(`资产树加载失败：${(e as Error).message}`);
+      toast.error(swt("interface.m0374", { p0: (e as Error).message }));
     }
-  }, [filterFingerprint, severity, status, vulnclass, task, query, sort]);
+  }, [swLocale, filterFingerprint, severity, status, vulnclass, task, query, sort]);
 
   const refreshGroups = React.useCallback(async () => {
     const requestFilter = filterFingerprint;
@@ -473,17 +478,17 @@ export default function FindingsPage() {
     [expandedGroups, groupFindings, loadGroup],
   );
 
-  // 行内改动后刷新当前视图:平铺视图重拉当前页,分组视图刷组头 + 该发现所在的组。
+  // After inline changes, reload the flat page or grouped headers and the affected group.
   const refreshAfterMutation = React.useCallback(
     (finding: Finding, removed = false) => {
       if (view === "asset") {
-        // 资产视图不轮询,所以改完要顺带把树的计数也重新算一次。
+        // The asset view does not poll, so recalculate its tree counts after mutations.
         void loadFlat();
         void loadAssetTree();
         return;
       }
       if (view === "flat") {
-        // 删空最后一页时,页码由越界修正 effect 回退并连带重新加载。
+        // When deleting the last page's contents, the bounds-correction effect moves back and reloads.
         void loadFlat();
         return;
       }
@@ -508,31 +513,31 @@ export default function FindingsPage() {
     setGroupFindings({});
     setFlatPage(1);
     setFlat(EMPTY_FLAT_STATE);
-    // 筛选变了树也会变,原先选中的节点可能已经不在树里,退回「全部资产」。
+    // Filter changes may remove the selected tree node; return to All assets.
     setAssetScope(null);
     setAssetTree(EMPTY_ASSET_TREE);
   }, [filterFingerprint]);
 
-  // 换资产节点等于换了一份结果集,回到第一页。
+  // Changing the asset node selects a new result set; return to page one.
   React.useEffect(() => {
     void assetScope;
     setFlatPage(1);
   }, [assetScope]);
 
-  // 资产树只在进入视图 / 筛选变化时查一次(以及本页改动发现后由
-  // refreshAfterMutation 主动重拉),不做轮询。
+  // Fetch the asset tree on entry/filter changes, plus explicit reloads through
+  // refreshAfterMutation after finding edits. Do not poll.
   React.useEffect(() => {
     if (!preferencesHydrated || view !== "asset") return;
-    void activeRetestFingerprint; // 复测结束可能改变状态筛选下的资产计数。
+    void activeRetestFingerprint; // Retest completion can change asset counts under status filters.
     void loadAssetTree();
   }, [activeRetestFingerprint, loadAssetTree, preferencesHydrated, view]);
 
-  // 只轮询当前视图:平铺视图刷当前页,分组视图刷组头与每个已展开的组(其分页彼此独立)。
-  // 资产视图只查一次(见下面的 return),它的左树是导航结构,没必要每 5 秒重算。
-  // 等偏好水合后再发首个请求,否则会先按默认视图/筛选白拉一次。
+  // Poll only the active view: flat current page, or grouped headers and all expanded groups with independent pages.
+  // The asset view queries once; its navigation tree need not be recalculated every five seconds.
+  // Wait for preference hydration before the first request to avoid an unnecessary default-view request.
   React.useEffect(() => {
     if (!preferencesHydrated) return;
-    void activeRetestFingerprint; // 包括不定时轮询的资产视图，也在复测结束后刷新处置状态。
+    void activeRetestFingerprint; // Refresh resolution status after retests, including the nonpolling asset view.
     const refresh = () => {
       if (view === "flat" || view === "asset") {
         if (!flatStateRef.current.loading) void loadFlat();
@@ -607,7 +612,7 @@ export default function FindingsPage() {
       setFindings((cur) => cur.map((x) => (isSameFinding(x, f) ? { ...x, status: next } : x)));
       try {
         await api.setFindingStatus(f.finding_id, next);
-        toast.success(`已标记为「${statusMeta("finding", next).label}」`);
+        toast.success(swt("interface.m0375", { p0: statusMeta("finding", next).label }));
         // refresh stat cards (pending count) and drop the row if it no longer matches the status filter
         api
           .findingStats()
@@ -623,22 +628,22 @@ export default function FindingsPage() {
         refreshAfterMutation(f);
       } catch (e) {
         setFindings((cur) => cur.map((x) => (isSameFinding(x, f) ? { ...x, status: prev } : x)));
-        toast.error(`更新失败：${(e as Error).message}`);
+        toast.error(swt("interface.m0376", { p0: (e as Error).message }));
       }
     },
-    [refreshAfterMutation, setFindings, status],
+    [swLocale, refreshAfterMutation, setFindings, status],
   );
 
-  // 行内展开的详细报告缓存按全局稳定行键存。report 是大段 Markdown,列表查询不带它,
-  // 故展开时才按 finding_id 单独拉取一次;done 且文本为空 = 该漏洞暂无报告。
+  // Cache expanded reports by stable global row key. Lists omit large Markdown reports,
+  // so fetch once by finding_id on expansion. Done with empty text means no report exists.
   const [reports, setReports] = React.useState<Record<string, FindingReport>>({});
 
-  // 行内可编辑缓冲:当前展开行的名称/类别/严重等级,展开时用该行数据初始化,收起清空。
-  // 单行展开,故一份缓冲即可。
+  // Initialize the name/category/severity edit buffer from the expanded row, and clear it on collapse.
+  // Only one row expands, so a single buffer suffices.
   const [edit, setEdit] = React.useState<FindingEdit | null>(null);
   const [saving, setSaving] = React.useState(false);
 
-  // toggle 展开/收起一行;新展开时初始化编辑缓冲,并(尚未取过时)按 finding_id 拉一次报告缓存。
+  // toggle opens/closes a row, initializes edits, and fetches its report by finding_id if not cached.
   const toggleRow = React.useCallback(
     (f: Finding) => {
       const key = findingRowKey(f);
@@ -660,7 +665,7 @@ export default function FindingsPage() {
     [expanded, reports],
   );
 
-  // saveEdit 保存当前展开行的名称/类别/严重等级,回写本地列表并刷新统计(类别下拉/严重计数可能变)。
+  // saveEdit saves name/category/severity, updates the list, and refreshes category/severity statistics.
   const saveEdit = React.useCallback(
     async (f: Finding) => {
       if (!f.finding_id || !edit) return;
@@ -678,7 +683,7 @@ export default function FindingsPage() {
               : x,
           ),
         );
-        toast.success("已保存");
+        toast.success(swt("interface.m0377"));
         api
           .findingStats()
           .then(setStats)
@@ -687,15 +692,15 @@ export default function FindingsPage() {
           });
         refreshAfterMutation(f);
       } catch (e) {
-        toast.error(`保存失败：${(e as Error).message}`);
+        toast.error(swt("interface.m0267", { p0: (e as Error).message }));
       } finally {
         setSaving(false);
       }
     },
-    [edit, refreshAfterMutation, setFindings],
+    [swLocale, edit, refreshAfterMutation, setFindings],
   );
 
-  // deleteFinding 删除一个漏洞(需二次确认):删成功后从列表移除、收起行、刷新统计。
+  // deleteFinding requires confirmation, then removes the row, collapses it, and refreshes statistics.
   const deleteFinding = React.useCallback(
     async (f: Finding) => {
       if (!f.finding_id) return;
@@ -711,7 +716,7 @@ export default function FindingsPage() {
         setFlat((cur) => ({ ...cur, total: Math.max(0, cur.total - 1) }));
         const rowKey = findingRowKey(f);
         setExpanded((cur) => (cur === rowKey ? null : cur));
-        toast.success("已删除漏洞");
+        toast.success(swt("interface.m0378"));
         api
           .findingStats()
           .then(setStats)
@@ -720,10 +725,10 @@ export default function FindingsPage() {
           });
         refreshAfterMutation(f, true);
       } catch (e) {
-        toast.error(`删除失败：${(e as Error).message}`);
+        toast.error(swt("interface.m0379", { p0: (e as Error).message }));
       }
     },
-    [refreshAfterMutation, setFindings],
+    [swLocale, refreshAfterMutation, setFindings],
   );
 
   const openDeepen = React.useCallback((f: Finding) => {
@@ -738,34 +743,34 @@ export default function FindingsPage() {
       const result = await api.deepenFinding(deepenFinding.finding_id, deepenDescription.trim());
       toast.success(
         result.queued
-          ? `深入意图 #${result.intent_id} 已进入任务队列`
-          : `已创建高优先级 Worker 意图 #${result.intent_id}`,
+          ? swt("interface.m0380", { p0: result.intent_id })
+          : swt("interface.m0381", { p0: result.intent_id }),
       );
       refreshAfterMutation(deepenFinding);
       setDeepenFinding(null);
       setDeepenDescription("");
     } catch (error) {
-      toast.error(`提交失败：${(error as Error).message}`);
+      toast.error(swt("interface.m0382", { p0: (error as Error).message }));
     } finally {
       setDeepening(false);
     }
   }
 
   const statCards = [
-    { label: "发现总数", value: stats.total, icon: BugIcon },
-    { label: "待处理", value: stats.pending, tone: "text-amber-500", icon: ClockIcon },
-    { label: "严重", value: stats.critical, tone: "text-rose-600", icon: ShieldAlertIcon },
-    { label: "高危", value: stats.high, tone: "text-red-500", icon: TriangleAlertIcon },
-    { label: "中危", value: stats.medium, tone: "text-amber-500", icon: TriangleAlertIcon },
-    { label: "低危", value: stats.low, tone: "text-slate-500", icon: InfoIcon },
+    { label: swt("interface.m0383"), value: stats.total, icon: BugIcon },
+    { label: swt("interface.m0384"), value: stats.pending, tone: "text-amber-500", icon: ClockIcon },
+    { label: swt("interface.m0154"), value: stats.critical, tone: "text-rose-600", icon: ShieldAlertIcon },
+    { label: swt("interface.m0155"), value: stats.high, tone: "text-red-500", icon: TriangleAlertIcon },
+    { label: swt("interface.m0156"), value: stats.medium, tone: "text-amber-500", icon: TriangleAlertIcon },
+    { label: swt("interface.m0157"), value: stats.low, tone: "text-slate-500", icon: InfoIcon },
   ];
 
-  // 导出弹窗里「当前筛选」的条数:两个视图的筛选一致,只是统计口径来源不同。
-  // 平铺与资产视图共用 flat 列表状态,分组视图的口径来自组接口的 finding_total。
+  // Export current-filter counts use the same filters across views, with different aggregate sources.
+  // Flat and asset views share flat-list state; grouped counts come from finding_total.
   const filteredTotal = view === "grouped" ? total : flat.total;
   const assetPath = React.useMemo(
     () => (view === "asset" ? assetPathOf(assetTree.nodes, assetScope) : []),
-    [assetScope, assetTree.nodes, view],
+    [swLocale, assetScope, assetTree.nodes, view],
   );
 
   const rowProps = {
@@ -786,7 +791,7 @@ export default function FindingsPage() {
     onDelete: deleteFinding,
   };
 
-  // 平铺视图与资产视图右侧是同一张表 + 同一份分页,只是筛选条件不同。
+  // Flat and right-side asset views share the table and pagination, differing only in filters.
   const flatListCard = (
     <Card className="gap-0 py-0">
       <CardContent className="px-0">
@@ -796,7 +801,7 @@ export default function FindingsPage() {
           </div>
         ) : (
           <>
-            <FindingsTable items={flat.items} selectAllLabel="选择当前页全部" {...rowProps} />
+            <FindingsTable items={flat.items} selectAllLabel={swt("interface.m0320")} {...rowProps} />
             <TablePagination
               page={flatPage}
               pageSize={flatPageSize}
@@ -818,14 +823,14 @@ export default function FindingsPage() {
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">发现</h1>
-          <p className="text-muted-foreground text-sm">跨任务漏洞汇总</p>
+          <h1 className="text-xl font-semibold tracking-tight">{swt("interface.m0188")}</h1>
+          <p className="text-muted-foreground text-sm">{swt("interface.m0385")}</p>
         </div>
         <Tabs value={view} onValueChange={(v) => setView(v as FindingView)}>
           <TabsList>
-            <TabsTrigger value="flat">全部发现</TabsTrigger>
-            <TabsTrigger value="grouped">按任务分组</TabsTrigger>
-            <TabsTrigger value="asset">按资产</TabsTrigger>
+            <TabsTrigger value="flat">{swt("interface.m0386")}</TabsTrigger>
+            <TabsTrigger value="grouped">{swt("interface.m0387")}</TabsTrigger>
+            <TabsTrigger value="asset">{swt("interface.m0388")}</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -853,8 +858,8 @@ export default function FindingsPage() {
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="检索漏洞内容"
-              aria-label="检索漏洞内容"
+              placeholder={swt("interface.m0389")}
+              aria-label={swt("interface.m0389")}
             />
             <InputGroupAddon>
               <SearchIcon aria-hidden="true" />
@@ -871,14 +876,14 @@ export default function FindingsPage() {
           >
             {(
               [
-                ["all", "全部"],
-                ["critical", "严重"],
-                ["high", "高危"],
-                ["medium", "中危"],
-                ["low", "低危"],
+                ["all", swt("interface.m0172")],
+                ["critical", swt("interface.m0154")],
+                ["high", swt("interface.m0155")],
+                ["medium", swt("interface.m0156")],
+                ["low", swt("interface.m0157")],
               ] as const
             ).map(([val, label]) => (
-              <ToggleGroupItem key={val} value={val} aria-label={`按${label}等级筛选`}>
+              <ToggleGroupItem key={val} value={val} aria-label={swt("interface.m0390", { p0: label })}>
                 {label}
               </ToggleGroupItem>
             ))}
@@ -886,10 +891,10 @@ export default function FindingsPage() {
 
           <Select value={status} onValueChange={(v) => setStatus(v as "all" | FindingStatus)}>
             <SelectTrigger size="sm" className="w-32">
-              <SelectValue placeholder="状态" />
+              <SelectValue placeholder={swt("interface.m0191")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部状态</SelectItem>
+              <SelectItem value="all">{swt("interface.m0391")}</SelectItem>
               {FINDING_STATUSES.map((st) => (
                 <SelectItem key={st} value={st}>
                   {statusMeta("finding", st).label}
@@ -900,10 +905,10 @@ export default function FindingsPage() {
 
           <Select value={vulnclass} onValueChange={setVulnclass}>
             <SelectTrigger size="sm" className="w-40">
-              <SelectValue placeholder="漏洞类型" />
+              <SelectValue placeholder={swt("interface.m0367")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部类型</SelectItem>
+              <SelectItem value="all">{swt("interface.m0392")}</SelectItem>
               {stats.vulnclasses.map((vc) => (
                 <SelectItem key={vc} value={vc}>
                   {vc}
@@ -914,14 +919,14 @@ export default function FindingsPage() {
 
           <Select value={task} onValueChange={setTask}>
             <SelectTrigger size="sm" className="w-48">
-              <SelectValue placeholder="任务" />
+              <SelectValue placeholder={swt("interface.m0190")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部任务</SelectItem>
-              <SelectItem value={UNASSIGNED_TASK}>未关联 / 任务已删除</SelectItem>
+              <SelectItem value="all">{swt("interface.m0393")}</SelectItem>
+              <SelectItem value={UNASSIGNED_TASK}>{swt("interface.m0394")}</SelectItem>
               {(stats.tasks ?? []).map((t) => {
                 const id = String(t.id);
-                const label = t.name || t.description || `任务 #${id}（已删除）`;
+                const label = t.name || t.description || swt("interface.m0395", { p0: id });
                 return (
                   <SelectItem key={id} value={id}>
                     <span className="flex w-full items-center gap-2">
@@ -944,18 +949,17 @@ export default function FindingsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="severity">按严重度</SelectItem>
-              <SelectItem value="time">按时间</SelectItem>
+              <SelectItem value="severity">{swt("interface.m0396")}</SelectItem>
+              <SelectItem value="time">{swt("interface.m0397")}</SelectItem>
             </SelectContent>
           </Select>
 
           <div className="ml-auto flex items-center gap-3">
             {selectedIds.size > 0 && (
-              <span className="text-xs text-muted-foreground tabular-nums">已选 {selectedIds.size} 条</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{swt("interface.m0398")}{" "}{selectedIds.size} {swt("interface.m0328")}</span>
             )}
             <Button size="sm" variant="outline" onClick={openExport}>
-              <DownloadIcon /> 导出
-            </Button>
+              <DownloadIcon /> {swt("interface.m0399")}</Button>
           </div>
         </div>
 
@@ -990,8 +994,7 @@ export default function FindingsPage() {
                   className={cn("hover:text-foreground", assetScope === null && "font-medium text-foreground")}
                   onClick={() => setAssetScope(null)}
                 >
-                  全部资产
-                </button>
+                  {swt("interface.m0312")}</button>
                 {assetPath.map((node) => (
                   <React.Fragment key={node.key}>
                     <ChevronRightIcon className="size-3.5 shrink-0" aria-hidden="true" />
@@ -1008,7 +1011,7 @@ export default function FindingsPage() {
                     </button>
                   </React.Fragment>
                 ))}
-                <span className="ml-auto shrink-0 text-xs tabular-nums">共 {flat.total} 条</span>
+                <span className="ml-auto shrink-0 text-xs tabular-nums">{swt("interface.m0199")}{" "}{flat.total} {swt("interface.m0328")}</span>
               </div>
               {flatListCard}
             </div>
@@ -1047,13 +1050,13 @@ export default function FindingsPage() {
                         <div className="flex min-w-0 flex-col gap-1">
                           <CardTitle className="truncate text-sm">
                             {group.task_id === null
-                              ? "未关联 / 任务已删除"
+                              ? swt("interface.m0394")
                               : group.task_name
-                                ? `${group.task_name}（任务 #${group.task_id}）`
-                                : `任务 #${group.task_id}`}
+                                ? swt("interface.m0400", { p0: group.task_name, p1: group.task_id })
+                                : swt("interface.m0401", { p0: group.task_id })}
                           </CardTitle>
                           <CardDescription className="truncate" title={group.task_description}>
-                            {group.task_description || "来源任务不可用"}
+                            {group.task_description || swt("interface.m0402")}
                           </CardDescription>
                         </div>
                       </button>
@@ -1076,7 +1079,7 @@ export default function FindingsPage() {
                           <Button size="icon-sm" variant="ghost" asChild>
                             <Link
                               href={`/function/tasks/detail?id=${group.task_id}`}
-                              aria-label={`查看任务 #${group.task_id}`}
+                              aria-label={swt("interface.m0403", { p0: group.task_id })}
                             >
                               <ArrowUpRightIcon />
                             </Link>
@@ -1093,7 +1096,7 @@ export default function FindingsPage() {
                         </div>
                       ) : (
                         <>
-                          <FindingsTable items={state.items} selectAllLabel="选择本组当前页全部" {...rowProps} />
+                          <FindingsTable items={state.items} selectAllLabel={swt("interface.m0404")} {...rowProps} />
                           <TablePagination
                             page={state.page}
                             pageSize={state.pageSize}
@@ -1110,7 +1113,7 @@ export default function FindingsPage() {
             })}
             {groups.length === 0 && (
               <Card>
-                <CardContent className="py-12 text-center text-sm text-muted-foreground">没有匹配的发现。</CardContent>
+                <CardContent className="py-12 text-center text-sm text-muted-foreground">{swt("interface.m0348")}</CardContent>
               </Card>
             )}
             <TablePagination
@@ -1159,25 +1162,24 @@ export default function FindingsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>深入利用漏洞</DialogTitle>
+            <DialogTitle>{swt("interface.m0405")}</DialogTitle>
             <DialogDescription className="break-words">
-              将在原任务 #{deepenFinding?.task_id} 中创建优先级 10 的 Worker 意图，基于当前漏洞开展二次验证：
-              {deepenFinding?.name || deepenFinding?.vulnclass || deepenFinding?.summary}
+              {swt("interface.m0406")}{deepenFinding?.task_id} {swt("interface.m0407")}{deepenFinding?.name || deepenFinding?.vulnclass || deepenFinding?.summary}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="finding-deepen-description">利用描述</FieldLabel>
+              <FieldLabel htmlFor="finding-deepen-description">{swt("interface.m0408")}</FieldLabel>
               <Textarea
                 id="finding-deepen-description"
                 value={deepenDescription}
                 onChange={(event) => setDeepenDescription(event.target.value)}
                 maxLength={4000}
-                placeholder="描述需要验证的利用路径、边界条件、目标或期望证据"
+                placeholder={swt("interface.m0409")}
                 disabled={deepening}
               />
               <FieldDescription className="flex justify-between gap-3">
-                <span>新意图会继承该漏洞的资产锚点。</span>
+                <span>{swt("interface.m0410")}</span>
                 <span className="shrink-0 tabular-nums">{deepenDescription.length} / 4000</span>
               </FieldDescription>
             </Field>
@@ -1191,12 +1193,10 @@ export default function FindingsPage() {
               }}
               disabled={deepening}
             >
-              取消
-            </Button>
+              {swt("interface.m0063")}</Button>
             <Button onClick={submitDeepen} disabled={deepening || !deepenDescription.trim()}>
               {deepening && <Spinner data-icon="inline-start" />}
-              创建深入意图
-            </Button>
+              {swt("interface.m0411")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1204,43 +1204,37 @@ export default function FindingsPage() {
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>导出发现</DialogTitle>
-            <DialogDescription>选择导出范围与格式,生成后浏览器会自动下载。</DialogDescription>
+            <DialogTitle>{swt("interface.m0412")}</DialogTitle>
+            <DialogDescription>{swt("interface.m0413")}</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-5 py-1">
             <div className="flex flex-col gap-2">
-              <span className="text-xs text-muted-foreground">导出范围</span>
+              <span className="text-xs text-muted-foreground">{swt("interface.m0414")}</span>
               <RadioGroup value={exportScope} onValueChange={(v) => setExportScope(v as typeof exportScope)}>
                 <label htmlFor="export-scope-filtered" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-scope-filtered" value="filtered" /> 导出当前筛选结果（共 {filteredTotal}{" "}
-                  条）
-                </label>
+                  <RadioGroupItem id="export-scope-filtered" value="filtered" /> {swt("interface.m0415")}{" "}{filteredTotal}{" "}
+                  {swt("interface.m0416")}</label>
                 <label htmlFor="export-scope-all" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-scope-all" value="all" /> 导出全部
-                </label>
+                  <RadioGroupItem id="export-scope-all" value="all" /> {swt("interface.m0417")}</label>
                 <label
                   htmlFor="export-scope-selected"
                   className={cn("flex items-center gap-2 text-sm", selectedIds.size === 0 && "text-muted-foreground")}
                 >
                   <RadioGroupItem id="export-scope-selected" value="selected" disabled={selectedIds.size === 0} />
-                  导出勾选的 {selectedIds.size} 条
-                </label>
+                  {swt("interface.m0418")}{" "}{selectedIds.size} {swt("interface.m0328")}</label>
               </RadioGroup>
             </div>
 
             <div className="flex flex-col gap-2">
-              <span className="text-xs text-muted-foreground">导出格式</span>
+              <span className="text-xs text-muted-foreground">{swt("interface.m0419")}</span>
               <RadioGroup value={exportFormat} onValueChange={(v) => setExportFormat(v as typeof exportFormat)}>
                 <label htmlFor="export-format-md-single" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-md-single" value="md-single" /> Markdown 汇总报告（单个 .md 文件）
-                </label>
+                  <RadioGroupItem id="export-format-md-single" value="md-single" /> {swt("interface.m0420")}</label>
                 <label htmlFor="export-format-md-zip" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-md-zip" value="md-zip" /> Markdown 分文件（一漏洞一 .md,打包 .zip）
-                </label>
+                  <RadioGroupItem id="export-format-md-zip" value="md-zip" /> {swt("interface.m0421")}</label>
                 <label htmlFor="export-format-csv" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-csv" value="csv" /> CSV 表格（.csv）
-                </label>
+                  <RadioGroupItem id="export-format-csv" value="csv" /> {swt("interface.m0422")}</label>
                 <label htmlFor="export-format-json" className="flex items-center gap-2 text-sm">
                   <RadioGroupItem id="export-format-json" value="json" /> JSON（.json）
                 </label>
@@ -1250,10 +1244,9 @@ export default function FindingsPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setExportOpen(false)} disabled={exporting}>
-              取消
-            </Button>
+              {swt("interface.m0063")}</Button>
             <Button onClick={doExport} disabled={exporting || (exportScope === "selected" && selectedIds.size === 0)}>
-              <DownloadIcon /> {exporting ? "导出中…" : "导出"}
+              <DownloadIcon /> {exporting ? swt("interface.m0423") : swt("interface.m0399")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { EllipsisVertical, KeyRound, LogOut } from "lucide-react";
@@ -28,13 +30,16 @@ export function NavUser({
     readonly avatar: string;
   };
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const { isMobile } = useSidebar();
   const [pwOpen, setPwOpen] = React.useState(false);
 
   function handleLogout() {
     auth.clearToken();
-    // 硬跳转：让浏览器用已清除的 cookie 发起全新请求，
-    // middleware 才能正确读到空 token 并放行 /login
+    // Use a full navigation with the cleared cookie so
+    // middleware sees the empty token and allows /login.
     window.location.href = "/login";
   }
 
@@ -79,13 +84,11 @@ export function NavUser({
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setPwOpen(true)}>
               <KeyRound />
-              修改密码
-            </DropdownMenuItem>
+              {swt("interface.m0053")}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
               <LogOut />
-              退出登录
-            </DropdownMenuItem>
+              {swt("interface.m0054")}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

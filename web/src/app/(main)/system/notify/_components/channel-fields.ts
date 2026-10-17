@@ -1,26 +1,27 @@
-// 渠道字段表与配置值的解析工具。
+import { translate as swt } from "@/i18n/runtime";
+// Channel field definitions and configuration parsers.
 //
-// 与页面拆开是因为这一份是**数据**而不是视图：它描述每种渠道有哪些字段、
-// 各自该用什么控件，以及表单文本到配置值（JSON）的双向转换。
-// 单独放一个文件后，新增渠道只需要动这里，页面本身不必改。
-// 渠道类型的展示名与简介。放在前端是因为它只影响文案，后端不需要知道。
+// Separate data definitions from views: fields per channel,
+// control types, and bidirectional form-text/JSON conversion.
+// Adding a channel requires editing this file, not page orchestration.
+// Channel display names and descriptions belong to frontend presentation only.
 export const KIND_LABEL: Record<string, string> = {
-  dingtalk: "钉钉",
-  feishu: "飞书",
-  wecom: "企业微信",
-  webhook: "通用 Webhook",
+  get dingtalk() { return swt("interface.m1475"); },
+  get feishu() { return swt("interface.m1476"); },
+  get wecom() { return swt("interface.m1477"); },
+  get webhook() { return swt("interface.m1478"); },
   telegram: "Telegram",
-  email: "邮件",
+  get email() { return swt("interface.m1479"); },
 };
 
-// 各渠道的配置字段定义。
+// Configuration field definitions per channel.
 //
-// 这里刻意保留一份前端字段表，而不是让后端下发 schema：后端只负责
-// Validate（必填/格式），UI 需要的是布局与控件类型，两者关注的不是同一件事。
-// 唯一的耦合点是 secret_keys —— 哪些字段该渲染成密码框由后端给出，
-// 因为只有渠道实现自己清楚哪些值算凭据（企业微信的整个 Webhook 就是凭据，
-// 而钉钉的只是其中一个 secret）。新增渠道时这里少一个条目只会让表单变空白，
-// 不会静默出错（下面的 hasFields 会提示）。
+// Keep frontend field definitions rather than backend schemas: the backend handles
+// required/format validation, while the UI handles layout and control types.
+// The only coupling is secret_keys, supplied by the backend to select password controls,
+// because channel implementations know credentials: WeCom's whole webhook is secret,
+// while DingTalk has a separate secret. Missing frontend definitions produce a visible
+// hasFields warning rather than silent failure.
 export type FieldKind = "text" | "password" | "number" | "select" | "textarea" | "switch" | "kv" | "list";
 export interface FieldDef {
   key: string;
@@ -34,92 +35,92 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
   dingtalk: [
     {
       key: "webhook",
-      label: "Webhook 地址",
+      get label() { return swt("interface.m1480"); },
       kind: "text",
       placeholder: "https://oapi.dingtalk.com/robot/send?access_token=...",
     },
     {
       key: "secret",
-      label: "加签密钥",
+      get label() { return swt("interface.m1481"); },
       kind: "password",
-      help: "机器人安全设置选「加签」时填写；选「自定义关键词」或未开启安全设置则留空",
+      get help() { return swt("interface.m1482"); },
     },
   ],
   feishu: [
     {
       key: "webhook",
-      label: "Webhook 地址",
+      get label() { return swt("interface.m1480"); },
       kind: "text",
       placeholder: "https://open.feishu.cn/open-apis/bot/v2/hook/...",
     },
-    { key: "secret", label: "签名校验密钥", kind: "password", help: "机器人开启「签名校验」时填写，否则留空" },
+    { key: "secret", get label() { return swt("interface.m1483"); }, kind: "password", get help() { return swt("interface.m1484"); } },
   ],
   wecom: [
     {
       key: "webhook",
-      label: "Webhook 地址",
+      get label() { return swt("interface.m1480"); },
       kind: "text",
       placeholder: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...",
     },
   ],
   webhook: [
-    { key: "url", label: "目标 URL", kind: "text", placeholder: "https://your-endpoint.example.com/hook" },
+    { key: "url", get label() { return swt("interface.m1485"); }, kind: "text", placeholder: "https://your-endpoint.example.com/hook" },
     {
       key: "method",
-      label: "请求方法",
+      get label() { return swt("interface.m1486"); },
       kind: "select",
       options: [
-        { value: "POST", label: "POST（带请求体）" },
-        { value: "PUT", label: "PUT（带请求体）" },
-        { value: "PATCH", label: "PATCH（带请求体）" },
-        { value: "GET", label: "GET（不带请求体）" },
+        { value: "POST", get label() { return swt("interface.m1487"); } },
+        { value: "PUT", get label() { return swt("interface.m1488"); } },
+        { value: "PATCH", get label() { return swt("interface.m1489"); } },
+        { value: "GET", get label() { return swt("interface.m1490"); } },
       ],
     },
-    { key: "headers", label: "自定义请求头", kind: "kv", help: "每行 KEY=VALUE，例如 Authorization=Bearer xxx" },
+    { key: "headers", get label() { return swt("interface.m1491"); }, kind: "kv", get help() { return swt("interface.m1492"); } },
     {
       key: "body_template",
-      label: "请求体模板",
+      get label() { return swt("interface.m1493"); },
       kind: "textarea",
       help:
-        "留空用内置默认模板。变量：{{.Title}} {{.Batch}} {{.Count}} {{.HomeURL}} {{.SentAt}}，" +
-        "以及 range .Items 下的 .Name/.VulnClass/.Severity/.Summary/.Assets/.DetailURL/.StatusLabel。" +
-        "插入字符串请用 {{json .Xxx}} 而不是 {{.Xxx}}，否则标题里的引号会破坏 JSON。",
+        swt("interface.m1494") +
+        swt("interface.m1495") +
+        swt("interface.m1496"),
     },
   ],
   telegram: [
-    { key: "bot_token", label: "Bot Token", kind: "password", placeholder: "123456:ABC-DEF..." },
-    { key: "chat_id", label: "Chat ID", kind: "text", placeholder: "-1001234567890" },
+    { key: "bot_token", get label() { return swt("english.e112"); }, kind: "password", placeholder: "123456:ABC-DEF..." },
+    { key: "chat_id", get label() { return swt("english.e114"); }, kind: "text", placeholder: "-1001234567890" },
     {
       key: "base_url",
-      label: "API 地址",
+      get label() { return swt("interface.m1497"); },
       kind: "text",
       placeholder: "https://api.telegram.org",
-      help: "留空用官方地址；自建 Bot API 反代时填写",
+      get help() { return swt("interface.m1498"); },
     },
   ],
   email: [
-    { key: "host", label: "SMTP 服务器", kind: "text", placeholder: "smtp.example.com" },
+    { key: "host", get label() { return swt("interface.m1499"); }, kind: "text", placeholder: "smtp.example.com" },
     {
       key: "port",
-      label: "端口",
+      get label() { return swt("interface.m0244"); },
       kind: "number",
       placeholder: "587",
-      help: "587 走 STARTTLS；465 请把「隐式 TLS」打开",
+      get help() { return swt("interface.m1500"); },
     },
-    { key: "username", label: "账号", kind: "text" },
-    { key: "password", label: "密码 / 授权码", kind: "password" },
-    { key: "from", label: "发件人", kind: "text", placeholder: "artex@example.com" },
-    { key: "to", label: "收件人", kind: "list", help: "多个地址用逗号分隔" },
-    { key: "tls", label: "隐式 TLS", kind: "switch", help: "465 端口打开；587 保持关闭（会自动 STARTTLS）" },
+    { key: "username", get label() { return swt("interface.m1501"); }, kind: "text" },
+    { key: "password", get label() { return swt("interface.m1502"); }, kind: "password" },
+    { key: "from", get label() { return swt("interface.m1503"); }, kind: "text", placeholder: "artex@example.com" },
+    { key: "to", get label() { return swt("interface.m1504"); }, kind: "list", get help() { return swt("interface.m1505"); } },
+    { key: "tls", get label() { return swt("interface.m1506"); }, kind: "switch", get help() { return swt("interface.m1507"); } },
   ],
 };
 
 export const SEVERITY_OPTIONS = [
-  { value: "", label: "不限" },
-  { value: "low", label: "低危及以上" },
-  { value: "medium", label: "中危及以上" },
-  { value: "high", label: "高危及以上" },
-  { value: "critical", label: "仅严重" },
+  { value: "", get label() { return swt("interface.m1508"); } },
+  { value: "low", get label() { return swt("interface.m1509"); } },
+  { value: "medium", get label() { return swt("interface.m1510"); } },
+  { value: "high", get label() { return swt("interface.m1511"); } },
+  { value: "critical", get label() { return swt("interface.m1512"); } },
 ];
 
 export type ChannelForm = {
@@ -152,7 +153,7 @@ export const emptyForm = (kind: string): ChannelForm => ({
   onStatusChange: false,
 });
 
-// parseKV 解析「每行 KEY=VALUE」的文本域。
+// parseKV parses one KEY=VALUE pair per line.
 export function parseKV(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of text.split("\n")) {
@@ -163,7 +164,7 @@ export function parseKV(text: string): Record<string, string> {
   }
   return out;
 }
-// parseIDs 解析逗号/空白分隔的 id 列表。
+// parseIDs parses comma/whitespace-separated IDs.
 export function parseIDs(text: string): number[] {
   return text
     .split(/[\s,，]+/)
@@ -172,7 +173,7 @@ export function parseIDs(text: string): number[] {
     .map((s) => Number(s))
     .filter((n) => Number.isFinite(n) && n > 0);
 }
-// parseKeywords 解析行/逗号分隔的关键词列表（漏洞类型名可能含空格，所以按行或逗号切）。
+// parseKeywords splits on lines/commas, preserving spaces inside vulnerability names.
 export function parseKeywords(text: string): string[] {
   return text
     .split(/[\n,，]+/)

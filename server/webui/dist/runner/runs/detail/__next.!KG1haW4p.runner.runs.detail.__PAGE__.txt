@@ -1,0 +1,147 @@
+1:"$Sreact.fragment"
+:HL["/_next/static/chunks/3ij6fl1kqv7_b.css","style"]
+:HL["/_next/static/chunks/2-pb9za22lqjl.css","style"]
+2:Td56,
+    (function () {
+      try {
+        var root = document.documentElement;
+        var PERSISTENCE = {"theme_mode":"client-cookie","theme_preset":"client-cookie","font":"client-cookie","content_layout":"client-cookie","navbar_style":"client-cookie","sidebar_variant":"client-cookie","sidebar_collapsible":"client-cookie"};
+        var DEFAULTS = {"theme_mode":"light","theme_preset":"default","font":"geist","content_layout":"full-width","navbar_style":"sticky","sidebar_variant":"floating","sidebar_collapsible":"icon"};
+
+        function readCookie(name) {
+          var match = document.cookie.split("; ").find(function(c) {
+            return c.startsWith(name + "=");
+          });
+          return match ? decodeURIComponent(match.split("=")[1]) : null;
+        }
+
+        function readLocal(name) {
+          try {
+            return window.localStorage.getItem(name);
+          } catch (e) {
+            return null;
+          }
+        }
+
+        function readPreference(key, fallback) {
+          var mode = PERSISTENCE[key];
+          var value = null;
+
+          if (mode === "localStorage") {
+            value = readLocal(key);
+          }
+
+          if (!value && (mode === "client-cookie" || mode === "server-cookie")) {
+            value = readCookie(key);
+          }
+
+          if (!value || typeof value !== "string") {
+            return fallback;
+          }
+
+          return value;
+        }
+
+        var rawMode = readPreference("theme_mode", DEFAULTS.theme_mode);
+        var rawPreset = readPreference("theme_preset", DEFAULTS.theme_preset);
+        var rawFont = readPreference("font", DEFAULTS.font);
+        var rawContentLayout = readPreference("content_layout", DEFAULTS.content_layout);
+        var rawNavbarStyle = readPreference("navbar_style", DEFAULTS.navbar_style);
+        var rawSidebarVariant = readPreference("sidebar_variant", DEFAULTS.sidebar_variant);
+        var rawSidebarCollapsible = readPreference("sidebar_collapsible", DEFAULTS.sidebar_collapsible);
+
+        var isValidMode = rawMode === "dark" || rawMode === "light" || rawMode === "system";
+        var mode = isValidMode ? rawMode : DEFAULTS.theme_mode;
+        var resolvedMode =
+          mode === "system" && window.matchMedia
+            ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : mode;
+        var preset = rawPreset || DEFAULTS.theme_preset;
+        var font = rawFont || DEFAULTS.font;
+        var contentLayout = rawContentLayout || DEFAULTS.content_layout;
+        var navbarStyle = rawNavbarStyle || DEFAULTS.navbar_style;
+        var sidebarVariant = rawSidebarVariant || DEFAULTS.sidebar_variant;
+        var sidebarCollapsible = rawSidebarCollapsible || DEFAULTS.sidebar_collapsible;
+
+        root.classList.toggle("dark", resolvedMode === "dark");
+        root.setAttribute("data-theme-mode", mode);
+        root.setAttribute("data-theme-preset", preset);
+        root.setAttribute("data-font", font);
+        root.setAttribute("data-content-layout", contentLayout);
+        root.setAttribute("data-navbar-style", navbarStyle);
+        root.setAttribute("data-sidebar-variant", sidebarVariant);
+        root.setAttribute("data-sidebar-collapsible", sidebarCollapsible);
+
+        root.style.colorScheme = resolvedMode === "dark" ? "dark" : "light";
+
+      } catch (e) {
+        console.warn("ThemeBootScript error:", e);
+      }
+    })();
+  5:X
+c:X
+c:C
+13:[["children",{"s":"__PAGE__","h":160,"d":{"r":"$L14","p":"$@15","v":null,"s":"$5"}}]]
+10:[["children",{"s":"detail","h":96,"d":{"r":"$L11","p":"$@12","v":"$c","s":"$5"},"c":"$Q13"}]]
+d:[["children",{"s":"runs","h":96,"d":{"r":"$Le","p":"$@f","v":"$c","s":"$5"},"c":"$Q10"}]]
+9:[["children",{"s":"runner","h":96,"d":{"r":"$La","p":"$@b","v":"$c","s":"$5"},"c":"$Qd"}]]
+6:[["children",{"s":"(main)","h":96,"d":{"r":"$L7","p":"$@8","v":null,"s":"$5"},"c":"$Q9"}]]
+0:{"t":{"t":{"s":"","h":80,"d":{"r":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/3ij6fl1kqv7_b.css","precedence":"next"}],["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/2-pb9za22lqjl.css","precedence":"next"}],["$","script","script-0",{"src":"/_next/static/chunks/3w7s8kbtumcpg.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/0db0vyd-zfqxp.js","async":true}],["$","script","script-2",{"src":"/_next/static/chunks/2x1xen_9sot64.js","async":true}],["$","script","script-3",{"src":"/_next/static/chunks/1f62tltny02e_.js","async":true}],["$","script","script-4",{"src":"/_next/static/chunks/33b6yl3cnnkgz.js","async":true}],["$","script","script-5",{"src":"/_next/static/chunks/37voxk1r7fjmf.js","async":true}]],["$","html",null,{"lang":"en","data-theme-mode":"light","data-theme-preset":"default","data-content-layout":"full-width","data-navbar-style":"sticky","data-sidebar-variant":"floating","data-sidebar-collapsible":"icon","data-font":"geist","suppressHydrationWarning":true,"children":[["$","head",null,{"children":["$","script",null,{"dangerouslySetInnerHTML":{"__html":"$2"}}]}],"$L3"]}]]}],"p":"$@4","v":null,"s":"$5"},"c":"$Q6"},"h":{"r":"$L16","p":"$@17","v":null,"s":"$5"}},"a":"$@18","u":"$@19","b":"oMBXFW37WFDgGydIFUHxh"}
+1a:"/_next/static/chunks/3w7s8kbtumcpg.js"
+1b:"/_next/static/chunks/0db0vyd-zfqxp.js"
+1c:"/_next/static/chunks/2x1xen_9sot64.js"
+1d:"/_next/static/chunks/1f62tltny02e_.js"
+1e:"/_next/static/chunks/33b6yl3cnnkgz.js"
+1f:"/_next/static/chunks/37voxk1r7fjmf.js"
+20:I[80377,["$1a","$1b","$1c","$1d","$1e","$1f"],"LocaleProvider"]
+21:I[87614,["$1a","$1b","$1c","$1d","$1e","$1f"],"TooltipProvider"]
+22:"PreferencesStoreProvider"
+23:I[130679,["$1a","$1b","$1c","$1d","$1e","$1f"],"$22"]
+24:I[488287,["$1a","$1b","$1c","$1d","$1e","$1f"],"default"]
+25:I[174895,["$1a","$1b","$1c","$1d","$1e","$1f"],"default"]
+26:"/_next/static/chunks/3b68_ns8m1v57.js"
+27:I[790998,["$1a","$1b","$1c","$1d","$1e","$1f","$26"],"default"]
+28:I[283798,["$1a","$1b","$1c","$1d","$1e","$1f"],"Toaster"]
+29:"ClientSegmentRoot"
+2a:I[808719,["$1a","$1b","$1c","$1d","$1e","$1f"],"$29"]
+2b:"/_next/static/chunks/0t75mg-2l3cxf.js"
+2c:"/_next/static/chunks/2m2twz02x937p.js"
+2d:"/_next/static/chunks/156gj5oeiqyor.js"
+2e:"/_next/static/chunks/0aafpza0tb3p8.js"
+2f:"/_next/static/chunks/1zurac2ymhgo9.js"
+30:"/_next/static/chunks/1v06bmzlcl2nx.js"
+31:"/_next/static/chunks/43pzl9vml_6lk.js"
+32:"/_next/static/chunks/0bmrhwphu1h1k.js"
+33:I[138134,["$1a","$1b","$1c","$1d","$1e","$1f","$2b","$2c","$2d","$2e","$2f","$30","$31","$32"],"default"]
+35:I[683380,["$1a","$1b","$1c","$1d","$1e","$1f"],"ClientPageRoot"]
+36:"/_next/static/chunks/041nupjh54z-3.js"
+37:I[164796,["$1a","$1b","$1c","$1d","$1e","$1f","$2b","$2c","$2d","$2e","$2f","$30","$31","$32","$36"],"default"]
+3a:I[151858,["$1a","$1b","$1c","$1d","$1e","$1f"],"OutletBoundary"]
+3b:"$Sreact.suspense"
+3d:"ViewportBoundary"
+3e:I[151858,["$1a","$1b","$1c","$1d","$1e","$1f"],"$3d"]
+3f:"MetadataBoundary"
+40:I[151858,["$1a","$1b","$1c","$1d","$1e","$1f"],"$3f"]
+41:I[349310,["$1a","$1b","$1c","$1d","$1e","$1f"],"IconMark"]
+3:["$","body",null,{"className":"BokyCa_variable Gn9MAq_variable KyuqbW_variable DTASsq_variable HLUHiG_variable iKiAua_variable HjCa-a_variable ziBemW_variable QyP4uq_variable lkWI8q_variable FS8MbW_variable pfzg3G_variable df1S4G_variable _7BgLgq_variable aV22nW_variable hfijzq_variable _84-Yma_variable _4p6lza_variable min-h-screen antialiased","children":["$","$L20",null,{"children":["$","$L21",null,{"children":["$","$L23",null,{"themeMode":"light","themePreset":"default","contentLayout":"full-width","navbarStyle":"sticky","font":"geist","children":[["$","$L24",null,{"parallelRouterKey":"children","template":["$","$L25",null,{}],"notFound":[["$","$L27",null,{}],[]]}],["$","$L28",null,{}]]}]}]}]}]
+7:["$","$1","c",{"children":[[["$","script","script-0",{"src":"/_next/static/chunks/0t75mg-2l3cxf.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/2m2twz02x937p.js","async":true}],["$","script","script-2",{"src":"/_next/static/chunks/156gj5oeiqyor.js","async":true}],["$","script","script-3",{"src":"/_next/static/chunks/0aafpza0tb3p8.js","async":true}],["$","script","script-4",{"src":"/_next/static/chunks/1zurac2ymhgo9.js","async":true}],["$","script","script-5",{"src":"/_next/static/chunks/1v06bmzlcl2nx.js","async":true}],["$","script","script-6",{"src":"/_next/static/chunks/43pzl9vml_6lk.js","async":true}],["$","script","script-7",{"src":"/_next/static/chunks/0bmrhwphu1h1k.js","async":true}]],["$","$L2a",null,{"Component":"$33","slots":{"children":["$","$L24",null,{"parallelRouterKey":"children","template":["$","$L25",null,{}],"notFound":[["$","$L27",null,{}],[]]}]},"serverProvidedParams":{"params":{},"promises":["$@34"]}}]]}]
+a:["$","$1","c",{"children":[null,["$","$L24",null,{"parallelRouterKey":"children","template":["$","$L25",null,{}]}]]}]
+e:["$","$1","c",{"children":[null,["$","$L24",null,{"parallelRouterKey":"children","template":["$","$L25",null,{}]}]]}]
+11:["$","$1","c",{"children":[null,["$","$L24",null,{"parallelRouterKey":"children","template":["$","$L25",null,{}]}]]}]
+14:["$","$1","c",{"children":[["$","$L35",null,{"Component":"$37","serverProvidedParams":{"searchParams":{},"params":"$7:props:children:1:props:serverProvidedParams:params","promises":["$@38","$@39"]}}],[["$","script","script-0",{"src":"/_next/static/chunks/041nupjh54z-3.js","async":true}]],["$","$L3a",null,{"children":["$","$3b",null,{"name":"Next.MetadataOutlet","children":"$@3c"}]}]]}]
+16:["$","$1","h",{"children":[null,["$","$L3e",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","$L40",null,{"children":[["$","div",null,{"hidden":true,"children":["$","$3b",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"K1nzr3c0n — Autonomous Penetration Testing Console"}],["$","meta","1",{"name":"description","content":"Console for an LLM-driven autonomous penetration testing system"}],["$","link","2",{"rel":"icon","href":"/favicon.ico?favicon.1uboyqwm7-s27.ico","sizes":"48x48","type":"image/x-icon"}],["$","link","3",{"rel":"icon","href":"/icon.png?icon.3dd5jbyzohzmq.png","sizes":"1920x1920","type":"image/png"}],["$","link","4",{"rel":"icon","href":"/icon.svg?icon.0uz8ud2z16c8f.svg","sizes":"any","type":"image/svg+xml"}],["$","$L41","5",{}]]}]}],null]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}]
+34:"$7:props:children:1:props:serverProvidedParams:params"
+38:{}
+39:"$7:props:children:1:props:serverProvidedParams:params"
+3c:null
+19:true
+5:300
+5:C
+18:0
+12:"$undefined"
+f:"$undefined"
+b:"$undefined"
+17:"$undefined"
+15:"$undefined"
+8:"$undefined"
+4:"$undefined"

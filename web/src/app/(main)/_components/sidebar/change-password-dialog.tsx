@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { toast } from "sonner";
@@ -24,6 +26,9 @@ export function ChangePasswordDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [oldPassword, setOldPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
@@ -41,21 +46,21 @@ export function ChangePasswordDialog({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!oldPassword || !newPassword) {
-      toast.error("请填写当前密码和新密码");
+      toast.error(swt("interface.m0055"));
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error("两次输入的新密码不一致");
+      toast.error(swt("interface.m0056"));
       return;
     }
     setSaving(true);
     api
       .changePassword(oldPassword, newPassword)
       .then(() => {
-        toast.success("密码已修改");
+        toast.success(swt("interface.m0057"));
         onOpenChange(false);
       })
-      .catch((err) => toast.error(`修改失败：${(err as Error).message}`))
+      .catch((err) => toast.error(swt("interface.m0058", { p0: (err as Error).message })))
       .finally(() => setSaving(false));
   }
 
@@ -64,14 +69,13 @@ export function ChangePasswordDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>修改密码</DialogTitle>
+            <DialogTitle>{swt("interface.m0053")}</DialogTitle>
             <DialogDescription>
-              用户名固定为 <b>ARTEX</b>。需先输入当前密码验证；修改后已签发的登录 token 仍有效直至过期。
-            </DialogDescription>
+              {swt("interface.m0059")}<b>ARTEX</b>{swt("interface.m0060")}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cp-old">当前密码</Label>
+              <Label htmlFor="cp-old">{swt("interface.m0061")}</Label>
               <Input
                 id="cp-old"
                 type="password"
@@ -82,7 +86,7 @@ export function ChangePasswordDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cp-new">新密码</Label>
+              <Label htmlFor="cp-new">{swt("interface.m0046")}</Label>
               <Input
                 id="cp-new"
                 type="password"
@@ -93,7 +97,7 @@ export function ChangePasswordDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cp-confirm">确认新密码</Label>
+              <Label htmlFor="cp-confirm">{swt("interface.m0062")}</Label>
               <Input
                 id="cp-confirm"
                 type="password"
@@ -106,10 +110,9 @@ export function ChangePasswordDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-              取消
-            </Button>
+              {swt("interface.m0063")}</Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "修改中…" : "确认修改"}
+              {saving ? swt("interface.m0064") : swt("interface.m0065")}
             </Button>
           </DialogFooter>
         </form>

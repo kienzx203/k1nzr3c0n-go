@@ -1,4 +1,5 @@
 "use client";
+import { useI18n } from "@/i18n";
 
 import { Monitor, Moon, Sun } from "lucide-react";
 
@@ -9,6 +10,9 @@ import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
 const THEME_CYCLE = ["light", "dark", "system"] as const;
 
 export function ThemeSwitcher() {
+  "use no memo";
+  const { t } = useI18n();
+
   const themeMode = usePreferencesStore((s) => s.themeMode);
   const setThemeMode = usePreferencesStore((s) => s.setThemeMode);
 
@@ -21,7 +25,7 @@ export function ThemeSwitcher() {
   };
 
   return (
-    <Button size="icon" onClick={cycleTheme} aria-label={`Current theme: ${themeMode}. Click to cycle themes`}>
+    <Button size="icon" onClick={cycleTheme} aria-label={t("app.cycleTheme", { theme: t(themeMode === "light" ? "english.e012" : themeMode === "dark" ? "english.e014" : "english.e016") })}>
       {/* SYSTEM */}
       <Monitor className="hidden [html[data-theme-mode=system]_&]:block" />
 

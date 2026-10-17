@@ -1,8 +1,10 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
-import { CpuIcon, FlaskConicalIcon, KeyboardIcon, RadioTowerIcon, SearchIcon, ShieldAlertIcon } from "lucide-react";
+import { CpuIcon, FlaskConicalIcon, HardDriveIcon, KeyboardIcon, RadioTowerIcon, SearchIcon, ShieldAlertIcon, ZapIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { CHAT_SEND_MODE_OPTIONS, type ChatSendMode, setChatSendMode, useChatSendMode } from "@/lib/chat-send-mode";
 import type { Settings } from "@/lib/types";
@@ -18,6 +21,9 @@ import type { Settings } from "@/lib/types";
 import { UpdateCard } from "./_components/update-card";
 
 export default function SystemSettingsPage() {
+  "use no memo";
+  const { t: swt, rich, locale: swLocale } = useI18n();
+
   const [trafficCapture, setTrafficCapture] = React.useState(false);
   const [agentTrafficBinding, setAgentTrafficBinding] = React.useState(false);
   const [webSearch, setWebSearch] = React.useState(false);
@@ -38,12 +44,18 @@ export default function SystemSettingsPage() {
   const [pyInterp, setPyInterp] = React.useState("");
   const [workers, setWorkers] = React.useState("3");
   const [savingWorkers, setSavingWorkers] = React.useState(false);
-  // 操作约束注入范围(默认都开)。
+  const [maxConcurrent, setMaxConcurrent] = React.useState("0");
+  const [savingMaxConcurrent, setSavingMaxConcurrent] = React.useState(false);
+  // Opt-in local-only LLM network policy; off by default so cloud providers keep working.
+  const [localOnly, setLocalOnly] = React.useState(false);
+  const [localCidrs, setLocalCidrs] = React.useState("");
+  const [savingLocalPolicy, setSavingLocalPolicy] = React.useState(false);
+  // Operational constraint injection targets; both enabled by default.
   const [injectPlanner, setInjectPlanner] = React.useState(true);
   const [injectWorker, setInjectWorker] = React.useState(true);
-  // 实验功能:noa 上下文压缩(默认关)。
+  // Experimental noa context compression, off by default.
   const [noaCompaction, setNoaCompaction] = React.useState(false);
-  // 纯前端偏好：不走 /api/settings，直接读写 localStorage。
+  // Browser-only preference stored directly in localStorage, not /api/settings.
   const sendMode = useChatSendMode();
 
   const apply = React.useCallback((s: Settings) => {
@@ -57,6 +69,9 @@ export default function SystemSettingsPage() {
     setGlobalProxyInput(s.global_proxy ?? "");
     setPyInterp(s.python_interpreter ?? "");
     setWorkers(String(s.workers ?? 3));
+    setMaxConcurrent(String(s.llm_max_concurrent ?? 0));
+    setLocalOnly(!!s.local_llm_only);
+    setLocalCidrs((s.local_llm_allowed_cidrs ?? []).join("\n"));
     setInjectPlanner(s.constraints_inject_planner !== false);
     setInjectWorker(s.constraints_inject_worker !== false);
     setNoaCompaction(!!s.noa_compaction);
@@ -65,7 +80,7 @@ export default function SystemSettingsPage() {
   const saveWorkers = () => {
     const n = Number(workers);
     if (!Number.isInteger(n) || n <= 0) {
-      toast.error("并发数必须是大于 0 的整数");
+      toast.error(swt("interface.m1627"));
       return;
     }
     setSavingWorkers(true);
@@ -73,10 +88,43 @@ export default function SystemSettingsPage() {
       .setSettings({ workers: n })
       .then((s) => {
         apply(s);
-        toast.success("已保存并发工作 agent 数（对之后启动的任务生效）");
+        toast.success(swt("interface.m1628"));
       })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
+      .catch((e) => toast.error(swt("interface.m1450") + (e as Error).message))
       .finally(() => setSavingWorkers(false));
+  };
+
+  const saveMaxConcurrent = () => {
+    if (maxConcurrent.trim() === "") {
+      toast.error(swt("interface.m2874"));
+      return;
+    }
+    const n = Number(maxConcurrent);
+    if (!Number.isInteger(n) || n < 0) {
+      toast.error(swt("interface.m2874"));
+      return;
+    }
+    setSavingMaxConcurrent(true);
+    api
+      .setSettings({ llm_max_concurrent: n })
+      .then((s) => {
+        apply(s);
+        toast.success(swt("interface.m2875"));
+      })
+      .catch((e) => toast.error(swt("interface.m1450") + (e as Error).message))
+      .finally(() => setSavingMaxConcurrent(false));
+  };
+
+  const saveLocalPolicy = (patch: Pick<Settings, "local_llm_only" | "local_llm_allowed_cidrs">, success: string) => {
+    setSavingLocalPolicy(true);
+    api
+      .setSettings(patch)
+      .then((s) => {
+        apply(s);
+        toast.success(success);
+      })
+      .catch((e) => toast.error(swt("interface.m1450") + (e as Error).message))
+      .finally(() => setSavingLocalPolicy(false));
   };
 
   const savePython = () => {
@@ -85,9 +133,9 @@ export default function SystemSettingsPage() {
       .setSettings({ python_interpreter: pyInterp.trim() })
       .then((s) => {
         apply(s);
-        toast.success("已保存 Python 解释器配置");
+        toast.success(swt("interface.m1629"));
       })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
+      .catch((e) => toast.error(swt("interface.m1450") + (e as Error).message))
       .finally(() => setSaving(false));
   };
   const detectPython = () => {
@@ -132,11 +180,11 @@ export default function SystemSettingsPage() {
       .setSettings({ agent_traffic_binding: v })
       .then((s) => {
         apply(s);
-        toast.success(v ? "已开启 Agent 自动绑定流量" : "已关闭 Agent 自动绑定流量");
+        toast.success(v ? swt("interface.m1630") : swt("interface.m1631"));
       })
       .catch((e) => {
         setAgentTrafficBinding(!v);
-        toast.error(`保存失败：${(e as Error).message}`);
+        toast.error(swt("interface.m0267", { p0: (e as Error).message }));
       })
       .finally(() => setSaving(false));
   };
@@ -155,11 +203,11 @@ export default function SystemSettingsPage() {
       .setSettings({ noa_compaction: v })
       .then((s) => {
         apply(s);
-        toast.success(v ? "已开启 noa 上下文压缩（对之后启动的运行生效）" : "已关闭 noa 上下文压缩（恢复内置压缩）");
+        toast.success(v ? swt("interface.m1632") : swt("interface.m1633"));
       })
       .catch((e) => {
         setNoaCompaction(!v); // revert on failure
-        toast.error(`保存失败：${(e as Error).message}`);
+        toast.error(swt("interface.m0267", { p0: (e as Error).message }));
       });
   };
 
@@ -170,10 +218,10 @@ export default function SystemSettingsPage() {
       .setSettings(patch)
       .then((s) => {
         apply(s);
-        toast.success("已保存网络搜索配置");
+        toast.success(swt("interface.m1634"));
       })
       .catch((e) => {
-        toast.error("保存失败：" + (e as Error).message);
+        toast.error(swt("interface.m1450") + (e as Error).message);
         api
           .settings()
           .then(apply)
@@ -189,9 +237,9 @@ export default function SystemSettingsPage() {
       .then((s) => {
         apply(s);
         setBraveKeyInput("");
-        toast.success("已保存 Brave API Key");
+        toast.success(swt("interface.m1635"));
       })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
+      .catch((e) => toast.error(swt("interface.m1450") + (e as Error).message))
       .finally(() => setSavingKey(false));
   };
 
@@ -202,9 +250,9 @@ export default function SystemSettingsPage() {
       .then((s) => {
         apply(s);
         setTavilyKeyInput("");
-        toast.success("已保存 Tavily API Key");
+        toast.success(swt("interface.m1636"));
       })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
+      .catch((e) => toast.error(swt("interface.m1450") + (e as Error).message))
       .finally(() => setSavingTavilyKey(false));
   };
 
@@ -214,9 +262,9 @@ export default function SystemSettingsPage() {
       .setSettings({ web_search_proxy: proxyInput.trim() })
       .then((s) => {
         apply(s);
-        toast.success(proxyInput.trim() ? "已保存出口代理" : "已清除出口代理（改为直连）");
+        toast.success(proxyInput.trim() ? swt("interface.m1637") : swt("interface.m1638"));
       })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
+      .catch((e) => toast.error(swt("interface.m1450") + (e as Error).message))
       .finally(() => setSavingProxy(false));
   };
 
@@ -226,9 +274,9 @@ export default function SystemSettingsPage() {
       .setSettings({ global_proxy: globalProxyInput.trim() })
       .then((s) => {
         apply(s);
-        toast.success(globalProxyInput.trim() ? "已保存全局代理" : "已清除全局代理（改为直连）");
+        toast.success(globalProxyInput.trim() ? swt("interface.m1639") : swt("interface.m1640"));
       })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
+      .catch((e) => toast.error(swt("interface.m1450") + (e as Error).message))
       .finally(() => setSavingGlobalProxy(false));
   };
 
@@ -244,10 +292,10 @@ export default function SystemSettingsPage() {
         tavily_search_api_key: tavilyKeyInput,
       })
       .then((r) => {
-        if (r.ok) toast.success(`搜索测试成功 · ${r.backend} 返回 ${r.count} 条结果`);
-        else toast.error("搜索测试失败：" + (r.error || "未知错误"));
+        if (r.ok) toast.success(swt("interface.m1641", { p0: r.backend, p1: r.count }));
+        else toast.error(swt("interface.m1642") + (r.error || swt("interface.m1643")));
       })
-      .catch((e) => toast.error("搜索测试失败：" + (e as Error).message))
+      .catch((e) => toast.error(swt("interface.m1642") + (e as Error).message))
       .finally(() => setTesting(false));
   };
 
@@ -257,14 +305,11 @@ export default function SystemSettingsPage() {
   return (
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">系统配置</h1>
-        <p className="text-muted-foreground text-sm">全局运行时开关</p>
+        <h1 className="text-xl font-semibold tracking-tight">{swt("interface.m1644")}</h1>
+        <p className="text-muted-foreground text-sm">{swt("interface.m1645")}</p>
       </div>
 
-      {/* 多列而非 grid：网络搜索卡片比其余高数倍，且高度随所选后端变化（brave/tavily
-          的 key 输入是条件渲染）。grid 会按最高的一张撑满整行、在旁边留下大片空白，
-          多列则自动按内容高度平衡填充。卡片间距靠 mb 而非 gap——多列布局下
-          column-gap 只管列间距，行间距要由子元素自己给。 */}
+      {/* Use columns instead of grid: search cards vary greatly in height with conditional provider-key inputs. Columns balance content without grid row gaps. Cards provide margin-bottom because column-gap handles only horizontal spacing. */}
       <div className="columns-1 gap-4 md:gap-6 lg:columns-2">
         <UpdateCard />
 
@@ -272,19 +317,14 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <RadioTowerIcon className="size-4" />
-              流量捕获
-            </CardTitle>
+              {swt("interface.m0209")}</CardTitle>
             <CardDescription>
-              开启后，所有 Agent 的 HTTP 流量经记录代理全量落库，并向 Agent 注入 traffic_search / traffic_get
-              工具与代理配置（提示词含代理说明）。
-              <br />
-              关闭（默认）时不记录任何流量：Agent
-              <b>不会</b>拿到代理配置与流量工具，提示词也<b>不含</b>代理相关内容。切换后会即时重建 Agent 生效。
-            </CardDescription>
+              {swt("interface.m1646")}<br />
+              {rich("settings.captureDisabled", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
             <Label htmlFor="traffic-capture" className="text-sm font-normal text-muted-foreground">
-              {trafficCapture ? "已开启 · 正在记录流量并注入代理" : "已关闭 · 不记录、不注入代理"}
+              {trafficCapture ? swt("interface.m1652") : swt("interface.m1653")}
             </Label>
             <Switch
               id="traffic-capture"
@@ -299,19 +339,15 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <RadioTowerIcon className="size-4" />
-              Agent 自动绑定流量
-            </CardTitle>
+              {swt("interface.m1654")}</CardTitle>
             <CardDescription id="agent-traffic-binding-description">
-              默认关闭。开启后，漏洞入库时触发的报告 Agent 会核对已有 HTTP 请求/响应，关联对应流量后再编写报告。
-              <b>查阅数据包及额外的工具调用会增加 Token 消耗。</b>
+              {rich("settings.binding", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}
               <br />
-              TCP、未抓包或没有匹配流量时仍可正常上报。此开关不影响流量捕获、人工绑定及已保存证据的查看。 对下一轮 Agent
-              生效；关闭后会立即拒绝新的自动绑定。
-            </CardDescription>
+              {swt("interface.m1657")}</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
             <Label htmlFor="agent-traffic-binding" className="text-sm font-normal text-muted-foreground">
-              {agentTrafficBinding ? "已开启 · 会增加 Token 消耗" : "已关闭 · 可继续人工绑定"}
+              {agentTrafficBinding ? swt("interface.m1658") : swt("interface.m1659")}
             </Label>
             <Switch
               id="agent-traffic-binding"
@@ -327,39 +363,29 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <RadioTowerIcon className="size-4" />
-              全局代理
-            </CardTitle>
+              {swt("interface.m1660")}</CardTitle>
             <CardDescription>
-              所有 Agent 的<b>目标流量</b>经此代理出网（隐藏源 IP / 走跳板）。支持 <b>http / https / socks5</b>，可带{" "}
-              <code>user:pass</code> 认证。留空=直连。
-              <br />
-              开启<b>流量捕获</b>时，它作为记录代理的<b>上游</b>（流量仍全量落库，再经此代理出网）；关闭捕获时，直接注入
-              Agent 的 bash / WebFetch 出网。与网络搜索代理、LLM 代理相互独立。
-              <br />
-              <b>提示</b>：socks5 在<b>关闭捕获</b>时依赖各命令行工具对 <code>ALL_PROXY</code> 的支持（curl
-              可用，部分工具可能忽略）； 若主要用 socks5，建议开启流量捕获——此路径由 MITM
-              亲自拨号，工具无感知、稳定生效。
-            </CardDescription>
+              {rich("settings.proxy", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}<br />
+              {rich("settings.proxyCapture", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}<br />
+              {rich("settings.proxySocks", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             <Label htmlFor="global-proxy" className="text-sm font-normal text-muted-foreground">
-              代理地址
-            </Label>
+              {swt("interface.m1673")}</Label>
             <div className="flex items-center gap-2">
               <Input
                 id="global-proxy"
                 autoComplete="off"
-                placeholder="socks5://user:pass@host:1080 或 http://host:port（留空=直连）"
+                placeholder={swt("interface.m1674")}
                 value={globalProxyInput}
                 disabled={!loaded || savingGlobalProxy}
                 onChange={(e) => setGlobalProxyInput(e.target.value)}
               />
               <Button type="button" onClick={saveGlobalProxy} disabled={!loaded || savingGlobalProxy}>
-                保存
-              </Button>
+                {swt("interface.m0273")}</Button>
             </div>
             <p className="text-muted-foreground text-xs">
-              {globalProxyInput.trim() ? "已配置 · 所有目标流量经此代理出网" : "未配置 · 目标流量直连出网"}
+              {globalProxyInput.trim() ? swt("interface.m1675") : swt("interface.m1676")}
             </p>
           </CardContent>
         </Card>
@@ -368,20 +394,15 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <ShieldAlertIcon className="size-4" />
-              操作约束注入
-            </CardTitle>
+              {swt("interface.m1677")}</CardTitle>
             <CardDescription>
-              开启后，把每个任务的<b>操作约束</b>（在任务总览「操作约束」里维护的 allow/deny 条目）拼进对应 Agent
-              的系统提示，用来框定探索边界（如「仅测当前端口」「禁止爆破」）。
-              <br />
-              可分别控制注入到 <b>规划者（planner）</b>与 <b>执行者（worker）</b>
-              ；默认都开。切换即时生效（下一轮读取），无需重建 Agent。关闭后该 Agent 不再看到约束。
-            </CardDescription>
+              {rich("settings.constraints", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}<br />
+              {rich("settings.constraintTargets", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-4">
               <Label htmlFor="inject-planner" className="text-sm font-normal text-muted-foreground">
-                注入规划者（planner）{injectPlanner ? " · 已开启" : " · 已关闭"}
+                {swt("interface.m1685")}{" "}{injectPlanner ? swt("interface.m1686") : swt("interface.m1687")}
               </Label>
               <Switch
                 id="inject-planner"
@@ -392,7 +413,7 @@ export default function SystemSettingsPage() {
             </div>
             <div className="flex items-center justify-between gap-4">
               <Label htmlFor="inject-worker" className="text-sm font-normal text-muted-foreground">
-                注入执行者（worker）{injectWorker ? " · 已开启" : " · 已关闭"}
+                {swt("interface.m1688")}{" "}{injectWorker ? swt("interface.m1686") : swt("interface.m1687")}
               </Label>
               <Switch
                 id="inject-worker"
@@ -408,20 +429,14 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <FlaskConicalIcon className="size-4" />
-              实验功能
-            </CardTitle>
+              {swt("interface.m1689")}</CardTitle>
             <CardDescription>
-              尚在验证中的机制，默认关闭。可能改变 Agent 行为或影响稳定性，请在了解影响后启用。
-              <br />
-              <b>noa 上下文压缩</b>：由模型主动压缩长对话历史（norma v0.4.0）。开启后平台接入的四类 Agent（
-              <b>规划者 / 执行者 / 主 Agent / 对话</b>）改用 noa 接管上下文，取代内置压缩，
-              压缩原文会归档到任务工作目录下便于回溯。切换即时生效（对之后启动的运行生效），无需重建 Agent；
-              关闭后立即恢复内置压缩。
-            </CardDescription>
+              {swt("interface.m1690")}<br />
+              {rich("settings.compression", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
             <Label htmlFor="noa-compaction" className="text-sm font-normal text-muted-foreground">
-              noa 上下文压缩{noaCompaction ? " · 已开启" : " · 已关闭"}
+              {swt("interface.m1691")}{" "}{noaCompaction ? swt("interface.m1686") : swt("interface.m1687")}
             </Label>
             <Switch
               id="noa-compaction"
@@ -436,22 +451,15 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <SearchIcon className="size-4" />
-              网络搜索
-            </CardTitle>
+              {swt("interface.m1187")}</CardTitle>
             <CardDescription>
-              这是网络搜索的<b>总开关 + 来源配置</b>。开启后，才能在<b>每个 Agent 的配置</b>里单独选择是否启用
-              <b>web_search</b>（仅返回标题/链接/摘要，不抓取正文；抓取由 WebFetch 负责）。网络搜索<b>不走</b>
-              记录代理，独立于流量捕获。
-              <br />
-              来源可选 <b>DuckDuckGo（ddgs）</b>（无需 Key）、<b>Brave（免费版）</b>（需填写 Brave API Key）、{" "}
-              <b>Tavily</b>（需填写 Tavily API Key）或 <b>DeepSeek</b>（复用当前 LLM 配置）。总开关关闭时，各
-              Agent 的网络搜索开关不可用。
-            </CardDescription>
+              {rich("settings.webSearch", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}<br />
+              {rich("settings.searchSources", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-4">
               <Label htmlFor="web-search" className="text-sm font-normal text-muted-foreground">
-                {webSearch ? "总开关已开启 · 可在各 Agent 配置里单独启用" : "已关闭 · 各 Agent 无法启用网络搜索"}
+                {webSearch ? swt("interface.m1709") : swt("interface.m1710")}
               </Label>
               <Switch
                 id="web-search"
@@ -466,7 +474,7 @@ export default function SystemSettingsPage() {
 
             {webSearch && (
               <div className="flex items-center justify-between gap-4">
-                <Label className="text-sm font-normal text-muted-foreground">搜索来源</Label>
+                <Label className="text-sm font-normal text-muted-foreground">{swt("interface.m1711")}</Label>
                 <Select
                   value={backend}
                   disabled={!loaded || saving}
@@ -476,13 +484,13 @@ export default function SystemSettingsPage() {
                   }}
                 >
                   <SelectTrigger className="w-48 shrink-0">
-                    <SelectValue placeholder="选择来源" />
+                    <SelectValue placeholder={swt("interface.m1712")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ddgs">DuckDuckGo（ddgs · 免费无 Key）</SelectItem>
-                    <SelectItem value="brave-free">Brave（免费版 · 需 Key）</SelectItem>
-                    <SelectItem value="tavily">Tavily（需 Key）</SelectItem>
-                    <SelectItem value="deepseek">DeepSeek（官方）</SelectItem>
+                    <SelectItem value="ddgs">{swt("interface.m1713")}</SelectItem>
+                    <SelectItem value="brave-free">{swt("interface.m1714")}</SelectItem>
+                    <SelectItem value="tavily">{swt("interface.m1715")}</SelectItem>
+                    <SelectItem value="deepseek">{swt("interface.m1716")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -490,35 +498,27 @@ export default function SystemSettingsPage() {
 
             {webSearch && backend === "deepseek" && (
               <div className="border-border/60 bg-muted/30 flex flex-col gap-2 rounded-md border p-3">
-                <p className="text-sm font-medium">DeepSeek 官方联网搜索</p>
+                <p className="text-sm font-medium">{swt("interface.m1717")}</p>
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  该来源直接复用<b>当前激活的 LLM 配置</b>。因此它
-                  <b>仅支持 DeepSeek 官方模型</b>，且该配置<b>必须使用 anthropic 协议</b>
-                  ——DeepSeek 的 OpenAI 协议端点不支持服务端搜索。切换 LLM 配置后此来源可能失效。
-                </p>
+                  {rich("settings.deepseekRequirements", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</p>
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  与其它来源不同，搜索由 <b>DeepSeek 服务端执行</b>：每次搜索会额外消耗一次模型调用（产生 Token
-                  费用），搜索请求<b>不经过上面的出口代理</b>，也<b>不计入流量留痕</b>；返回结果<b>只有标题和链接</b>
-                  （无摘要），需要正文时由 WebFetch 抓取。
-                </p>
+                  {rich("settings.deepseekBehavior", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</p>
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  是否满足上述条件由你自行确认，系统不做拦截；可用下方「测试搜索」按钮实际跑一次来验证。
-                </p>
+                  {swt("interface.m1734")}</p>
               </div>
             )}
 
             {webSearch && backend === "brave-free" && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="brave-key" className="text-sm font-normal text-muted-foreground">
-                  Brave Search API Key
-                  {braveKeySet && <span className="ml-2 text-xs text-emerald-500">已配置</span>}
+                  {swt("english.e130")}{" "}{braveKeySet && <span className="ml-2 text-xs text-emerald-500">{swt("interface.m0207")}</span>}
                 </Label>
                 <div className="flex items-center gap-2">
                   <Input
                     id="brave-key"
                     type="password"
                     autoComplete="off"
-                    placeholder={braveKeySet ? "已配置（留空则不变）" : "输入 Brave API Key"}
+                    placeholder={braveKeySet ? swt("interface.m1735") : swt("interface.m1736")}
                     value={braveKeyInput}
                     disabled={!loaded || savingKey}
                     onChange={(e) => setBraveKeyInput(e.target.value)}
@@ -528,32 +528,28 @@ export default function SystemSettingsPage() {
                     onClick={saveBraveKey}
                     disabled={!loaded || savingKey || braveKeyInput.trim() === ""}
                   >
-                    保存
-                  </Button>
+                    {swt("interface.m0273")}</Button>
                 </div>
                 {braveNeedsKey && (
                   <p className="text-xs text-amber-500">
-                    已选择 Brave 但尚未配置 Key —— 在保存 Key 之前，搜索工具不会启用。
-                  </p>
+                    {swt("interface.m1737")}</p>
                 )}
                 <p className="text-muted-foreground text-xs">
-                  免费版额度约 2,000 次/月。前往 https://brave.com/search/api/ 获取 Key。
-                </p>
+                  {swt("interface.m1738")}</p>
               </div>
             )}
 
             {webSearch && backend === "tavily" && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="tavily-key" className="text-sm font-normal text-muted-foreground">
-                  Tavily Search API Key
-                  {tavilyKeySet && <span className="ml-2 text-xs text-emerald-500">已配置</span>}
+                  {swt("english.e131")}{" "}{tavilyKeySet && <span className="ml-2 text-xs text-emerald-500">{swt("interface.m0207")}</span>}
                 </Label>
                 <div className="flex items-center gap-2">
                   <Input
                     id="tavily-key"
                     type="password"
                     autoComplete="off"
-                    placeholder={tavilyKeySet ? "已配置（留空则不变）" : "输入 Tavily API Key（tvly-…）"}
+                    placeholder={tavilyKeySet ? swt("interface.m1735") : swt("interface.m1739")}
                     value={tavilyKeyInput}
                     disabled={!loaded || savingTavilyKey}
                     onChange={(e) => setTavilyKeyInput(e.target.value)}
@@ -563,47 +559,41 @@ export default function SystemSettingsPage() {
                     onClick={saveTavilyKey}
                     disabled={!loaded || savingTavilyKey || tavilyKeyInput.trim() === ""}
                   >
-                    保存
-                  </Button>
+                    {swt("interface.m0273")}</Button>
                 </div>
                 {webSearch && backend === "tavily" && !tavilyKeySet && (
                   <p className="text-xs text-amber-500">
-                    已选择 Tavily 但尚未配置 Key —— 在保存 Key 之前，搜索工具不会启用。
-                  </p>
+                    {swt("interface.m1740")}</p>
                 )}
-                <p className="text-muted-foreground text-xs">前往 https://tavily.com 注册并获取 API Key。</p>
+                <p className="text-muted-foreground text-xs">{swt("interface.m1741")}</p>
               </div>
             )}
 
             {webSearch && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="ws-proxy" className="text-sm font-normal text-muted-foreground">
-                  出口代理（可选）
-                </Label>
+                  {swt("interface.m1742")}</Label>
                 <div className="flex items-center gap-2">
                   <Input
                     id="ws-proxy"
                     autoComplete="off"
-                    placeholder="http://host:port 或 socks5://host:port（留空=直连）"
+                    placeholder={swt("interface.m1743")}
                     value={proxyInput}
                     disabled={!loaded || savingProxy}
                     onChange={(e) => setProxyInput(e.target.value)}
                   />
                   <Button type="button" onClick={saveProxy} disabled={!loaded || savingProxy}>
-                    保存
-                  </Button>
+                    {swt("interface.m0273")}</Button>
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  独立出口代理，仅用于访问搜索端点（VPN/SOCKS 等）。与记录流量的 MITM 代理无关；网络不通时经此代理访问。
-                </p>
+                  {swt("interface.m1744")}</p>
               </div>
             )}
 
             {webSearch && (
               <div className="flex items-center justify-between gap-4 border-t pt-4">
                 <p className="text-muted-foreground text-xs">
-                  用当前配置（来源 + 代理 + Key）实际搜索一次「test」，验证是否可用。
-                </p>
+                  {swt("interface.m1745")}</p>
                 <Button
                   type="button"
                   variant="outline"
@@ -611,7 +601,7 @@ export default function SystemSettingsPage() {
                   disabled={!loaded || testing}
                   className="shrink-0"
                 >
-                  {testing ? "测试中…" : "测试搜索"}
+                  {testing ? swt("interface.m1417") : swt("interface.m1746")}
                 </Button>
               </div>
             )}
@@ -622,28 +612,23 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <RadioTowerIcon className="size-4" />
-              自定义脚本 · Python 解释器
-            </CardTitle>
+              {swt("interface.m1747")}</CardTitle>
             <CardDescription>
-              自定义 <b>script</b> 类型工具用它跑 Python。开机会自动检测（python3 优先）；此处可手填 venv /
-              特定版本的绝对路径，留空则运行时自动检测。
-            </CardDescription>
+              {rich("settings.python", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <Input
                 className="font-mono text-sm"
-                placeholder="/usr/bin/python3（留空=自动检测）"
+                placeholder={swt("interface.m1749")}
                 value={pyInterp}
                 disabled={!loaded || saving}
                 onChange={(e) => setPyInterp(e.target.value)}
               />
               <Button variant="outline" onClick={detectPython} disabled={!loaded || saving}>
-                重新检测
-              </Button>
+                {swt("interface.m1750")}</Button>
               <Button onClick={savePython} disabled={!loaded || saving}>
-                保存
-              </Button>
+                {swt("interface.m0273")}</Button>
             </div>
           </CardContent>
         </Card>
@@ -652,12 +637,9 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <CpuIcon className="size-4" />
-              工作并发 · Work Agent 数
-            </CardTitle>
+              {swt("interface.m1751")}</CardTitle>
             <CardDescription>
-              每个任务并发运行的工作 agent 数量（默认 3）。数值越大并发探测越多、消耗也越高。修改后
-              <b>对之后启动的任务生效</b>，正在运行的任务不受影响。
-            </CardDescription>
+              {rich("settings.workers", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
@@ -671,8 +653,81 @@ export default function SystemSettingsPage() {
                 onChange={(e) => setWorkers(e.target.value)}
               />
               <Button onClick={saveWorkers} disabled={!loaded || savingWorkers}>
-                保存
-              </Button>
+                {swt("interface.m0273")}</Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-4 break-inside-avoid md:mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ZapIcon className="size-4" />
+              {swt("settings.maxConcurrentTitle")}</CardTitle>
+            <CardDescription>
+              {rich("settings.maxConcurrentDesc", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                className="w-32 font-mono text-sm"
+                placeholder="0"
+                value={maxConcurrent}
+                disabled={!loaded || savingMaxConcurrent}
+                onChange={(e) => setMaxConcurrent(e.target.value)}
+              />
+              <Button onClick={saveMaxConcurrent} disabled={!loaded || savingMaxConcurrent}>
+                {swt("interface.m0273")}</Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-4 break-inside-avoid md:mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <HardDriveIcon className="size-4" />
+              {swt("settings.localOnlyTitle")}</CardTitle>
+            <CardDescription>
+              {rich("settings.localOnlyDesc", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="local-llm-only" className="font-normal text-sm">
+                {swt("settings.localOnlyToggle")}</Label>
+              <Switch
+                id="local-llm-only"
+                checked={localOnly}
+                disabled={!loaded || savingLocalPolicy}
+                onCheckedChange={(v) =>
+                  saveLocalPolicy({ local_llm_only: v }, swt(v ? "settings.localOnlyOn" : "settings.localOnlyOff"))
+                }
+              />
+            </div>
+            <p className="text-muted-foreground text-xs">{swt("settings.localOnlyEnv")}</p>
+            <Label htmlFor="local-llm-cidrs" className="text-sm">
+              {swt("settings.allowlistLabel")}</Label>
+            <Textarea
+              id="local-llm-cidrs"
+              rows={3}
+              className="font-mono text-sm"
+              placeholder="100.64.0.0/10"
+              value={localCidrs}
+              disabled={!loaded || savingLocalPolicy}
+              onChange={(e) => setLocalCidrs(e.target.value)}
+            />
+            <p className="text-muted-foreground text-xs">{swt("settings.allowlistHelp")}</p>
+            <div>
+              <Button
+                disabled={!loaded || savingLocalPolicy}
+                onClick={() =>
+                  saveLocalPolicy(
+                    { local_llm_allowed_cidrs: localCidrs.split(/[\s,]+/).filter(Boolean) },
+                    swt("settings.allowlistSaved"),
+                  )
+                }
+              >
+                {swt("interface.m0273")}</Button>
             </div>
           </CardContent>
         </Card>
@@ -681,18 +736,14 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <KeyboardIcon className="size-4" />
-              会话输入框发送键位
-            </CardTitle>
+              {swt("interface.m1755")}</CardTitle>
             <CardDescription>
-              对话页与任务详情的主 Agent 会话输入框共用此设置，选择后立即生效、无需保存。
-              <br />
-              该偏好<b>只存在本浏览器</b>，不随账号同步，换浏览器或清理站点数据后需重新设置。
-            </CardDescription>
+              {swt("interface.m1756")}<br />
+              {rich("settings.sendPreference", {}, { b: (text) => <b>{text}</b>, code: (text) => <code>{text}</code> })}</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
             <Label htmlFor="chat-send-mode" className="text-sm font-normal text-muted-foreground">
-              发送方式
-            </Label>
+              {swt("interface.m1760")}</Label>
             <Select value={sendMode} onValueChange={(v) => setChatSendMode(v as ChatSendMode)}>
               <SelectTrigger id="chat-send-mode" className="w-72">
                 <SelectValue />

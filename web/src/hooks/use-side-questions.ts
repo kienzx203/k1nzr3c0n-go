@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/i18n";
+import { translate as swt } from "@/i18n/runtime";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { toast } from "sonner";
@@ -7,7 +9,7 @@ import { toast } from "sonner";
 import { sseUrl } from "@/lib/api";
 import { isBtwCommand, type SideExchange, type SideHistory, sideAPI } from "@/lib/side-questions";
 
-// crypto.randomUUID 仅在安全上下文可用(https/localhost);经 IP+http 访问时降级。
+// crypto.randomUUID requires HTTPS/localhost; fall back for IP-based HTTP.
 function newSideRequestID(): string {
   return (
     globalThis.crypto?.randomUUID?.() ?? `btw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
@@ -23,6 +25,7 @@ function merge(old: SideExchange[], incoming: SideExchange[]) {
 }
 
 export function useSideQuestions(parent: string | null) {
+  const { locale } = useI18n();
   const [stateParent, setStateParent] = useState(parent);
   const current = stateParent === parent;
   const [open, setOpen] = useState(false);
@@ -138,7 +141,7 @@ export function useSideQuestions(parent: string | null) {
         restoreFailedDraft([item]);
         if (item.status !== "running") stream.close();
       } catch {
-        setError("旁路数据解析失败，请重新打开面板");
+        setError(swt("interface.m2412"));
       }
     });
     stream.addEventListener("cleared", () => {
@@ -146,7 +149,7 @@ export function useSideQuestions(parent: string | null) {
       if (version === epoch.current) setItems([]);
     });
     return () => stream.close();
-  }, [runningID, streamEpoch, restoreFailedDraft]);
+  }, [locale, runningID, streamEpoch, restoreFailedDraft]);
 
   const ask = async (input: string) => {
     const question = input.trim();

@@ -1,5 +1,7 @@
 "use client";
+import { useI18n } from "@/i18n";
 
+import { translate as swt } from "@/i18n/runtime";
 import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon } from "lucide-react";
 import type * as React from "react";
 
@@ -28,12 +30,15 @@ export function SortableHead<Field extends string>({
   className?: string;
   onSort: (field: Field) => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const active = activeField === field;
   let ariaSort: React.AriaAttributes["aria-sort"] = "none";
   if (active) ariaSort = direction === "asc" ? "ascending" : "descending";
 
-  let actionLabel = `按${label}倒序排序`;
-  if (active) actionLabel = `${label}当前${direction === "asc" ? "正序" : "倒序"}，点击切换排序方向`;
+  let actionLabel = swt("interface.m0873", { p0: label });
+  if (active) actionLabel = swt("interface.m0874", { p0: label, p1: direction === "asc" ? swt("interface.m0594") : swt("interface.m0595") });
 
   let icon = <ArrowUpDownIcon className="size-3.5 opacity-40 transition-opacity group-hover/sort:opacity-100" />;
   if (active) icon = direction === "asc" ? <ArrowUpIcon className="size-3.5" /> : <ArrowDownIcon className="size-3.5" />;

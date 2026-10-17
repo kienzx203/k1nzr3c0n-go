@@ -1,5 +1,7 @@
 "use client"
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
@@ -8,24 +10,40 @@ import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
 }
 
 function SheetTrigger({
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
 }
 
 function SheetClose({
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Close>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return <SheetPrimitive.Close data-slot="sheet-close" {...props} />
 }
 
 function SheetPortal({
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Portal>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />
 }
 
@@ -33,6 +51,10 @@ function SheetOverlay({
   className,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Overlay>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
@@ -55,6 +77,10 @@ function SheetContent({
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -77,7 +103,7 @@ function SheetContent({
             >
               <XIcon
               />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">{swt("english.e154")}</span>
             </Button>
           </SheetPrimitive.Close>
         )}
@@ -87,6 +113,10 @@ function SheetContent({
 }
 
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <div
       data-slot="sheet-header"
@@ -97,6 +127,10 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <div
       data-slot="sheet-footer"
@@ -110,6 +144,10 @@ function SheetTitle({
   className,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Title>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <SheetPrimitive.Title
       data-slot="sheet-title"
@@ -126,6 +164,10 @@ function SheetDescription({
   className,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Description>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   return (
     <SheetPrimitive.Description
       data-slot="sheet-description"
