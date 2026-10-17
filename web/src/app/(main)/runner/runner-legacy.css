@@ -1,40 +1,45 @@
-/* k1nzr3c0n original runner design system, ported to plain CSS and scoped to
-   the runner section (.k1z-legacy). Mirrors the legacy index.css: CSS-var
-   palette + shared component helpers (.btn/.input/.card/.table-base/.badge…).
-   Dark-first, matching the original console. */
-
+/* k1nzr3c0n runner pages, themed to match the ARTEX/ScopeWeaver shell.
+   The ported legacy pages reference CSS vars (--text/--surface/--accent…) and
+   helper classes (.btn/.input/.card/.table-base/.badge). Here we remap those
+   onto ScopeWeaver's shadcn theme tokens so the runner follows the app's
+   light/dark theme instead of the old fixed dark palette.
+   NOTE: --border/--accent/--ring are shadcn token names too; we must not write
+   `--border: var(--border)` (self-reference = cycle). We leave --border/--ring
+   to inherit the theme and point --accent at the theme's --primary. */
 .k1z-legacy {
-  --bg: #080b11;
-  --bg-soft: #0c111a;
-  --surface: #111824;
-  --surface-2: #18212f;
-  --surface-3: #212c3d;
-  --border: #1e2735;
-  --border-2: #2c3a4f;
+  /* text */
+  --text: var(--foreground);
+  --text-2: var(--muted-foreground);
+  --text-3: color-mix(in oklch, var(--muted-foreground) 68%, transparent);
 
-  --text: #e9eef6;
-  --text-2: #93a1b5;
-  --text-3: #5b6a80;
+  /* surfaces */
+  --surface: var(--card);
+  --surface-2: var(--muted);
+  --surface-3: var(--secondary);
+  --border-2: var(--border);
+  --bg: var(--background);
+  --bg-soft: var(--background);
 
-  --accent: #5b9bff;
-  --accent-2: #7c6cff;
-  --accent-soft: rgba(91, 155, 255, 0.12);
-  --green: #35d07f;
-  --red: #ff5c57;
-  --orange: #ff9f45;
-  --amber: #f2c94c;
+  /* interactive → theme primary (ARTEX is monochrome; follow whatever preset) */
+  --accent: var(--primary);
+  --accent-2: var(--primary);
+  --accent-soft: color-mix(in oklch, var(--primary) 12%, transparent);
 
-  --r-sm: 7px;
-  --r-md: 9px;
-  --r-lg: 13px;
+  /* semantic status (legible on light + dark) */
+  --green: #22c55e;
+  --red: var(--destructive);
+  --orange: #f97316;
+  --amber: #f59e0b;
 
-  --ring: 0 0 0 3px rgba(91, 155, 255, 0.32);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 8px 24px -6px rgba(0, 0, 0, 0.55);
-  --shadow-glow: 0 0 0 1px var(--border), 0 10px 30px -10px rgba(91, 155, 255, 0.18);
+  /* radii + elevation from the theme */
+  --r-sm: var(--radius-sm);
+  --r-md: var(--radius-md);
+  --r-lg: var(--radius-lg);
+  --shadow-1: none;
+  --shadow-2: 0 8px 24px -12px rgb(0 0 0 / 0.25);
+  --shadow-glow: 0 0 0 1px var(--border);
 
-  background: var(--bg);
-  color: var(--text);
+  color: var(--foreground);
   min-height: calc(100vh - var(--header-height, 4rem));
 }
 
@@ -45,23 +50,7 @@
 .k1z-legacy code,
 .k1z-legacy kbd,
 .k1z-legacy pre {
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-}
-.k1z-legacy ::selection {
-  background: rgba(91, 155, 255, 0.3);
-}
-.k1z-legacy *::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
-}
-.k1z-legacy *::-webkit-scrollbar-track {
-  background: transparent;
-}
-.k1z-legacy *::-webkit-scrollbar-thumb {
-  background: var(--border-2);
-  border-radius: 9px;
-  border: 2px solid transparent;
-  background-clip: content-box;
+  font-family: var(--font-mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
 }
 
 /* ── Motion ── */
@@ -116,48 +105,42 @@
   background: currentColor;
   flex-shrink: 0;
 }
-.k1z-legacy .badge-queued {
-  background: rgba(147, 161, 181, 0.14);
-  color: var(--text-2);
+.k1z-legacy .badge-queued,
+.k1z-legacy .badge-cancelled {
+  background: var(--muted);
+  color: var(--muted-foreground);
 }
-.k1z-legacy .badge-running {
-  background: rgba(53, 208, 127, 0.16);
+.k1z-legacy .badge-running,
+.k1z-legacy .badge-completed {
+  background: color-mix(in oklch, var(--green) 16%, transparent);
   color: var(--green);
 }
 .k1z-legacy .badge-running::before {
   animation: k1z-pulse-dot 1.4s ease-in-out infinite;
 }
-.k1z-legacy .badge-completed {
-  background: rgba(53, 208, 127, 0.16);
-  color: var(--green);
-}
 .k1z-legacy .badge-failed {
-  background: rgba(255, 92, 87, 0.16);
+  background: color-mix(in oklch, var(--red) 16%, transparent);
   color: var(--red);
 }
-.k1z-legacy .badge-cancelled {
-  background: rgba(147, 161, 181, 0.14);
-  color: var(--text-2);
-}
 .k1z-legacy .badge-paused {
-  background: rgba(242, 201, 76, 0.16);
+  background: color-mix(in oklch, var(--amber) 18%, transparent);
   color: var(--amber);
 }
 
-/* ── Cards ── */
+/* ── Cards (flat, hairline — like ARTEX) ── */
 .k1z-legacy .card {
-  background: linear-gradient(180deg, var(--surface), var(--bg-soft));
+  background: var(--card);
+  color: var(--card-foreground);
   border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-1);
+  border-radius: var(--radius);
+  box-shadow: none;
 }
 .k1z-legacy .card-hover {
-  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 .k1z-legacy .card-hover:hover {
-  border-color: var(--border-2);
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
   box-shadow: var(--shadow-2);
-  transform: translateY(-2px);
 }
 .k1z-legacy .card-header {
   padding: 0.75rem 1rem;
@@ -181,14 +164,14 @@
   border: 1px solid var(--border);
   outline: none;
   user-select: none;
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-  color: var(--text);
-  transition: transform 0.08s ease, filter 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  border-radius: var(--radius-md);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  transition: background 0.15s ease, border-color 0.15s ease, filter 0.15s ease;
 }
 .k1z-legacy .btn:hover:not(:disabled) {
-  border-color: var(--border-2);
-  background: var(--surface-3);
+  background: var(--muted);
+  border-color: color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 .k1z-legacy .btn:active:not(:disabled) {
   transform: translateY(1px) scale(0.99);
@@ -198,59 +181,53 @@
   cursor: not-allowed;
 }
 .k1z-legacy .btn-primary {
-  background: linear-gradient(180deg, var(--accent), #3f78e6);
-  color: #fff;
-  border-color: rgba(91, 155, 255, 0.55);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
 }
 .k1z-legacy .btn-primary:hover:not(:disabled) {
-  filter: brightness(1.08);
-  border-color: rgba(91, 155, 255, 0.7);
+  filter: brightness(1.1);
 }
 .k1z-legacy .btn-accent {
   background: var(--accent-soft);
-  color: var(--accent);
-  border-color: rgba(91, 155, 255, 0.38);
+  color: var(--primary);
+  border-color: color-mix(in oklch, var(--primary) 30%, transparent);
 }
 .k1z-legacy .btn-accent:hover:not(:disabled) {
-  background: rgba(91, 155, 255, 0.2);
-  border-color: rgba(91, 155, 255, 0.5);
+  background: color-mix(in oklch, var(--primary) 18%, transparent);
 }
 .k1z-legacy .btn-danger {
-  background: rgba(255, 92, 87, 0.12);
+  background: color-mix(in oklch, var(--red) 12%, transparent);
   color: var(--red);
-  border-color: rgba(255, 92, 87, 0.35);
+  border-color: color-mix(in oklch, var(--red) 35%, transparent);
 }
 .k1z-legacy .btn-danger:hover:not(:disabled) {
-  background: rgba(255, 92, 87, 0.22);
-  border-color: rgba(255, 92, 87, 0.5);
+  background: color-mix(in oklch, var(--red) 22%, transparent);
 }
 .k1z-legacy .btn-success {
-  background: rgba(53, 208, 127, 0.12);
+  background: color-mix(in oklch, var(--green) 12%, transparent);
   color: var(--green);
-  border-color: rgba(53, 208, 127, 0.35);
+  border-color: color-mix(in oklch, var(--green) 35%, transparent);
 }
 .k1z-legacy .btn-success:hover:not(:disabled) {
-  background: rgba(53, 208, 127, 0.22);
-  border-color: rgba(53, 208, 127, 0.5);
+  background: color-mix(in oklch, var(--green) 22%, transparent);
 }
 .k1z-legacy .btn-warning {
-  background: rgba(242, 201, 76, 0.12);
+  background: color-mix(in oklch, var(--amber) 14%, transparent);
   color: var(--amber);
-  border-color: rgba(242, 201, 76, 0.35);
+  border-color: color-mix(in oklch, var(--amber) 35%, transparent);
 }
 .k1z-legacy .btn-warning:hover:not(:disabled) {
-  background: rgba(242, 201, 76, 0.22);
-  border-color: rgba(242, 201, 76, 0.5);
+  background: color-mix(in oklch, var(--amber) 24%, transparent);
 }
 .k1z-legacy .btn-ghost {
   background: transparent;
-  color: var(--text-2);
+  color: var(--muted-foreground);
   border-color: transparent;
 }
 .k1z-legacy .btn-ghost:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--surface-2);
+  color: var(--foreground);
+  background: var(--muted);
 }
 
 /* ── Form controls ── */
@@ -258,19 +235,19 @@
   width: 100%;
   padding: 0.5rem 0.75rem;
   font-size: 12px;
-  border-radius: var(--r-sm);
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  color: var(--text);
-  transition: border-color 0.15s ease;
+  border-radius: var(--radius-md);
+  background: var(--background);
+  border: 1px solid var(--input);
+  color: var(--foreground);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .k1z-legacy .input::placeholder {
-  color: var(--text-3);
+  color: var(--muted-foreground);
 }
 .k1z-legacy .input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: var(--ring);
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 35%, transparent);
 }
 .k1z-legacy select.input {
   cursor: pointer;
@@ -282,7 +259,7 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 0.375rem;
-  color: var(--text-2);
+  color: var(--muted-foreground);
 }
 
 /* ── Tables ── */
@@ -299,9 +276,9 @@
   letter-spacing: 0.05em;
   font-weight: 600;
   white-space: nowrap;
-  color: var(--text-2);
+  color: var(--muted-foreground);
   border-bottom: 1px solid var(--border);
-  background: var(--bg-soft);
+  background: var(--card);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -314,7 +291,7 @@
   border-bottom: none;
 }
 .k1z-legacy .table-base tbody tr:hover {
-  background: var(--surface-2);
+  background: var(--muted);
 }
 
 /* ── Page scaffolding ── */
@@ -330,19 +307,19 @@
   line-height: 1.75rem;
   font-weight: 700;
   letter-spacing: -0.025em;
-  color: var(--text);
+  color: var(--foreground);
 }
 .k1z-legacy .page-sub {
   font-size: 12px;
   margin-top: 0.25rem;
-  color: var(--text-2);
+  color: var(--muted-foreground);
 }
 .k1z-legacy .section-title {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--text-2);
+  color: var(--muted-foreground);
 }
 
 /* ── Log line colors ── */
@@ -350,7 +327,7 @@
   color: var(--green);
 }
 .k1z-legacy .log-info {
-  color: var(--accent);
+  color: var(--primary);
 }
 .k1z-legacy .log-warn {
   color: var(--amber);
@@ -359,10 +336,10 @@
   color: var(--red);
 }
 .k1z-legacy .log-plain {
-  color: var(--text-2);
+  color: var(--muted-foreground);
 }
 .k1z-legacy .log-dim {
-  color: var(--text-3);
+  color: color-mix(in oklch, var(--muted-foreground) 68%, transparent);
 }
 
 /* ── Spinner ── */
@@ -370,7 +347,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid var(--border-2);
-  border-top-color: var(--accent);
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
   animation: k1z-spin 0.7s linear infinite;
 }

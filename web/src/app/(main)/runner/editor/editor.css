@@ -1,17 +1,21 @@
-/* Scoped palette + legacy utility classes for the ported WorkflowEditor.
-   The legacy k1nzr3c0n editor was dark-themed and referenced these CSS vars
-   and .btn/.input helpers globally; we re-provide them under a scope class so
-   the visual DAG editor renders correctly inside the ScopeWeaver shell. */
+/* WorkflowEditor scope — themed to the ARTEX/ScopeWeaver tokens so the visual
+   editor follows the app's light/dark theme. Same remap approach as
+   runner-legacy.css (do not self-reference --border/--accent/--ring). */
 .k1z-editor-scope {
-  --text: #e6edf3;
-  --text-2: #8b949e;
-  --text-3: #6e7681;
-  --surface: #161b22;
-  --surface-2: #21262d;
-  --border: #30363d;
-  --bg-soft: #0d1117;
-  background: var(--bg-soft);
-  color: var(--text);
+  --text: var(--foreground);
+  --text-2: var(--muted-foreground);
+  --text-3: color-mix(in oklch, var(--muted-foreground) 68%, transparent);
+  --surface: var(--card);
+  --surface-2: var(--muted);
+  --surface-3: var(--secondary);
+  --border-2: var(--border);
+  --bg: var(--background);
+  --bg-soft: var(--background);
+  --accent: var(--primary);
+  --accent-soft: color-mix(in oklch, var(--primary) 12%, transparent);
+
+  background: var(--background);
+  color: var(--foreground);
 }
 
 .k1z-editor-scope .btn {
@@ -21,17 +25,17 @@
   height: 30px;
   padding: 0 12px;
   font-size: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
   cursor: pointer;
   white-space: nowrap;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
 .k1z-editor-scope .btn:hover {
-  border-color: #6e7681;
-  background: var(--surface-2);
+  background: var(--muted);
+  border-color: color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 .k1z-editor-scope .btn:disabled {
   opacity: 0.4;
@@ -40,34 +44,34 @@
 .k1z-editor-scope .btn-ghost {
   background: transparent;
   border-color: transparent;
-  color: var(--text-2);
+  color: var(--muted-foreground);
 }
 .k1z-editor-scope .btn-ghost:hover {
-  background: var(--surface-2);
-  color: var(--text);
+  background: var(--muted);
+  color: var(--foreground);
   border-color: var(--border);
 }
 .k1z-editor-scope .btn-primary {
-  background: #1f6feb;
-  border-color: #1f6feb;
-  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
 }
 .k1z-editor-scope .btn-primary:hover {
-  background: #388bfd;
-  border-color: #388bfd;
+  filter: brightness(1.1);
 }
 .k1z-editor-scope .input {
   height: 30px;
   padding: 0 10px;
   font-size: 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg-soft);
-  color: var(--text);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--input);
+  background: var(--background);
+  color: var(--foreground);
 }
 .k1z-editor-scope .input:focus {
   outline: none;
-  border-color: #388bfd;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 35%, transparent);
 }
 .k1z-editor-scope textarea.input {
   height: auto;
