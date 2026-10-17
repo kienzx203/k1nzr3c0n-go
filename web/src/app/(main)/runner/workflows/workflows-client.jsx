@@ -602,10 +602,10 @@ export default function Workflows() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-[var(--text)]">Workflows</h1>
+          <h1 className="page-title">Workflows</h1>
           <p className="text-xs text-[var(--text-2)] mt-0.5">
             Visual drag-drop editor — click a workflow to open the canvas
           </p>

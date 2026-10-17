@@ -136,12 +136,12 @@ export default function Keys() {
   }, {})
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="max-w-4xl">
 
       {/* Header */}
       <div className="mb-5 flex items-start justify-between">
         <div>
-          <h1 className="text-[var(--text)] text-xl font-semibold">Intelligence API Keys</h1>
+          <h1 className="page-title">Intelligence API Keys</h1>
           <p className="text-[var(--text-2)] text-sm mt-1">
             Keys saved here are auto-injected as <strong className="text-[var(--text)]">$ENV_VARs</strong> and into{' '}
             <strong className="text-[var(--text)]">subfinder</strong> on every workflow run — no manual copy-paste needed.
