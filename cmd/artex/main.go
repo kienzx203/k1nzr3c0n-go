@@ -18,6 +18,7 @@ import (
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/config"
+	"github.com/Autumn-27/artex/k1z"
 	"github.com/Autumn-27/artex/selfupdate"
 	"github.com/Autumn-27/artex/server"
 )
@@ -113,9 +114,20 @@ func run() int {
 	}
 	log.Printf("[config] skill 目录: %s", skillDir)
 	srv := server.New(ctx, mgr, skillDir, *dataDir, config.BaseDir())
+
+	// Mount k1nzr3c0n's workflow-runner backend under /api/v1/* + /ws/* (own
+	// SQLite store + runner). ARTEX/ScopeWeaver owns everything else.
+	k1zHandler, k1zShutdown, k1zErr := k1z.BuildHandler(ctx)
+	if k1zErr != nil {
+		log.Printf("[k1z] workflow-runner unavailable: %v", k1zErr)
+	} else {
+		log.Printf("[k1z] workflow-runner mounted at /api/v1/* + /ws/*")
+		defer k1zShutdown()
+	}
+
 	httpSrv := &http.Server{
 		Addr:              *addr,
-		Handler:           srv.Handler(),
+		Handler:           k1z.Mount(srv.Handler(), k1zHandler),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
