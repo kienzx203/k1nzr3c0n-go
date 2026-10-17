@@ -67,7 +67,7 @@ export default function Runs() {
   const selectedRunning = filtered.filter(r => r.status === 'running' && selected.has(r.id)).length
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       {/* Header */}
       <div className="page-header">
         <div>

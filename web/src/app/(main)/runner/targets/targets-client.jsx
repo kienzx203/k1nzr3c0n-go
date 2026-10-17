@@ -307,7 +307,7 @@ export default function Targets() {
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t) }, [load])
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       {!selected ? (
         <>
           <div className="page-header">

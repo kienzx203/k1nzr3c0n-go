@@ -40,7 +40,7 @@ export default function AssetSyncPage() {
   const { t: swt, locale: swLocale } = useI18n();
 
   return (
-    <div className="p-4 md:p-6">
+    <div>
       <div className="mb-4">
         <h1 className="font-semibold text-xl">{swt("interface.m0445")}</h1>
         <p className="text-muted-foreground text-sm">{swt("interface.m0446")}</p>

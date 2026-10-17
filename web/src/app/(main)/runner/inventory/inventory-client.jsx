@@ -224,10 +224,10 @@ export default function Inventory() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-lg font-bold text-[var(--text)]">
+          <h1 className="page-title">
             Asset Inventory <span className="text-[var(--text-2)] text-sm font-normal">({data.total})</span>
           </h1>
           <p className="text-[13px] text-[var(--text-2)] mt-1">Every live host discovered across all runs, grouped by target and deduped by host:port — most recent sighting wins.</p>

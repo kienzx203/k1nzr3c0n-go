@@ -185,7 +185,7 @@ export default function Schedules() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       <div className="page-header">
         <div>
           <h1 className="page-title">Schedules</h1>

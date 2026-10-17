@@ -466,12 +466,12 @@ export default function Tools() {
                       wordlists.some(w => w.status === 'updating')
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <CustomTools />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[var(--text)] font-semibold text-lg">Tool installations</h1>
+          <h1 className="page-title">Tool installations</h1>
           <p className="text-[var(--text-2)] text-xs mt-0.5">
             {tools.length} tools · {wordlists.length} wordlists
             {outdated_count > 0 && (
@@ -677,7 +677,7 @@ function CustomTools() {
     <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
       <div className="flex items-center mb-3">
         <div>
-          <h1 className="text-[var(--text)] font-semibold text-lg">Tool</h1>
+          <h1 className="page-title">Tool</h1>
           <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>Custom agent tools · command / script / http · callable by the chat agent</p>
         </div>
         <button className="btn btn-primary text-[11px] ml-auto" onClick={() => setEditing({ ...BLANK_TOOL })}>+ New tool</button>

@@ -222,9 +222,9 @@ export default function UploadPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-lg font-bold text-[var(--text)]">Upload</h1>
+        <h1 className="page-title">Upload</h1>
         <p className="text-xs text-[var(--text-2)] mt-0.5">
           Wordlists are saved to <code className="text-[var(--accent)]">/app/wordlists/</code> — reference them directly in workflow vars.
           Workflows are saved to <code className="text-[var(--accent)]">/app/workflows/</code>.
