@@ -211,11 +211,10 @@ BASE_URL=http://192.168.52.103:8000 ./scripts/add-api-keys.sh
 > `scripts/api-keys.env` **không bao giờ commit** (chứa secret). Censys nhập dạng `API_ID` + `API_SECRET` (script tự ghép `ID:SECRET`). Kiểm tra: `curl -s $BASE_URL/api/v1/keys/stats`.
 
 ### 10.2 Tạo Task templates chuyên gia — `scripts/add-task-templates.sh`
-Tạo sẵn **4 template** cho engine tự hành (Tasks), mỗi cái là playbook của senior operator:
+Tạo sẵn **3 template** cho engine tự hành (Tasks), mỗi cái là playbook của senior operator: Cả 3 đều NHÚNG sẵn khối recon endpoint sâu (passive history + crawl + JavaScript/source-maps + API + param + brute-force) trong phần recon của chúng.
 - **Bug Bounty** — tư duy threat-model, recon broad→deep, attack surface xếp ROI (IDOR/SSRF/authn/injection/client-side/infra) + kỹ thuật từng lớp, chuẩn validate CVSS/PoC.
 - **Penetration Test** — PTES + OWASP WSTG, enum từng protocol, exploit có kiểm soát, post-ex AD/BloodHound, RoE + approvals.
 - **Red Team** — objective-driven, MITRE ATT&CK kill chain, OPSEC/LOTL, detection-gap output.
-- **Recon — All Endpoints** — đào mọi endpoint: passive history (gau/waymore/wayback/urlscan/otx/vt), crawl (katana/gospider), **JavaScript sâu** (gom all JS + inline, JS lịch sử diff, linkfinder/jsluice, resolve relative path, dựng **source maps**, webpack chunk, secret), API (swagger/graphql/wadl/ws/grpc), param (arjun/x8), brute-force common.txt → endpoint inventory dedupe + phân loại.
 
 ```bash
 # token nhanh:
