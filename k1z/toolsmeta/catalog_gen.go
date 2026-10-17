@@ -112,12 +112,12 @@ var generatedTools = []Tool{
 }
 
 var generatedWordlists = []Wordlist{
-	{Name: "common", Display: "SecLists common.txt", File: "common.txt", URL: "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt", Extract: "", ExtractGlob: ""},
+	{Name: "common", Display: "SecLists common.txt", File: "common.txt", URL: "https://github.com/kienzx203/Lab_research_tools_k1nz/releases/download/tools/common.txt", Extract: "", ExtractGlob: ""},
 	{Name: "subdomains-20k", Display: "SecLists subdomains 20k", File: "subdomains-top1million-20000.txt", URL: "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-20000.txt", Extract: "", ExtractGlob: ""},
 	{Name: "subdomains-110k", Display: "SecLists subdomains 110k", File: "subdomains-top1million-110000.txt", URL: "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt", Extract: "", ExtractGlob: ""},
 	{Name: "routes-kite", Display: "Assetnote kiterunner routes", File: "routes-large.kite", URL: "https://wordlists-cdn.assetnote.io/data/kiterunner/routes-small.kite.tar.gz", Extract: "tar", ExtractGlob: "*.kite"},
 	{Name: "raft-directories", Display: "Raft medium directories", File: "raft-medium-directories.txt", URL: "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt", Extract: "", ExtractGlob: ""},
 	{Name: "raft-files", Display: "Raft medium files", File: "raft-medium-files.txt", URL: "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-files.txt", Extract: "", ExtractGlob: ""},
 	{Name: "burp-params", Display: "Burp parameter names", File: "burp-parameter-names.txt", URL: "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt", Extract: "", ExtractGlob: ""},
-	{Name: "snmp-communities", Display: "SNMP default communities", File: "snmp-default-communities.txt", URL: "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/SNMP/snmp-default-community-strings-onesixtyone.txt", Extract: "", ExtractGlob: ""},
+	{Name: "snmp-communities", Display: "SNMP default communities", File: "snmp-default-communities.txt", URL: "https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/SNMP/common-snmp-community-strings-onesixtyone.txt", Extract: "", ExtractGlob: ""},
 }
