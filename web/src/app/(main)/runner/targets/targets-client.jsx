@@ -297,8 +297,8 @@ function TargetDetail({ name, onChanged, onDeleted }) {
 export default function Targets() {
   const [data, setData] = useState(null)
   const [showModal, setShowModal] = useState(false)
-  const [params, setParams] = useSearchParams()
-  const selected = params.get('sel') || null
+  const initialSel = useSearchParams().get('sel') || null
+  const [selected, setSelected] = useState(initialSel)
 
   const load = useCallback(() => {
     api.getTargets().then(setData).catch(() => {})
@@ -332,7 +332,7 @@ export default function Targets() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {data.items.map(t => (
                 <button key={t.name} className="card card-hover p-4 text-left"
-                        onClick={() => setParams({ sel: t.name })}>
+                        onClick={() => setSelected(t.name)}>
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-bold text-sm" style={{ color: 'var(--text)' }}>{t.name}</span>
                     <ModeBadge mode={t.mode} />
@@ -354,15 +354,15 @@ export default function Targets() {
       ) : (
         <>
           <div className="flex items-center gap-2">
-            <button className="btn btn-ghost" onClick={() => setParams({})}>← All targets</button>
+            <button className="btn btn-ghost" onClick={() => setSelected(null)}>← All targets</button>
           </div>
-          <TargetDetail name={selected} onChanged={load} onDeleted={() => { setParams({}); load() }} />
+          <TargetDetail name={selected} onChanged={load} onDeleted={() => { setSelected(null); load() }} />
         </>
       )}
 
       {showModal && (
         <RegisterModal onClose={() => setShowModal(false)}
-                       onSaved={(name) => { setShowModal(false); load(); setParams({ sel: name }) }} />
+                       onSaved={(name) => { setShowModal(false); load(); setSelected(name) }} />
       )}
     </div>
   )
