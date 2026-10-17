@@ -11,6 +11,7 @@ function Separator({
   decorative = true,
   ...props
 }: React.ComponentProps<typeof SeparatorPrimitive.Root>) {
+
   return (
     <SeparatorPrimitive.Root
       data-slot="separator"

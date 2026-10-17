@@ -1,5 +1,7 @@
 "use client"
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react"
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
@@ -51,6 +53,10 @@ function Carousel({
   children,
   ...props
 }: React.ComponentProps<"div"> & CarouselProps) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   const [carouselRef, api] = useEmblaCarousel(
     {
       ...opts,
@@ -133,6 +139,10 @@ function Carousel({
 }
 
 function CarouselContent({ className, ...props }: React.ComponentProps<"div">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   const { carouselRef, orientation } = useCarousel()
 
   return (
@@ -154,6 +164,10 @@ function CarouselContent({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 function CarouselItem({ className, ...props }: React.ComponentProps<"div">) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   const { orientation } = useCarousel()
 
   return (
@@ -177,6 +191,10 @@ function CarouselPrevious({
   size = "icon-sm",
   ...props
 }: React.ComponentProps<typeof Button>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   const { orientation, scrollPrev, canScrollPrev } = useCarousel()
 
   return (
@@ -196,7 +214,7 @@ function CarouselPrevious({
       {...props}
     >
       <ChevronLeftIcon />
-      <span className="sr-only">Previous slide</span>
+      <span className="sr-only">{swt("english.e152")}</span>
     </Button>
   )
 }
@@ -207,6 +225,10 @@ function CarouselNext({
   size = "icon-sm",
   ...props
 }: React.ComponentProps<typeof Button>) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+
   const { orientation, scrollNext, canScrollNext } = useCarousel()
 
   return (
@@ -226,7 +248,7 @@ function CarouselNext({
       {...props}
     >
       <ChevronRightIcon />
-      <span className="sr-only">Next slide</span>
+      <span className="sr-only">{swt("english.e153")}</span>
     </Button>
   )
 }

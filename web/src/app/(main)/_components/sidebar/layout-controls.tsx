@@ -1,4 +1,6 @@
 "use client";
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 
 import { Settings } from "lucide-react";
 
@@ -23,6 +25,9 @@ import { applyThemePreset } from "@/lib/preferences/theme-utils";
 import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
 
 export function LayoutControls() {
+  "use no memo";
+  const { locale: swLocale } = useI18n();
+
   const themeMode = usePreferencesStore((s) => s.themeMode);
   const resolvedThemeMode = usePreferencesStore((s) => s.resolvedThemeMode);
   const setThemeMode = usePreferencesStore((s) => s.setThemeMode);
@@ -106,15 +111,15 @@ export function LayoutControls() {
       <PopoverContent align="end">
         <div className="flex flex-col gap-5">
           <div className="space-y-1.5">
-            <h4 className="font-medium text-sm leading-none">Preferences</h4>
-            <p className="text-muted-foreground text-xs">Customize your dashboard layout preferences.</p>
+            <h4 className="font-medium text-sm leading-none">{swt("english.e004")}</h4>
+            <p className="text-muted-foreground text-xs">{swt("english.e005")}</p>
           </div>
           <div className="space-y-3 **:data-[slot=toggle-group]:w-full **:data-[slot=toggle-group-item]:flex-1 **:data-[slot=toggle-group-item]:text-xs">
             <div className="space-y-1">
-              <Label className="font-medium text-xs">Theme Preset</Label>
+              <Label className="font-medium text-xs">{swt("english.e006")}</Label>
               <Select value={themePreset} onValueChange={onThemePresetChange}>
                 <SelectTrigger size="sm" className="w-full text-xs">
-                  <SelectValue placeholder="Preset" />
+                  <SelectValue placeholder={swt("english.e007")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -136,10 +141,10 @@ export function LayoutControls() {
             </div>
 
             <div className="space-y-1">
-              <Label className="font-medium text-xs">Fonts</Label>
+              <Label className="font-medium text-xs">{swt("english.e008")}</Label>
               <Select value={font} onValueChange={onFontChange}>
                 <SelectTrigger size="sm" className="w-full text-xs">
-                  <SelectValue placeholder="Select font" />
+                  <SelectValue placeholder={swt("english.e009")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -154,7 +159,7 @@ export function LayoutControls() {
             </div>
 
             <div className="space-y-1">
-              <Label className="font-medium text-xs">Theme Mode</Label>
+              <Label className="font-medium text-xs">{swt("english.e010")}</Label>
               <ToggleGroup
                 size="sm"
                 spacing={0}
@@ -163,20 +168,17 @@ export function LayoutControls() {
                 value={themeMode}
                 onValueChange={onThemeModeChange}
               >
-                <ToggleGroupItem value="light" aria-label="Toggle light">
-                  Light
-                </ToggleGroupItem>
-                <ToggleGroupItem value="dark" aria-label="Toggle dark">
-                  Dark
-                </ToggleGroupItem>
-                <ToggleGroupItem value="system" aria-label="Toggle system">
-                  System
-                </ToggleGroupItem>
+                <ToggleGroupItem value="light" aria-label={swt("english.e011")}>
+                  {swt("english.e012")}</ToggleGroupItem>
+                <ToggleGroupItem value="dark" aria-label={swt("english.e013")}>
+                  {swt("english.e014")}</ToggleGroupItem>
+                <ToggleGroupItem value="system" aria-label={swt("english.e015")}>
+                  {swt("english.e016")}</ToggleGroupItem>
               </ToggleGroup>
             </div>
 
             <div className="space-y-1">
-              <Label className="font-medium text-xs">Page Layout</Label>
+              <Label className="font-medium text-xs">{swt("english.e017")}</Label>
               <ToggleGroup
                 size="sm"
                 spacing={0}
@@ -185,17 +187,15 @@ export function LayoutControls() {
                 value={contentLayout}
                 onValueChange={onContentLayoutChange}
               >
-                <ToggleGroupItem value="centered" aria-label="Toggle centered">
-                  Centered
-                </ToggleGroupItem>
-                <ToggleGroupItem value="full-width" aria-label="Toggle full-width">
-                  Full Width
-                </ToggleGroupItem>
+                <ToggleGroupItem value="centered" aria-label={swt("english.e018")}>
+                  {swt("english.e019")}</ToggleGroupItem>
+                <ToggleGroupItem value="full-width" aria-label={swt("english.e020")}>
+                  {swt("english.e021")}</ToggleGroupItem>
               </ToggleGroup>
             </div>
 
             <div className="space-y-1">
-              <Label className="font-medium text-xs">Navbar Behavior</Label>
+              <Label className="font-medium text-xs">{swt("english.e022")}</Label>
               <ToggleGroup
                 size="sm"
                 spacing={0}
@@ -204,17 +204,15 @@ export function LayoutControls() {
                 value={navbarStyle}
                 onValueChange={onNavbarStyleChange}
               >
-                <ToggleGroupItem value="sticky" aria-label="Toggle sticky">
-                  Sticky
-                </ToggleGroupItem>
-                <ToggleGroupItem value="scroll" aria-label="Toggle scroll">
-                  Scroll
-                </ToggleGroupItem>
+                <ToggleGroupItem value="sticky" aria-label={swt("english.e023")}>
+                  {swt("english.e024")}</ToggleGroupItem>
+                <ToggleGroupItem value="scroll" aria-label={swt("english.e025")}>
+                  {swt("english.e026")}</ToggleGroupItem>
               </ToggleGroup>
             </div>
 
             <div className="space-y-1">
-              <Label className="font-medium text-xs">Sidebar Style</Label>
+              <Label className="font-medium text-xs">{swt("english.e027")}</Label>
               <ToggleGroup
                 size="sm"
                 spacing={0}
@@ -223,20 +221,17 @@ export function LayoutControls() {
                 value={variant}
                 onValueChange={onSidebarStyleChange}
               >
-                <ToggleGroupItem value="inset" aria-label="Toggle inset">
-                  Inset
-                </ToggleGroupItem>
-                <ToggleGroupItem value="sidebar" aria-label="Toggle sidebar">
-                  Sidebar
-                </ToggleGroupItem>
-                <ToggleGroupItem value="floating" aria-label="Toggle floating">
-                  Floating
-                </ToggleGroupItem>
+                <ToggleGroupItem value="inset" aria-label={swt("english.e028")}>
+                  {swt("english.e029")}</ToggleGroupItem>
+                <ToggleGroupItem value="sidebar" aria-label={swt("english.e030")}>
+                  {swt("english.e031")}</ToggleGroupItem>
+                <ToggleGroupItem value="floating" aria-label={swt("english.e032")}>
+                  {swt("english.e033")}</ToggleGroupItem>
               </ToggleGroup>
             </div>
 
             <div className="space-y-1">
-              <Label className="font-medium text-xs">Sidebar Collapse Mode</Label>
+              <Label className="font-medium text-xs">{swt("english.e034")}</Label>
               <ToggleGroup
                 size="sm"
                 spacing={0}
@@ -245,18 +240,15 @@ export function LayoutControls() {
                 value={collapsible}
                 onValueChange={onSidebarCollapseModeChange}
               >
-                <ToggleGroupItem value="icon" aria-label="Toggle icon">
-                  Icon
-                </ToggleGroupItem>
-                <ToggleGroupItem value="offcanvas" aria-label="Toggle offcanvas">
-                  OffCanvas
-                </ToggleGroupItem>
+                <ToggleGroupItem value="icon" aria-label={swt("english.e035")}>
+                  {swt("english.e036")}</ToggleGroupItem>
+                <ToggleGroupItem value="offcanvas" aria-label={swt("english.e037")}>
+                  {swt("english.e038")}</ToggleGroupItem>
               </ToggleGroup>
             </div>
 
             <Button type="button" size="sm" variant="outline" className="w-full text-xs" onClick={handleRestore}>
-              Restore Defaults
-            </Button>
+              {swt("english.e039")}</Button>
           </div>
         </div>
       </PopoverContent>

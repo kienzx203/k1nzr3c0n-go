@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import { useState } from "react";
 
 import { Check, KeyRound, LogOut } from "lucide-react";
@@ -28,6 +30,9 @@ export function AccountSwitcher({
     readonly role: string;
   }>;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [activeUser, setActiveUser] = useState(users[0]);
   const [pwOpen, setPwOpen] = useState(false);
 
@@ -64,7 +69,7 @@ export function AccountSwitcher({
                 </Avatar>
                 <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">{user.name}</span>
-                  <span className="truncate text-xs capitalize">{user.role}</span>
+                  <span className="truncate text-xs capitalize">{user.role === "operator" ? swt("app.operator") : user.role}</span>
                 </div>
                 <span
                   className={cn(
@@ -80,12 +85,10 @@ export function AccountSwitcher({
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setPwOpen(true)}>
             <KeyRound />
-            修改密码
-          </DropdownMenuItem>
+            {swt("interface.m0053")}</DropdownMenuItem>
           <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
             <LogOut />
-            退出登录
-          </DropdownMenuItem>
+            {swt("interface.m0054")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />

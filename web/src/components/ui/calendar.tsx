@@ -1,5 +1,7 @@
 "use client"
 
+import { useI18n } from "@/i18n";
+import { calendarLocale } from "@/i18n/calendar.ts";
 import * as React from "react"
 import {
   DayPicker,
@@ -18,13 +20,16 @@ function Calendar({
   showOutsideDays = true,
   captionLayout = "label",
   buttonVariant = "ghost",
-  locale,
+  locale: suppliedLocale,
   formatters,
   components,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
 }) {
+
+  const { locale: selectedLocale } = useI18n();
+  const locale = calendarLocale(selectedLocale, suppliedLocale);
   const defaultClassNames = getDefaultClassNames()
 
   return (
@@ -187,6 +192,7 @@ function CalendarDayButton({
   locale,
   ...props
 }: React.ComponentProps<typeof DayButton> & { locale?: Partial<Locale> }) {
+
   const defaultClassNames = getDefaultClassNames()
 
   const ref = React.useRef<HTMLButtonElement>(null)

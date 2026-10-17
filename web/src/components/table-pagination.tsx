@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import { useEffect, useRef } from "react";
 
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
@@ -38,6 +40,9 @@ export function TablePagination({
   onPageSizeChange,
   pageSizeOptions = [10, 20, 50],
 }: TablePaginationProps) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const from = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
@@ -64,13 +69,12 @@ export function TablePagination({
             ))}
           </SelectContent>
         </Select>
-        <span>条/页</span>
+        <span>{swt("interface.m2319")}</span>
         {total > 0 ? (
           <span className="tabular-nums">
-            {from}–{to} / 共 {total} 条
-          </span>
+            {swt("settings.pagination", { from, to, total })}</span>
         ) : (
-          <span>共 0 条</span>
+          <span>{swt("interface.m2321")}</span>
         )}
       </div>
 
@@ -83,7 +87,7 @@ export function TablePagination({
                 size="icon-sm"
                 disabled={safePage === 1}
                 onClick={() => onPageChange(safePage - 1)}
-                aria-label="上一页"
+                aria-label={swt("interface.m0488")}
               >
                 <ChevronLeftIcon className="size-4" />
               </Button>
@@ -112,7 +116,7 @@ export function TablePagination({
                 size="icon-sm"
                 disabled={safePage === totalPages}
                 onClick={() => onPageChange(safePage + 1)}
-                aria-label="下一页"
+                aria-label={swt("interface.m0491")}
               >
                 <ChevronRightIcon className="size-4" />
               </Button>

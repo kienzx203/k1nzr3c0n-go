@@ -1,4 +1,5 @@
 "use client";
+import { useI18n } from "@/i18n";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 
@@ -58,6 +59,9 @@ export const PreferencesStoreProvider = ({
   contentLayout: PreferencesState["contentLayout"];
   navbarStyle: PreferencesState["navbarStyle"];
 }) => {
+  "use no memo";
+  const { locale: swLocale } = useI18n();
+
   const [store] = useState<StoreApi<PreferencesState>>(() =>
     createPreferencesStore({
       themeMode,

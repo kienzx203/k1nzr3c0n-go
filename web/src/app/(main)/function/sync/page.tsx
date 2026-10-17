@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { AlertCircleIcon, CheckCircle2Icon, DownloadIcon, PlugZapIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
@@ -28,17 +30,20 @@ type SSStatus = {
 type Dimension = "project" | "task";
 
 const ASSET_TYPES: { key: string; label: string }[] = [
-  { key: "subdomain", label: "子域名" },
-  { key: "service", label: "服务" },
-  { key: "app", label: "App" },
+  { key: "subdomain", get label() { return swt("interface.m0143"); } },
+  { key: "service", get label() { return swt("interface.m0145"); } },
+  { key: "app", get label() { return swt("english.e066"); } },
 ];
 
 export default function AssetSyncPage() {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return (
     <div className="p-4 md:p-6">
       <div className="mb-4">
-        <h1 className="font-semibold text-xl">资产同步</h1>
-        <p className="text-muted-foreground text-sm">从外部数据源同步资产入库</p>
+        <h1 className="font-semibold text-xl">{swt("interface.m0445")}</h1>
+        <p className="text-muted-foreground text-sm">{swt("interface.m0446")}</p>
       </div>
       <Tabs defaultValue="scopesentry">
         <TabsList>
@@ -53,6 +58,9 @@ export default function AssetSyncPage() {
 }
 
 function ScopeSentryPanel() {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [status, setStatus] = React.useState<SSStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = React.useState(true);
 
@@ -61,9 +69,9 @@ function ScopeSentryPanel() {
     api
       .ssStatus()
       .then(setStatus)
-      .catch((e) => toast.error(`读取数据源状态失败：${e.message}`))
+      .catch((e) => toast.error(swt("interface.m0447", { p0: e.message })))
       .finally(() => setLoadingStatus(false));
-  }, []);
+  }, [swLocale]);
 
   React.useEffect(() => {
     loadStatus();
@@ -79,15 +87,14 @@ function ScopeSentryPanel() {
       ) : (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground text-sm">
-            数据源就绪后即可选择项目 / 任务进行同步。
-          </CardContent>
+            {swt("interface.m0448")}</CardContent>
         </Card>
       )}
     </div>
   );
 }
 
-// ── 数据源状态卡 ─────────────────────────────────────────────────────────────
+// Data-source status card.
 
 function DataSourceCard({
   status,
@@ -98,6 +105,9 @@ function DataSourceCard({
   loading: boolean;
   onChanged: () => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [url, setUrl] = React.useState("");
   const [apiKey, setApiKey] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -110,25 +120,25 @@ function DataSourceCard({
     setBusy(true);
     try {
       await api.ssDatasource({});
-      toast.success("已创建 ScopeSentry 数据源，请填写地址与密钥");
+      toast.success(swt("interface.m0449"));
       onChanged();
     } catch (e) {
-      toast.error(`创建失败：${(e as Error).message}`);
+      toast.error(swt("interface.m0450", { p0: (e as Error).message }));
     } finally {
       setBusy(false);
     }
   };
 
   const save = async () => {
-    if (!url.trim()) return toast.error("请填写 MCP 地址");
+    if (!url.trim()) return toast.error(swt("interface.m0451"));
     setBusy(true);
     try {
       const r = await api.ssDatasource({ url: url.trim(), api_key: apiKey.trim() });
-      toast.success(r.enabled ? "已保存并启用数据源" : "已保存（尚未满足启用条件）");
+      toast.success(r.enabled ? swt("interface.m0452") : swt("interface.m0453"));
       setApiKey("");
       onChanged();
     } catch (e) {
-      toast.error(`保存失败：${(e as Error).message}`);
+      toast.error(swt("interface.m0267", { p0: (e as Error).message }));
     } finally {
       setBusy(false);
     }
@@ -138,40 +148,35 @@ function DataSourceCard({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2 text-base">
-          <PlugZapIcon className="size-4" /> 数据源状态
-          <StatusBadge status={status} loading={loading} />
+          <PlugZapIcon className="size-4" /> {swt("interface.m0454")}<StatusBadge status={status} loading={loading} />
         </CardTitle>
         <Button variant="ghost" size="sm" onClick={onChanged} disabled={loading}>
-          <RefreshCwIcon className={loading ? "size-4 animate-spin" : "size-4"} /> 刷新
-        </Button>
+          <RefreshCwIcon className={loading ? "size-4 animate-spin" : "size-4"} /> {swt("interface.m0225")}</Button>
       </CardHeader>
       <CardContent className="space-y-3">
         {!status?.exists ? (
           <div className="flex items-center justify-between gap-4">
             <p className="text-muted-foreground text-sm">
-              尚未创建 ScopeSentry 数据源。创建后会新增一个占位 MCP（地址/密钥为空、未启用）。
-            </p>
+              {swt("interface.m0455")}</p>
             <Button onClick={create} disabled={busy}>
-              创建数据源
-            </Button>
+              {swt("interface.m0456")}</Button>
           </div>
         ) : (
           <>
             {!status.configured && (
               <p className="text-amber-600 text-sm dark:text-amber-500">
-                数据源已创建但未配置，请填写 MCP 地址与 API Key 后启用。
-              </p>
+                {swt("interface.m0457")}</p>
             )}
             {status.configured && !status.enabled && (
-              <p className="text-amber-600 text-sm dark:text-amber-500">数据源已配置但未启用，保存后将自动启用。</p>
+              <p className="text-amber-600 text-sm dark:text-amber-500">{swt("interface.m0458")}</p>
             )}
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>MCP 地址</Label>
-                <Input placeholder="http://<主机>:8082/mcp" value={url} onChange={(e) => setUrl(e.target.value)} />
+                <Label>{swt("interface.m0459")}</Label>
+                <Input placeholder={swt("interface.m0460")} value={url} onChange={(e) => setUrl(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label>API Key（X-API-Key，留空保留原值）</Label>
+                <Label>{swt("interface.m0461")}</Label>
                 <Input
                   type="password"
                   placeholder="ssk_..."
@@ -182,10 +187,9 @@ function DataSourceCard({
             </div>
             <div className="flex items-center gap-2">
               <Button onClick={save} disabled={busy}>
-                保存并启用
-              </Button>
+                {swt("interface.m0462")}</Button>
               {status.enabled && status.tools.length > 0 && (
-                <span className="text-muted-foreground text-xs">已发现 {status.tools.length} 个工具</span>
+                <span className="text-muted-foreground text-xs">{swt("interface.m0463")}{" "}{status.tools.length} {swt("interface.m0464")}</span>
               )}
             </div>
           </>
@@ -196,26 +200,30 @@ function DataSourceCard({
 }
 
 function StatusBadge({ status, loading }: { status: SSStatus | null; loading: boolean }) {
-  if (loading || !status) return <Badge variant="secondary">检测中…</Badge>;
-  if (!status.exists) return <Badge variant="destructive">未创建</Badge>;
-  if (!status.configured) return <Badge variant="outline">未配置</Badge>;
-  if (!status.enabled) return <Badge variant="outline">未启用</Badge>;
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
+  if (loading || !status) return <Badge variant="secondary">{swt("interface.m0465")}</Badge>;
+  if (!status.exists) return <Badge variant="destructive">{swt("interface.m0466")}</Badge>;
+  if (!status.configured) return <Badge variant="outline">{swt("interface.m0208")}</Badge>;
+  if (!status.enabled) return <Badge variant="outline">{swt("interface.m0467")}</Badge>;
   if (status.reachable)
     return (
       <Badge className="bg-emerald-600 hover:bg-emerald-600">
-        <CheckCircle2Icon className="mr-1 size-3" /> 已连接
-      </Badge>
+        <CheckCircle2Icon className="mr-1 size-3" /> {swt("interface.m0468")}</Badge>
     );
   return (
     <Badge variant="destructive">
-      <AlertCircleIcon className="mr-1 size-3" /> 不可达
-    </Badge>
+      <AlertCircleIcon className="mr-1 size-3" /> {swt("interface.m0469")}</Badge>
   );
 }
 
-// ── 同步工作区（项目 / 任务维度）────────────────────────────────────────────────
+// Synchronization workspace, grouped by project or task.
 
 function SyncWorkbench() {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [dimension, setDimension] = React.useState<Dimension>("project");
   const [assetTypes, setAssetTypes] = React.useState<Record<string, boolean>>({
     subdomain: true,
@@ -241,8 +249,8 @@ function SyncWorkbench() {
       dimension === "project"
         ? api.ssProjects(page, 50, search).then((r) => setProjects(r.projects))
         : api.ssTasks(page, 50, search).then(setTasks);
-    fn.catch((e) => toast.error(`加载列表失败：${e.message}`)).finally(() => setLoading(false));
-  }, [dimension, page, search]);
+    fn.catch((e) => toast.error(swt("interface.m0470", { p0: e.message }))).finally(() => setLoading(false));
+  }, [swLocale, dimension, page, search]);
 
   React.useEffect(() => {
     load();
@@ -266,8 +274,8 @@ function SyncWorkbench() {
   const chosenTypes = ASSET_TYPES.filter((t) => assetTypes[t.key]).map((t) => t.key);
 
   const runSync = async () => {
-    if (selected.size === 0) return toast.error(`请至少选择一个${dimension === "project" ? "项目" : "任务"}`);
-    if (chosenTypes.length === 0) return toast.error("请至少选择一种资产类型");
+    if (selected.size === 0) return toast.error(swt("interface.m0471", { p0: dimension === "project" ? swt("interface.m0472") : swt("interface.m0190") }));
+    if (chosenTypes.length === 0) return toast.error(swt("interface.m0473"));
     setSyncing(true);
     setResult(null);
     try {
@@ -279,9 +287,9 @@ function SyncWorkbench() {
       });
       setResult(r);
       const total = Object.values(r.synced ?? {}).reduce((a, b) => a + b, 0);
-      toast.success(`同步完成，共入库 ${total} 条资产`);
+      toast.success(swt("interface.m0474", { p0: total }));
     } catch (e) {
-      toast.error(`同步失败：${(e as Error).message}`);
+      toast.error(swt("interface.m0475", { p0: (e as Error).message }));
     } finally {
       setSyncing(false);
     }
@@ -292,8 +300,7 @@ function SyncWorkbench() {
       return (
         <TableRow>
           <TableCell colSpan={4} className="py-8 text-center text-muted-foreground text-sm">
-            加载中…
-          </TableCell>
+            {swt("interface.m0260")}</TableCell>
         </TableRow>
       );
     }
@@ -301,8 +308,7 @@ function SyncWorkbench() {
       return (
         <TableRow>
           <TableCell colSpan={4} className="py-8 text-center text-muted-foreground text-sm">
-            无数据
-          </TableCell>
+            {swt("interface.m0476")}</TableCell>
         </TableRow>
       );
     }
@@ -337,10 +343,10 @@ function SyncWorkbench() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">选择数据同步</CardTitle>
+        <CardTitle className="text-base">{swt("interface.m0477")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* 维度切换 */}
+        {/* Grouping switch. */}
         <Tabs
           value={dimension}
           onValueChange={(v) => {
@@ -349,14 +355,14 @@ function SyncWorkbench() {
           }}
         >
           <TabsList>
-            <TabsTrigger value="project">项目维度</TabsTrigger>
-            <TabsTrigger value="task">任务维度</TabsTrigger>
+            <TabsTrigger value="project">{swt("interface.m0478")}</TabsTrigger>
+            <TabsTrigger value="task">{swt("interface.m0479")}</TabsTrigger>
           </TabsList>
         </Tabs>
 
-        {/* 资产类型 + 选项 */}
+        {/* Asset types and options. */}
         <div className="flex flex-wrap items-center gap-4">
-          <span className="font-medium text-sm">同步资产：</span>
+          <span className="font-medium text-sm">{swt("interface.m0480")}</span>
           {ASSET_TYPES.map((t) => (
             <label key={t.key} htmlFor={`at-${t.key}`} className="flex items-center gap-1.5 text-sm">
               <Checkbox
@@ -370,18 +376,17 @@ function SyncWorkbench() {
           {dimension === "project" && (
             <label htmlFor="create-company" className="flex items-center gap-1.5 text-sm">
               <Checkbox id="create-company" checked={createCompany} onCheckedChange={(c) => setCreateCompany(!!c)} />
-              按项目建立企业并写入资产范围
-            </label>
+              {swt("interface.m0481")}</label>
           )}
         </div>
 
-        {/* 搜索 + 操作 */}
+        {/* Search and actions. */}
         <div className="flex items-center gap-2">
           <div className="relative max-w-xs flex-1">
             <SearchIcon className="absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-8"
-              placeholder={dimension === "project" ? "搜索项目名" : "搜索任务名"}
+              placeholder={dimension === "project" ? swt("interface.m0482") : swt("interface.m0483")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {
@@ -396,13 +401,12 @@ function SyncWorkbench() {
             <RefreshCwIcon className={loading ? "size-4 animate-spin" : "size-4"} />
           </Button>
           <div className="flex-1" />
-          <span className="text-muted-foreground text-xs">已选 {selected.size}</span>
+          <span className="text-muted-foreground text-xs">{swt("interface.m0398")}{" "}{selected.size}</span>
           <Button onClick={runSync} disabled={syncing || selected.size === 0}>
-            <DownloadIcon className={syncing ? "size-4 animate-pulse" : "size-4"} /> 同步选中
-          </Button>
+            <DownloadIcon className={syncing ? "size-4 animate-pulse" : "size-4"} /> {swt("interface.m0484")}</Button>
         </div>
 
-        {/* 列表 */}
+        {/* List. */}
         <div className="rounded-md border">
           <Table>
             <TableHeader>
@@ -410,16 +414,16 @@ function SyncWorkbench() {
                 <TableHead className="w-10">
                   <Checkbox checked={rows.length > 0 && selected.size === rows.length} onCheckedChange={toggleAll} />
                 </TableHead>
-                <TableHead>{dimension === "project" ? "项目名" : "任务名"}</TableHead>
+                <TableHead>{dimension === "project" ? swt("interface.m0485") : swt("interface.m0486")}</TableHead>
                 {dimension === "project" ? (
                   <>
-                    <TableHead>标签</TableHead>
-                    <TableHead className="text-right">资产数</TableHead>
+                    <TableHead>{swt("interface.m0487")}</TableHead>
+                    <TableHead className="text-right">{swt("interface.m0226")}</TableHead>
                   </>
                 ) : (
                   <>
-                    <TableHead>状态</TableHead>
-                    <TableHead>时间</TableHead>
+                    <TableHead>{swt("interface.m0191")}</TableHead>
+                    <TableHead>{swt("interface.m0291")}</TableHead>
                   </>
                 )}
               </TableRow>
@@ -428,23 +432,21 @@ function SyncWorkbench() {
           </Table>
         </div>
 
-        {/* 分页 */}
+        {/* Pagination. */}
         <div className="flex items-center justify-end gap-2">
           <Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>
-            上一页
-          </Button>
-          <span className="text-muted-foreground text-xs">第 {page} 页</span>
+            {swt("interface.m0488")}</Button>
+          <span className="text-muted-foreground text-xs">{swt("interface.m0489")}{" "}{page} {swt("interface.m0490")}</span>
           <Button
             variant="outline"
             size="sm"
             disabled={rows.length < 50 || loading}
             onClick={() => setPage((p) => p + 1)}
           >
-            下一页
-          </Button>
+            {swt("interface.m0491")}</Button>
         </div>
 
-        {/* 结果 */}
+        {/* Results. */}
         {result && <SyncResult result={result} />}
       </CardContent>
     </Card>
@@ -452,8 +454,11 @@ function SyncWorkbench() {
 }
 
 function SyncResult({ result }: { result: Awaited<ReturnType<typeof api.ssSync>> }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const synced = result.synced ?? {};
-  const labels: Record<string, string> = { subdomain: "子域名", service: "服务", app: "App", ip: "IP" };
+  const labels: Record<string, string> = { subdomain: swt("interface.m0143"), service: swt("interface.m0145"), app: "App", ip: "IP" };
   return (
     <div className="space-y-2 rounded-md border bg-muted/40 p-3 text-sm">
       <div className="flex flex-wrap gap-3">
@@ -464,7 +469,7 @@ function SyncResult({ result }: { result: Awaited<ReturnType<typeof api.ssSync>>
         ))}
       </div>
       {result.companies && result.companies.length > 0 && (
-        <p className="text-muted-foreground">新建/更新企业：{result.companies.join("、")}</p>
+        <p className="text-muted-foreground">{swt("interface.m0492")}{result.companies.join("、")}</p>
       )}
       {result.warnings && result.warnings.length > 0 && (
         <ul className="list-inside list-disc text-amber-600 dark:text-amber-500">
@@ -478,7 +483,7 @@ function SyncResult({ result }: { result: Awaited<ReturnType<typeof api.ssSync>>
           {result.errors.slice(0, 20).map((em) => (
             <li key={em}>{em}</li>
           ))}
-          {result.errors.length > 20 && <li>…共 {result.errors.length} 条错误</li>}
+          {result.errors.length > 20 && <li>{swt("interface.m0493")}{" "}{result.errors.length} {swt("interface.m0494")}</li>}
         </ul>
       )}
     </div>

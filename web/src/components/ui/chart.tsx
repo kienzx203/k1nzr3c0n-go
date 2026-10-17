@@ -1,4 +1,5 @@
 "use client"
+import { getIntlLocale } from "@/i18n/runtime";
 
 import * as React from "react"
 import * as RechartsPrimitive from "recharts"
@@ -56,6 +57,7 @@ function ChartContainer({
     height: number
   }
 }) {
+
   const uniqueId = React.useId()
   const chartId = `chart-${id ?? uniqueId.replace(/:/g, "")}`
 
@@ -82,6 +84,7 @@ function ChartContainer({
 }
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
+
   const colorConfig = Object.entries(config).filter(
     ([, config]) => config.theme ?? config.color
   )
@@ -144,6 +147,7 @@ function ChartTooltipContent({
     >,
     "accessibilityLayer"
   >) {
+
   const { config } = useChart()
 
   const tooltipLabel = React.useMemo(() => {
@@ -255,7 +259,7 @@ function ChartTooltipContent({
                       {item.value != null && (
                         <span className="font-mono font-medium text-foreground tabular-nums">
                           {typeof item.value === "number"
-                            ? item.value.toLocaleString()
+                            ? item.value.toLocaleString(getIntlLocale())
                             : String(item.value)}
                         </span>
                       )}
@@ -282,6 +286,7 @@ function ChartLegendContent({
   hideIcon?: boolean
   nameKey?: string
 } & RechartsPrimitive.DefaultLegendContentProps) {
+
   const { config } = useChart()
 
   if (!payload?.length) {

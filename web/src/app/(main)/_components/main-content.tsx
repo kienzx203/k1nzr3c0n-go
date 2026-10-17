@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { usePathname } from "next/navigation";
@@ -16,7 +18,7 @@ import { SearchDialog } from "./sidebar/search-dialog";
 import { ThemeSwitcher } from "./sidebar/theme-switcher";
 import { UpdateBadge } from "./update-badge";
 
-// 任务详情页保持原样：它自带头部/Tabs 与内边距，这里不再叠加全局头部和 padding。
+// Task details supply their own header, tabs, and padding; do not add the global header or padding.
 function isFullBleed(pathname: string) {
   const p = (() => {
     try {
@@ -25,13 +27,16 @@ function isFullBleed(pathname: string) {
       return pathname;
     }
   })();
-  // 静态导出开了 trailingSlash，列表页自身的 pathname 是 "/function/tasks/"，
-  // 先去掉尾斜杠再判前缀，否则列表页会被误判成详情页而丢掉全局头部。
+  // Static export uses trailingSlash, so the task-list pathname is /function/tasks/.
+  // Remove the trailing slash before prefix checks or the list is mistaken for details and loses its header.
   const normalized = p.replace(/\/+$/, "");
   return normalized.startsWith("/function/tasks/");
 }
 
 export function MainContent({ children }: { children: ReactNode }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const currentUser = useCurrentUser();
   const pathname = usePathname();
   const [version, setVersion] = useState("");
@@ -66,7 +71,7 @@ export function MainContent({ children }: { children: ReactNode }) {
           </div>
           <div className="flex items-center gap-2">
             {version && (
-              <span className="font-medium text-muted-foreground text-xs tabular-nums">版本 · {version}</span>
+              <span className="font-medium text-muted-foreground text-xs tabular-nums">{swt("interface.m0052")}{version}</span>
             )}
             <UpdateBadge />
             <LayoutControls />

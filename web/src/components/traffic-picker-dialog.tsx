@@ -1,5 +1,8 @@
 "use client";
+import { getIntlLocale } from "@/i18n/runtime";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { toast } from "sonner";
@@ -39,6 +42,9 @@ export function TrafficPickerDialog({
   onClose: () => void;
   onBound: () => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [host, setHost] = React.useState("");
   const [method, setMethod] = React.useState("all");
   const [query, setQuery] = React.useState("");
@@ -92,7 +98,7 @@ export function TrafficPickerDialog({
         [...selected].map((traffic_id) => ({ traffic_id })),
         contextTask,
       );
-      toast.success(`已绑定 ${selected.size} 条流量`);
+      toast.success(swt("interface.m2383", { p0: selected.size }));
       onBound();
       onClose();
     } catch (e) {
@@ -112,18 +118,17 @@ export function TrafficPickerDialog({
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
           <DialogHeader>
-            <DialogTitle>绑定流量</DialogTitle>
+            <DialogTitle>{swt("interface.m2237")}</DialogTitle>
             <DialogDescription>
-              筛选并多选请求/响应，已选记录会跨页保留。绑定后可设置用途、说明和顺序。
-            </DialogDescription>
+              {swt("interface.m2384")}</DialogDescription>
           </DialogHeader>
           <FieldGroup className="flex flex-col gap-3 sm:flex-row">
             <Field>
-              <FieldLabel htmlFor="evidence-host">目标 host</FieldLabel>
+              <FieldLabel htmlFor="evidence-host">{swt("interface.m2385")}</FieldLabel>
               <Input
                 id="evidence-host"
                 value={host}
-                placeholder="域名或 IP"
+                placeholder={swt("interface.m2386")}
                 onChange={(e) => {
                   setHost(e.target.value);
                   setPage(0);
@@ -131,7 +136,7 @@ export function TrafficPickerDialog({
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="evidence-method">请求方法</FieldLabel>
+              <FieldLabel htmlFor="evidence-method">{swt("interface.m1486")}</FieldLabel>
               <Select
                 value={method}
                 onValueChange={(v) => {
@@ -144,7 +149,7 @@ export function TrafficPickerDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="all">全部方法</SelectItem>
+                    <SelectItem value="all">{swt("interface.m1086")}</SelectItem>
                     {METHODS.map((m) => (
                       <SelectItem key={m} value={m}>
                         {m}
@@ -155,11 +160,11 @@ export function TrafficPickerDialog({
               </Select>
             </Field>
             <Field>
-              <FieldLabel htmlFor="evidence-query">关键词</FieldLabel>
+              <FieldLabel htmlFor="evidence-query">{swt("interface.m0599")}</FieldLabel>
               <Input
                 id="evidence-query"
                 value={query}
-                placeholder="URL / 正文关键词"
+                placeholder={swt("interface.m2387")}
                 onChange={(e) => {
                   setQuery(e.target.value);
                   setPage(0);
@@ -178,7 +183,7 @@ export function TrafficPickerDialog({
                 <TableRow>
                   <TableHead>
                     <Checkbox
-                      aria-label="选择本页未绑定流量"
+                      aria-label={swt("interface.m2388")}
                       disabled={loading || busy || selectable.length === 0}
                       checked={selectable.length > 0 && selectable.every((e) => selected.has(e.id))}
                       onCheckedChange={(checked) =>
@@ -193,10 +198,10 @@ export function TrafficPickerDialog({
                       }
                     />
                   </TableHead>
-                  <TableHead>方法 / URL</TableHead>
-                  <TableHead>时间</TableHead>
-                  <TableHead>状态码</TableHead>
-                  <TableHead>操作</TableHead>
+                  <TableHead>{swt("interface.m2389")}</TableHead>
+                  <TableHead>{swt("interface.m0291")}</TableHead>
+                  <TableHead>{swt("interface.m0245")}</TableHead>
+                  <TableHead>{swt("interface.m0228")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -204,7 +209,7 @@ export function TrafficPickerDialog({
                   <TableRow key={e.id}>
                     <TableCell>
                       <Checkbox
-                        aria-label={`选择流量 ${e.id}`}
+                        aria-label={swt("interface.m1098", { p0: e.id })}
                         checked={selected.has(e.id) || alreadyBound.has(e.id)}
                         disabled={busy || loading || alreadyBound.has(e.id)}
                         onCheckedChange={(checked) => toggle(e.id, checked === true)}
@@ -214,23 +219,22 @@ export function TrafficPickerDialog({
                       <span className="font-mono text-xs">
                         {e.method} {e.url}
                       </span>
-                      {alreadyBound.has(e.id) ? <Badge variant="secondary">已绑定</Badge> : null}
+                      {alreadyBound.has(e.id) ? <Badge variant="secondary">{swt("interface.m1912")}</Badge> : null}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
-                      {new Date(e.ts).toLocaleString("zh-CN")}
+                      {new Date(e.ts).toLocaleString(getIntlLocale())}
                     </TableCell>
                     <TableCell>{e.status}</TableCell>
                     <TableCell>
                       <Button variant="ghost" size="sm" onClick={() => setPreview(e.id)}>
-                        预览
-                      </Button>
+                        {swt("interface.m2390")}</Button>
                     </TableCell>
                   </TableRow>
                 ))}
                 {!rows.length ? (
                   <TableRow>
                     <TableCell colSpan={5} className="py-8 text-center">
-                      {loading ? "加载中…" : "没有匹配的流量"}
+                      {loading ? swt("interface.m0260") : swt("interface.m2391")}
                     </TableCell>
                   </TableRow>
                 ) : null}
@@ -239,8 +243,7 @@ export function TrafficPickerDialog({
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm">
-              已选 {selected.size} 条 · 共 {data?.total ?? 0} 条
-            </span>
+              {swt("interface.m0398")}{" "}{selected.size} {swt("interface.m2392")}{" "}{data?.total ?? 0} {swt("interface.m0328")}</span>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -248,25 +251,22 @@ export function TrafficPickerDialog({
                 disabled={loading || page === 0}
                 onClick={() => setPage((p) => p - 1)}
               >
-                上一页
-              </Button>
-              <span className="text-xs">第 {page + 1} 页</span>
+                {swt("interface.m0488")}</Button>
+              <span className="text-xs">{swt("interface.m0489")}{" "}{page + 1} {swt("interface.m0490")}</span>
               <Button
                 variant="outline"
                 size="sm"
                 disabled={loading || (page + 1) * 25 >= (data?.total ?? 0)}
                 onClick={() => setPage((p) => p + 1)}
               >
-                下一页
-              </Button>
+                {swt("interface.m0491")}</Button>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" disabled={busy} onClick={onClose}>
-              取消
-            </Button>
+              {swt("interface.m0063")}</Button>
             <Button disabled={busy || selected.size === 0} onClick={() => void save()}>
-              {busy ? "保存中…" : `绑定 ${selected.size} 条流量`}
+              {busy ? swt("interface.m0272") : swt("interface.m2393", { p0: selected.size })}
             </Button>
           </DialogFooter>
         </DialogContent>

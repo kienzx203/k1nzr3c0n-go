@@ -1,5 +1,8 @@
 "use client";
+import { getIntlLocale } from "@/i18n/runtime";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { ArrowUpIcon, MessageCircleQuestionIcon, SquareIcon, Trash2Icon, XIcon } from "lucide-react";
@@ -30,20 +33,22 @@ import { cn } from "@/lib/utils";
 type ComposerLayout = "inline" | "stacked";
 
 const preparationLabels = {
-  preparing: "正在准备上下文…",
-  summarizing_history: "正在整理早期旁路问答…",
-  compressing_snapshot: "正在压缩旁路上下文副本…",
-  retrying: "模型上下文超限，正在缩减后重试…",
-  answering: "正在回答…",
+  get preparing() { return swt("interface.m2290"); },
+  get summarizing_history() { return swt("interface.m2291"); },
+  get compressing_snapshot() { return swt("interface.m2292"); },
+  get retrying() { return swt("interface.m2293"); },
+  get answering() { return swt("interface.m2294"); },
 };
 
 export function SideQuestionButton({ side }: { side: SideQuestions }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   if (!side.enabled) return null;
   return (
-    <Button variant="outline" size="sm" onClick={() => side.setOpen(true)} title="/btw 旁路提问">
+    <Button variant="outline" size="sm" onClick={() => side.setOpen(true)} title={swt("interface.m2295")}>
       <MessageCircleQuestionIcon data-icon="inline-start" />
-      旁路提问
-    </Button>
+      {swt("interface.m2296")}</Button>
   );
 }
 
@@ -56,6 +61,9 @@ function SidePanel({
   label: string;
   composerLayout: ComposerLayout;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const inlineComposer = composerLayout === "inline";
   const [confirm, setConfirm] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
@@ -65,13 +73,13 @@ function SidePanel({
   useEffect(() => {
     if (pinned.current && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
   }, [tail?.answer, tail?.id]);
-  const status = { running: "回答中", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断" };
+  const status = { running: swt("interface.m2297"), completed: swt("interface.m0809"), failed: swt("interface.m0294"), cancelled: swt("interface.m2218"), interrupted: swt("interface.m2298") };
   return (
-    <section className="flex h-full min-h-0 flex-col bg-background" aria-label="旁路提问面板">
+    <section className="flex h-full min-h-0 flex-col bg-background" aria-label={swt("interface.m2299")}>
       <div className="flex items-center gap-2 border-b p-3">
         <div className="min-w-0 flex-1">
           <p className="font-medium">
-            旁路提问 <span className="text-muted-foreground">/btw</span>
+            {swt("interface.m2296")}<span className="text-muted-foreground">/btw</span>
           </p>
           <p className="truncate text-muted-foreground text-xs">{label}</p>
         </div>
@@ -80,11 +88,11 @@ function SidePanel({
           size="icon-sm"
           onClick={() => setConfirm(true)}
           disabled={!side.items.length || side.busy}
-          aria-label="清空旁路历史"
+          aria-label={swt("interface.m2300")}
         >
           <Trash2Icon />
         </Button>
-        <Button variant="ghost" size="icon-sm" onClick={() => side.setOpen(false)} aria-label="关闭旁路面板">
+        <Button variant="ghost" size="icon-sm" onClick={() => side.setOpen(false)} aria-label={swt("interface.m2301")}>
           <XIcon />
         </Button>
       </div>
@@ -92,10 +100,10 @@ function SidePanel({
         {side.snapshot ? (
           <>
             <p>{side.snapshot.model.model}</p>
-            <p>上下文更新于 {new Date(side.snapshot.captured_at).toLocaleString()}</p>
+            <p>{swt("interface.m2302")}{" "}{new Date(side.snapshot.captured_at).toLocaleString(getIntlLocale())}</p>
           </>
         ) : (
-          "主 Agent 首次运行后即可提问"
+          swt("interface.m2303")
         )}
       </div>
       <div
@@ -108,15 +116,14 @@ function SidePanel({
       >
         {side.nextCursor > 0 && (
           <Button variant="ghost" size="sm" onClick={() => void side.load(side.nextCursor)}>
-            加载更早的旁路问答
-          </Button>
+            {swt("interface.m2304")}</Button>
         )}
         {side.loading && <Skeleton className="h-16 w-full" />}
         {!side.loading && side.items.length === 0 && (
           <Empty>
             <EmptyHeader>
-              <EmptyTitle>随时问一个问题</EmptyTitle>
-              <EmptyDescription>根据当前 Agent 的上下文回答，主任务继续运行。</EmptyDescription>
+              <EmptyTitle>{swt("interface.m2305")}</EmptyTitle>
+              <EmptyDescription>{swt("interface.m2306")}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
@@ -127,15 +134,14 @@ function SidePanel({
               <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
                 <Badge variant="secondary">{status[item.status]}</Badge>
                 <span className="truncate">{item.model.model}</span>
-                <time dateTime={item.snapshot_at} title={new Date(item.snapshot_at).toLocaleString()}>
-                  上下文 {new Date(item.snapshot_at).toLocaleTimeString()}
+                <time dateTime={item.snapshot_at} title={new Date(item.snapshot_at).toLocaleString(getIntlLocale())}>
+                  {swt("interface.m2307")}{" "}{new Date(item.snapshot_at).toLocaleTimeString(getIntlLocale())}
                 </time>
               </div>
               {item.context?.estimated_input_tokens != null && (
                 <p className="text-muted-foreground text-xs">
-                  最近 {item.context.recent_exchanges} 组问答原文
-                  {item.context.history_summarized && " · 含早期问答摘要"}
-                  {item.context.snapshot_summarized && " · 使用主上下文摘要"}
+                  {swt("interface.m1810")}{" "}{item.context.recent_exchanges} {swt("interface.m2308")}{" "}{item.context.history_summarized && swt("interface.m2309")}
+                  {item.context.snapshot_summarized && swt("interface.m2310")}
                 </p>
               )}
               {item.answer && <Markdown text={item.answer} />}
@@ -163,8 +169,8 @@ function SidePanel({
           <InputGroupTextarea
             rows={1}
             className={cn("overflow-y-auto", inlineComposer ? "max-h-40 min-h-0" : "max-h-36 min-h-9")}
-            aria-label="旁路问题"
-            placeholder="询问当前上下文…"
+            aria-label={swt("interface.m2311")}
+            placeholder={swt("interface.m2312")}
             value={side.draft}
             maxLength={4000}
             disabled={side.busy}
@@ -177,14 +183,14 @@ function SidePanel({
             }}
           />
           <InputGroupAddon align={inlineComposer ? "inline-end" : "block-end"}>
-            {!inlineComposer && <span className="text-muted-foreground text-xs">独立问答 · 无工具执行</span>}
+            {!inlineComposer && <span className="text-muted-foreground text-xs">{swt("interface.m2313")}</span>}
             {side.running ? (
               <InputGroupButton
                 className="ml-auto"
                 variant="destructive"
                 size="icon-xs"
                 onClick={() => void side.stop()}
-                aria-label="停止旁路回答"
+                aria-label={swt("interface.m2314")}
               >
                 <SquareIcon />
               </InputGroupButton>
@@ -195,7 +201,7 @@ function SidePanel({
                 size="icon-xs"
                 onClick={() => void side.ask(side.draft)}
                 disabled={side.busy || !side.draft.trim() || !side.snapshot?.available}
-                aria-label="发送旁路问题"
+                aria-label={swt("interface.m0071")}
               >
                 <ArrowUpIcon />
               </InputGroupButton>
@@ -204,19 +210,18 @@ function SidePanel({
         </InputGroup>
       </div>
       {inlineComposer && (
-        <div className="shrink-0 truncate px-3 pt-0.5 pb-1 text-muted-foreground text-xs">独立问答 · 无工具执行</div>
+        <div className="shrink-0 truncate px-3 pt-0.5 pb-1 text-muted-foreground text-xs">{swt("interface.m2313")}</div>
       )}
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>清空旁路历史？</AlertDialogTitle>
+            <AlertDialogTitle>{swt("interface.m2315")}</AlertDialogTitle>
             <AlertDialogDescription>
-              删除当前 Agent 的旁路问答，并停止正在生成的旁路回答。主会话和上下文快照会保留。
-            </AlertDialogDescription>
+              {swt("interface.m2316")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void side.clear()}>清空历史</AlertDialogAction>
+            <AlertDialogCancel>{swt("interface.m0063")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void side.clear()}>{swt("interface.m2317")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -235,6 +240,9 @@ export function SideQuestionWorkspace({
   children: ReactNode;
   composerLayout?: ComposerLayout;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const mobile = useIsMobile();
   return (
     <>
@@ -254,8 +262,8 @@ export function SideQuestionWorkspace({
       <Drawer open={mobile && side.open && side.enabled} onOpenChange={side.setOpen}>
         <DrawerContent className="h-[85svh]">
           <DrawerHeader className="sr-only">
-            <DrawerTitle>旁路提问</DrawerTitle>
-            <DrawerDescription>{label} 的独立问答</DrawerDescription>
+            <DrawerTitle>{swt("interface.m2296")}</DrawerTitle>
+            <DrawerDescription>{label} {swt("interface.m2318")}</DrawerDescription>
           </DrawerHeader>
           <SidePanel side={side} label={label} composerLayout={composerLayout} />
         </DrawerContent>

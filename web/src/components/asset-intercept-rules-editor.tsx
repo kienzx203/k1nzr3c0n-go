@@ -1,5 +1,7 @@
 "use client";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import { PlusIcon, Trash2Icon } from "lucide-react";
@@ -9,24 +11,24 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import type { AssetInterceptKind, AssetInterceptRuleInput } from "@/lib/types";
 
-// 用 NativeSelect（原生 <select>）而非 shadcn Select：这个编辑器会用在 Sheet 抽屉内，
-// shadcn Select 的下拉 portal 到 body、点击外部会触发抽屉的「点击外部关闭」误关；原生下拉无此问题。
+// Use NativeSelect rather than shadcn Select inside Sheet drawers:
+// body-portaled dropdown interactions can mistakenly close the drawer; native dropdowns avoid this.
 export const ASSET_INTERCEPT_KIND_OPTIONS: {
   value: AssetInterceptKind;
   label: string;
   placeholder: string;
 }[] = [
-  { value: "exact_domain", label: "域名(全等)", placeholder: "example.gov.cn" },
-  { value: "exact_ip", label: "IP(全等)", placeholder: "203.0.113.10" },
-  { value: "exact_url", label: "URL(全等)", placeholder: "https://example.com/login" },
-  { value: "fuzzy_domain", label: "域名(模糊)", placeholder: ".gov.cn" },
-  { value: "fuzzy_ip", label: "IP(模糊)", placeholder: "203.0.113." },
-  { value: "fuzzy_url", label: "URL(模糊)", placeholder: "/admin" },
-  { value: "cidr", label: "CIDR 网段", placeholder: "192.168.0.0/16" },
+  { value: "exact_domain", get label() { return swt("interface.m0664"); }, placeholder: "example.gov.cn" },
+  { value: "exact_ip", get label() { return swt("interface.m0665"); }, placeholder: "203.0.113.10" },
+  { value: "exact_url", get label() { return swt("interface.m0666"); }, placeholder: "https://example.com/login" },
+  { value: "fuzzy_domain", get label() { return swt("interface.m0667"); }, placeholder: ".gov.cn" },
+  { value: "fuzzy_ip", get label() { return swt("interface.m0668"); }, placeholder: "203.0.113." },
+  { value: "fuzzy_url", get label() { return swt("interface.m0669"); }, placeholder: "/admin" },
+  { value: "cidr", get label() { return swt("interface.m0670"); }, placeholder: "192.168.0.0/16" },
 ];
 
-// AssetInterceptRulesEditor 是「拦截/允许规则」的受控多行编辑区（拦截block/允许allow +
-// 类型 + 匹配内容 + 备注），不自带持久化——由父组件决定何时提交。
+// AssetInterceptRulesEditor is a controlled multiline editor for block/allow rules,
+// types, match values, and notes. The parent owns persistence and submission timing.
 export function AssetInterceptRulesEditor({
   value,
   onChange,
@@ -34,6 +36,9 @@ export function AssetInterceptRulesEditor({
   value: AssetInterceptRuleInput[];
   onChange: (v: AssetInterceptRuleInput[]) => void;
 }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   function update(i: number, patch: Partial<AssetInterceptRuleInput>) {
     onChange(value.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
@@ -48,7 +53,7 @@ export function AssetInterceptRulesEditor({
       {value.map((r, i) => {
         const ph = ASSET_INTERCEPT_KIND_OPTIONS.find((o) => o.value === r.kind)?.placeholder ?? "";
         return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: 行无稳定 id，按索引受控即可
+          // biome-ignore lint/suspicious/noArrayIndexKey: controlled rows have no stable IDs, so index keys are appropriate
           <div key={i} className="flex items-center gap-2">
             <NativeSelect
               size="sm"
@@ -56,8 +61,8 @@ export function AssetInterceptRulesEditor({
               value={r.action}
               onChange={(e) => update(i, { action: e.target.value as "block" | "allow" })}
             >
-              <NativeSelectOption value="block">拦截</NativeSelectOption>
-              <NativeSelectOption value="allow">允许</NativeSelectOption>
+              <NativeSelectOption value="block">{swt("interface.m0673")}</NativeSelectOption>
+              <NativeSelectOption value="allow">{swt("interface.m0617")}</NativeSelectOption>
             </NativeSelect>
             <NativeSelect
               size="sm"
@@ -79,7 +84,7 @@ export function AssetInterceptRulesEditor({
             />
             <Input
               className="w-[120px] shrink-0"
-              placeholder="备注(可选)"
+              placeholder={swt("interface.m0674")}
               value={r.note}
               onChange={(e) => update(i, { note: e.target.value })}
             />
@@ -96,8 +101,7 @@ export function AssetInterceptRulesEditor({
         );
       })}
       <Button type="button" size="sm" variant="outline" className="w-fit" onClick={add}>
-        <PlusIcon className="size-4" /> 添加一条
-      </Button>
+        <PlusIcon className="size-4" /> {swt("interface.m2197")}</Button>
     </div>
   );
 }

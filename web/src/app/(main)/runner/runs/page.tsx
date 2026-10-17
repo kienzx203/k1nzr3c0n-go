@@ -1,19 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { PlayCircleIcon, RefreshCwIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { k1z } from "@/lib/k1z";
 
 interface Run {
@@ -30,52 +24,16 @@ const STATUS_COLOR: Record<string, string> = {
   failed: "text-red-600",
   queued: "text-neutral-500",
   paused: "text-amber-600",
+  cancelled: "text-neutral-500",
 };
 
 export default function RunsPage() {
+  const router = useRouter();
   const [runs, setRuns] = React.useState<Run[]>([]);
   const [workflows, setWorkflows] = React.useState<string[]>([]);
   const [wf, setWf] = React.useState("");
   const [target, setTarget] = React.useState("");
   const [err, setErr] = React.useState("");
-  const [logRun, setLogRun] = React.useState<string | null>(null);
-  const [logs, setLogs] = React.useState<string[]>([]);
-  const wsRef = React.useRef<WebSocket | null>(null);
-
-  function openLogs(id: string) {
-    setLogRun(id);
-    setLogs([]);
-    try {
-      wsRef.current?.close();
-    } catch {
-      /* ignore */
-    }
-    let token = "";
-    try {
-      token = localStorage.getItem("artex_token") ?? "";
-    } catch {
-      /* ignore */
-    }
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${location.host}/ws/runs/${id}${token ? `?token=${encodeURIComponent(token)}` : ""}`);
-    wsRef.current = ws;
-    ws.onmessage = (ev) => {
-      try {
-        const m = JSON.parse(ev.data) as { type?: string; message?: string; status?: string };
-        if (m.message) setLogs((l) => [...l.slice(-800), m.message!]);
-        else if (m.type === "done") setLogs((l) => [...l, `— run ${m.status ?? "finished"} —`]);
-      } catch {
-        /* ignore */
-      }
-    };
-  }
-  React.useEffect(() => () => {
-    try {
-      wsRef.current?.close();
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   const load = React.useCallback(async () => {
     try {
@@ -121,7 +79,7 @@ export default function RunsPage() {
       <div>
         <h1 className="text-xl font-semibold">Runs</h1>
         <p className="text-muted-foreground text-sm">
-          k1nzr3c0n workflow runner — launch a recon pipeline and watch its status.
+          k1nzr3c0n workflow runner — launch a recon pipeline and open a run for live logs, findings and screenshots.
         </p>
       </div>
 
@@ -170,7 +128,11 @@ export default function RunsPage() {
             </TableHeader>
             <TableBody>
               {runs.map((r) => (
-                <TableRow key={r.id} className="cursor-pointer" onClick={() => openLogs(r.id)}>
+                <TableRow
+                  key={r.id}
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/runner/runs/detail?id=${encodeURIComponent(r.id)}`)}
+                >
                   <TableCell className="font-mono text-xs text-blue-600">{r.id}</TableCell>
                   <TableCell>{r.workflow}</TableCell>
                   <TableCell className="font-mono">{r.target}</TableCell>
@@ -191,34 +153,6 @@ export default function RunsPage() {
           </Table>
         </CardContent>
       </Card>
-
-      {logRun && (
-        <Card>
-          <CardContent className="p-0">
-            <div className="flex items-center gap-2 border-b px-4 py-2">
-              <span className="text-sm font-semibold">Live logs · run {logRun}</span>
-              <Button
-                className="ml-auto"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  try {
-                    wsRef.current?.close();
-                  } catch {
-                    /* ignore */
-                  }
-                  setLogRun(null);
-                }}
-              >
-                Close
-              </Button>
-            </div>
-            <pre className="bg-muted/30 max-h-[50vh] overflow-auto p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-              {logs.length ? logs.join("\n") : "Connecting…"}
-            </pre>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

@@ -1,5 +1,9 @@
 "use client";
 
+import { localizedFetch as fetch } from "@/i18n/request";
+
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,14 +12,14 @@ import { MOCK } from "@/lib/mock/enabled";
 import type { LogLine } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// Mock demo：无后端 SSE，塞几行示例日志。
+// Mock mode has no backend SSE; provide example log lines.
 const MOCK_LOGS: LogLine[] = [
-  { seq: 1, ts: "2026-07-26T03:55:00Z", level: "info", tag: "engine", text: "ARTEX v0.1.0 backend listening on :8787 (workers=3)" },
+  { seq: 1, ts: "2026-07-26T03:55:00Z", level: "info", tag: "engine", text: "K1nzr3c0n v0.1.0 backend listening on :8787 (workers=3)" },
   { seq: 2, ts: "2026-07-26T03:55:01Z", level: "info", tag: "config", text: "LLM configured from DB: anthropic / claude-opus-4-8" },
-  { seq: 3, ts: "2026-07-26T03:56:10Z", level: "info", tag: "planner", text: "task t-acme-web: 第 3 轮规划，生成意图 i-4" },
-  { seq: 4, ts: "2026-07-26T03:57:00Z", level: "warn", tag: "guard", text: "block bash: 目标越界 out.evil.example 不在 scope 内" },
-  { seq: 5, ts: "2026-07-26T03:57:30Z", level: "info", tag: "work#1", text: "report_finding: Default Credentials (high) 已落库" },
-  { seq: 6, ts: "2026-07-26T03:58:20Z", level: "error", tag: "work#3", text: "intercept: mysqldump 命中破坏性规则，等待人工审批" },
+  { seq: 3, ts: "2026-07-26T03:56:10Z", level: "info", tag: "planner", get text() { return swt("interface.m1434"); } },
+  { seq: 4, ts: "2026-07-26T03:57:00Z", level: "warn", tag: "guard", get text() { return swt("interface.m1435"); } },
+  { seq: 5, ts: "2026-07-26T03:57:30Z", level: "info", tag: "work#1", get text() { return swt("interface.m1436"); } },
+  { seq: 6, ts: "2026-07-26T03:58:20Z", level: "error", tag: "work#3", get text() { return swt("interface.m1437"); } },
 ];
 
 const levelTone: Record<LogLine["level"], string> = {
@@ -37,6 +41,9 @@ function fmtTime(ts: string) {
 }
 
 export default function LogsPage() {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [lines, setLines] = React.useState<LogLine[]>([]);
   const [q, setQ] = React.useState("");
   const [level, setLevel] = React.useState<"all" | LogLine["level"]>("all");
@@ -55,7 +62,7 @@ export default function LogsPage() {
       if (l.db_id && (min === 0 || l.db_id < min)) min = l.db_id;
     }
     return min;
-  }, [lines]);
+  }, [swLocale, lines]);
 
   // Live tail via SSE. on connect, replays whatever is in the ring (includes
   // DB-restored history from the last 100 rows written before restart).
@@ -75,7 +82,7 @@ export default function LogsPage() {
       }
     };
     return () => es.close();
-  }, []);
+  }, [swLocale]);
 
   // Mark "has more" once we have any db_id in view.
   React.useEffect(() => {
@@ -123,7 +130,7 @@ export default function LogsPage() {
         (level === "all" || l.level === level) &&
         (!needle || l.text.toLowerCase().includes(needle) || l.tag.toLowerCase().includes(needle)),
     );
-  }, [lines, q, level]);
+  }, [swLocale, lines, q, level]);
 
   React.useEffect(() => {
     if (stick.current && !paused) bottom.current?.scrollIntoView();
@@ -137,18 +144,18 @@ export default function LogsPage() {
       else if (l.level === "error") error++;
     }
     return { warn, error, total: lines.length };
-  }, [lines]);
+  }, [swLocale, lines]);
 
   return (
     <div className="flex flex-1 flex-col gap-3">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">系统日志</h1>
-        <p className="text-muted-foreground text-sm">后端实时日志流(planner / worker / 数据库 / 流量 …)</p>
+        <h1 className="text-xl font-semibold tracking-tight">{swt("interface.m1438")}</h1>
+        <p className="text-muted-foreground text-sm">{swt("interface.m1439")}</p>
       </div>
       <div className="flex flex-1 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Input
-            placeholder="过滤(文本 / tag)…"
+            placeholder={swt("interface.m1440")}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="h-8 max-w-xs"
@@ -162,7 +169,7 @@ export default function LogsPage() {
                 className="h-8"
                 onClick={() => setLevel(lv)}
               >
-                {lv === "all" ? "全部" : lv}
+                {lv === "all" ? swt("interface.m0172") : lv}
               </Button>
             ))}
           </div>
@@ -172,15 +179,14 @@ export default function LogsPage() {
             className="h-8"
             onClick={() => setPaused((p) => !p)}
           >
-            {paused ? "已暂停" : "暂停"}
+            {paused ? swt("interface.m0564") : swt("interface.m0151")}
           </Button>
           <Button size="sm" variant="outline" className="h-8" onClick={() => setLines([])}>
-            清空
-          </Button>
+            {swt("interface.m1059")}</Button>
           <span className="ml-auto text-xs text-muted-foreground">
-            {counts.total} 行 ·{" "}
-            <span className="text-amber-600 dark:text-amber-400">{counts.warn} 警告</span> ·{" "}
-            <span className="text-red-600 dark:text-red-400">{counts.error} 错误</span>
+            {counts.total} {swt("interface.m1441")}{" "}
+            <span className="text-amber-600 dark:text-amber-400">{counts.warn} {swt("interface.m1442")}</span> ·{" "}
+            <span className="text-red-600 dark:text-red-400">{counts.error} {swt("interface.m1443")}</span>
           </span>
         </div>
 
@@ -200,12 +206,12 @@ export default function LogsPage() {
                 disabled={loadingHistory}
                 onClick={loadOlderHistory}
               >
-                {loadingHistory ? "加载中…" : "加载更早日志"}
+                {loadingHistory ? swt("interface.m0260") : swt("interface.m1444")}
               </Button>
             </div>
           )}
           {filtered.length === 0 ? (
-            <p className="py-10 text-center text-muted-foreground">暂无日志。</p>
+            <p className="py-10 text-center text-muted-foreground">{swt("interface.m1445")}</p>
           ) : (
             filtered.map((l) => {
               const body =

@@ -1,5 +1,8 @@
 "use client";
+import { getIntlLocale } from "@/i18n/runtime";
 
+import { translate as swt } from "@/i18n/runtime";
+import { useI18n } from "@/i18n";
 import * as React from "react";
 
 import {
@@ -47,7 +50,7 @@ import type { TrafficDetail, TrafficExchange, TrafficHost, TrafficResp } from "@
 import { cn } from "@/lib/utils";
 
 function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN", {
+  return new Date(ts).toLocaleString(getIntlLocale(), {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -75,6 +78,9 @@ function statusTone(status: number) {
 }
 
 function MethodBadge({ method }: { method: string }) {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   return <Badge className="shrink-0 font-mono">{method}</Badge>;
 }
 
@@ -112,6 +118,9 @@ const SORT_STORAGE_KEY = "traffic-sort";
 const STATUS_BUCKETS = ["2xx", "3xx", "4xx", "5xx"];
 
 export default function TrafficPage() {
+  "use no memo";
+  const { t: swt, locale: swLocale } = useI18n();
+
   const [selectedFlows, setSelectedFlows] = React.useState<Set<string>>(() => new Set());
   const [linking, setLinking] = React.useState(false);
   const [page, setPage] = React.useState(0);
@@ -246,17 +255,17 @@ export default function TrafficPage() {
         const countOrder = hostCountSortDirection === "asc" ? a.count - b.count : b.count - a.count;
         return countOrder || a.host.localeCompare(b.host);
       }),
-    [hosts, hostCountSortDirection],
+    [swLocale, hosts, hostCountSortDirection],
   );
 
-  // "清空" for the unfiltered purge, "删除" for the host-scoped ones — the dialog's
+  // Clear for unfiltered purge, Delete for host-scoped operations; the dialog's
   // title and its confirm button both follow from which is in play.
-  const deleteVerb = deleteMode === "all" ? "清空" : "删除";
+  const deleteVerb = deleteMode === "all" ? swt("interface.m1059") : swt("interface.m0101");
   const deleteTitle = deleteMode
     ? {
-        all: "清空全部流量记录？",
-        selected: `删除选中的 ${selectedHosts.length} 个目标的全部流量？`,
-        filter: "删除该目标的全部流量？",
+        all: swt("interface.m1060"),
+        selected: swt("interface.m1061", { p0: selectedHosts.length }),
+        filter: swt("interface.m1062"),
       }[deleteMode]
     : "";
 
@@ -284,15 +293,15 @@ export default function TrafficPage() {
         if (mode === "all") {
           // Reclaimed space is the whole point of compacting an emptied index, so say so.
           const reclaimed = r.reclaimed ?? 0;
-          const freed = reclaimed > 0 ? `，释放 ${fmtBytes(reclaimed)} 存储` : "";
-          toast.success(`已清空 ${r.deleted} 条流量${freed}`);
+          const freed = reclaimed > 0 ? swt("interface.m1063", { p0: fmtBytes(reclaimed) }) : "";
+          toast.success(swt("interface.m1064", { p0: r.deleted, p1: freed }));
         }
         setPage(0);
         setReloadTick((t) => t + 1);
       })
       .catch((e) => {
         // Keep the confirmation open so the user can retry a failed deletion.
-        if (mode === "all") toast.error(`清空失败：${(e as Error).message}`);
+        if (mode === "all") toast.error(swt("interface.m1065", { p0: (e as Error).message }));
       })
       .finally(() => setDeleting(false));
   };
@@ -312,7 +321,7 @@ export default function TrafficPage() {
         if (alive) setDetail(d);
       })
       .catch(() => {
-        if (alive) setDetail({ req: "（无法加载报文）", resp: "" });
+        if (alive) setDetail({ req: swt("interface.m1066"), resp: "" });
       })
       .finally(() => {
         if (alive) setDetailLoading(false);
@@ -331,7 +340,7 @@ export default function TrafficPage() {
         : { field, direction: "desc" },
     );
 
-  const exchanges = React.useMemo(() => traffic?.exchanges ?? [], [traffic]);
+  const exchanges = React.useMemo(() => traffic?.exchanges ?? [], [swLocale, traffic]);
   const total = traffic?.total ?? exchanges.length;
   const pageCount = Math.max(1, Math.ceil(total / size));
   const rangeStart = total === 0 ? 0 : page * size + 1;
@@ -341,8 +350,8 @@ export default function TrafficPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">流量</h1>
-          <p className="text-muted-foreground text-sm">全局录制代理 · 所有 HTTP 往来</p>
+          <h1 className="text-xl font-semibold tracking-tight">{swt("interface.m1067")}</h1>
+          <p className="text-muted-foreground text-sm">{swt("interface.m1068")}</p>
         </div>
         <div className="flex items-center gap-4 text-sm">
           <span
@@ -354,12 +363,11 @@ export default function TrafficPage() {
             )}
           >
             <RadioTowerIcon className="size-3.5" />
-            {traffic?.enabled ? "录制中" : "已停用"}
+            {traffic?.enabled ? swt("interface.m0161") : swt("interface.m1069")}
           </span>
           {traffic?.proxy && <span className="font-mono text-xs text-muted-foreground">{traffic.proxy}</span>}
           <span className="text-xs text-muted-foreground">
-            共 <span className="tabular-nums">{traffic?.count ?? 0}</span> 条
-          </span>
+            {swt("interface.m0199")}<span className="tabular-nums">{traffic?.count ?? 0}</span> {swt("interface.m0328")}</span>
         </div>
       </div>
 
@@ -369,7 +377,7 @@ export default function TrafficPage() {
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="h-8">
               <ListChecksIcon className="size-3.5" />
-              {selectedHosts.length > 0 ? `选择目标（${selectedHosts.length}）` : "选择目标…"}
+              {selectedHosts.length > 0 ? swt("interface.m1070", { p0: selectedHosts.length }) : swt("interface.m1071")}
             </Button>
           </PopoverTrigger>
           <PopoverContent
@@ -378,7 +386,7 @@ export default function TrafficPage() {
             collisionPadding={16}
           >
             <div className="flex items-center justify-between border-b px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">按目标批量删除</span>
+              <span className="text-xs font-medium text-muted-foreground">{swt("interface.m1072")}</span>
               <div className="flex items-center gap-1">
                 {hosts.length > 0 && (
                   <Tooltip>
@@ -389,14 +397,14 @@ export default function TrafficPage() {
                         onClick={() => setHostCountSortDirection((current) => (current === "desc" ? "asc" : "desc"))}
                         aria-label={
                           hostCountSortDirection === "desc"
-                            ? "数据包数量当前倒序，点击切换为正序"
-                            : "数据包数量当前正序，点击切换为倒序"
+                            ? swt("interface.m1073")
+                            : swt("interface.m1074")
                         }
                       >
                         {hostCountSortDirection === "desc" ? <ArrowDownWideNarrowIcon /> : <ArrowUpNarrowWideIcon />}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>按数据包数量{hostCountSortDirection === "desc" ? "倒序" : "正序"}</TooltipContent>
+                    <TooltipContent>{swt("interface.m1075")}{" "}{hostCountSortDirection === "desc" ? swt("interface.m0595") : swt("interface.m0594")}</TooltipContent>
                   </Tooltip>
                 )}
                 {hosts.length > 0 && (
@@ -406,14 +414,14 @@ export default function TrafficPage() {
                     className="h-6 px-2 text-xs"
                     onClick={() => setSelectedHosts(allSelected ? [] : hosts.map((h) => h.host))}
                   >
-                    {allSelected ? "取消全选" : "全选"}
+                    {allSelected ? swt("interface.m1076") : swt("interface.m1077")}
                   </Button>
                 )}
               </div>
             </div>
             <div className="max-h-64 overflow-y-auto">
               {hosts.length === 0 ? (
-                <div className="px-3 py-6 text-center text-xs text-muted-foreground">暂无流量记录</div>
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">{swt("interface.m1078")}</div>
               ) : (
                 sortedHosts.map((h, index) => (
                   <label
@@ -447,42 +455,39 @@ export default function TrafficPage() {
                   setPickerOpen(false);
                 }}
               >
-                删除选中（{selectedHosts.length}）
+                {swt("interface.m1079")}{selectedHosts.length}）
               </Button>
             </div>
           </PopoverContent>
         </Popover>
         <div className="relative w-48">
-          <Input placeholder="host…" value={host} onChange={(e) => setHost(e.target.value)} className="h-8" />
+          <Input placeholder={swt("english.e078")} value={host} onChange={(e) => setHost(e.target.value)} className="h-8" />
         </div>
         <Button
           variant="destructive"
           size="sm"
           className="h-8"
           disabled={!hostQ || deleting}
-          title={hostQ ? undefined : "先在左侧选择目标或输入 host"}
+          title={hostQ ? undefined : swt("interface.m1080")}
           onClick={() => setDeleteMode("filter")}
         >
           <Trash2Icon className="size-3.5" />
-          删除该目标
-        </Button>
-        {/* Outline rather than a second destructive button: this one ignores every
-            filter, so it must not look one mis-click away from "删除该目标". */}
+          {swt("interface.m1081")}</Button>
+        {/* Use an outline rather than another destructive button: this ignores all filters and must look distinct from Delete this target. */}
         <Button
           variant="outline"
           size="sm"
           className="h-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
           disabled={!traffic?.count || deleting}
-          title={traffic?.count ? "删除全部流量并压实存储" : "当前没有流量记录"}
+          title={traffic?.count ? swt("interface.m1082") : swt("interface.m1083")}
           onClick={() => setDeleteMode("all")}
         >
           <EraserIcon className="size-3.5" />
-          清空全部
-        </Button>
+          {swt("interface.m1084")}</Button>
         <div className="relative max-w-sm flex-1">
           <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="搜索全部（URL / 方法 / 类型 / 状态码…）"
+            placeholder={swt("interface.m1085")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="h-8 pl-8"
@@ -490,10 +495,10 @@ export default function TrafficPage() {
         </div>
         <Select value={method} onValueChange={setMethod}>
           <SelectTrigger size="sm" className="w-32">
-            <SelectValue placeholder="方法" />
+            <SelectValue placeholder={swt("interface.m0249")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部方法</SelectItem>
+            <SelectItem value="all">{swt("interface.m1086")}</SelectItem>
             {METHODS.map((m) => (
               <SelectItem key={m} value={m}>
                 {m}
@@ -508,8 +513,7 @@ export default function TrafficPage() {
           <SelectContent>
             {PAGE_SIZES.map((n) => (
               <SelectItem key={n} value={String(n)}>
-                {n} / 页
-              </SelectItem>
+                {n} {swt("interface.m0261")}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -544,10 +548,10 @@ export default function TrafficPage() {
 
       {/* Advanced filters (issue #177): narrow 660k+ exchanges down to the one packet. */}
       <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-2 py-1.5">
-        <span className="pl-1 text-xs font-medium text-muted-foreground">高级筛选</span>
+        <span className="pl-1 text-xs font-medium text-muted-foreground">{swt("interface.m1087")}</span>
         <div className="relative w-56">
           <Input
-            placeholder="响应内容（正文关键词，≥3字）"
+            placeholder={swt("interface.m1088")}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             className="h-8"
@@ -555,7 +559,7 @@ export default function TrafficPage() {
         </div>
         <div className="relative w-52">
           <Input
-            placeholder="路径（如 /api/user/…）"
+            placeholder={swt("interface.m1089")}
             value={path}
             onChange={(e) => setPath(e.target.value)}
             className="h-8"
@@ -563,10 +567,10 @@ export default function TrafficPage() {
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger size="sm" className="w-28">
-            <SelectValue placeholder="状态码" />
+            <SelectValue placeholder={swt("interface.m0245")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部状态码</SelectItem>
+            <SelectItem value="all">{swt("interface.m1090")}</SelectItem>
             {STATUS_BUCKETS.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
@@ -575,11 +579,11 @@ export default function TrafficPage() {
           </SelectContent>
         </Select>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <span>响应长度</span>
+          <span>{swt("interface.m0515")}</span>
           <Input
             type="number"
             min={0}
-            placeholder="最小(B)"
+            placeholder={swt("interface.m1091")}
             value={respMin}
             onChange={(e) => setRespMin(e.target.value)}
             className="h-8 w-24"
@@ -588,7 +592,7 @@ export default function TrafficPage() {
           <Input
             type="number"
             min={0}
-            placeholder="最大(B)"
+            placeholder={swt("interface.m1092")}
             value={respMax}
             onChange={(e) => setRespMax(e.target.value)}
             className="h-8 w-24"
@@ -597,20 +601,17 @@ export default function TrafficPage() {
         {hasAdvancedFilter ? (
           <Button variant="ghost" size="sm" className="h-8" onClick={resetAdvancedFilters}>
             <FilterXIcon className="size-3.5" />
-            清除筛选
-          </Button>
+            {swt("interface.m1093")}</Button>
         ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">已选 {selectedFlows.size} 条流量</span>
+        <span className="text-sm text-muted-foreground">{swt("interface.m0398")}{" "}{selectedFlows.size} {swt("interface.m1094")}</span>
         <Button variant="outline" size="sm" disabled={selectedFlows.size === 0} onClick={() => setLinking(true)}>
-          关联到漏洞
-        </Button>
+          {swt("interface.m1095")}</Button>
         {selectedFlows.size > 0 ? (
           <Button variant="ghost" size="sm" onClick={() => setSelectedFlows(new Set())}>
-            清空选择
-          </Button>
+            {swt("interface.m1096")}</Button>
         ) : null}
       </div>
       {/* History table */}
@@ -622,7 +623,7 @@ export default function TrafficPage() {
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
-                      aria-label="选择本页流量"
+                      aria-label={swt("interface.m1097")}
                       checked={exchanges.length > 0 && exchanges.every((e) => selectedFlows.has(e.id))}
                       onCheckedChange={(checked) =>
                         setSelectedFlows((previous) => {
@@ -638,18 +639,18 @@ export default function TrafficPage() {
                   </TableHead>
                   <SortableHead
                     field="ts"
-                    label="时间"
+                    label={swt("interface.m0291")}
                     activeField={sort.field}
                     direction={sort.direction}
                     onSort={toggleSort}
                     className="w-36"
                   />
-                  <TableHead className="w-44">host</TableHead>
-                  <TableHead className="w-20">方法</TableHead>
+                  <TableHead className="w-44">{swt("english.e079")}</TableHead>
+                  <TableHead className="w-20">{swt("interface.m0249")}</TableHead>
                   <TableHead>URL</TableHead>
                   <SortableHead
                     field="status"
-                    label="状态码"
+                    label={swt("interface.m0245")}
                     activeField={sort.field}
                     direction={sort.direction}
                     onSort={toggleSort}
@@ -658,7 +659,7 @@ export default function TrafficPage() {
                   <TableHead className="w-36">content-type</TableHead>
                   <SortableHead
                     field="resp_len"
-                    label="响应长度"
+                    label={swt("interface.m0515")}
                     activeField={sort.field}
                     direction={sort.direction}
                     onSort={toggleSort}
@@ -676,7 +677,7 @@ export default function TrafficPage() {
                   >
                     <TableCell>
                       <Checkbox
-                        aria-label={`选择流量 ${e.id}`}
+                        aria-label={swt("interface.m1098", { p0: e.id })}
                         checked={selectedFlows.has(e.id)}
                         onClick={(event) => event.stopPropagation()}
                         onCheckedChange={(checked) =>
@@ -709,7 +710,7 @@ export default function TrafficPage() {
                 {exchanges.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
-                      {traffic === null ? "加载中…" : "没有匹配的流量。"}
+                      {traffic === null ? swt("interface.m0260") : swt("interface.m1099")}
                     </TableCell>
                   </TableRow>
                 )}
@@ -743,15 +744,14 @@ export default function TrafficPage() {
               </SheetHeader>
               <Tabs defaultValue="request" className="min-h-0 flex-1 gap-0">
                 <TabsList className="mx-5 mt-4 grid w-auto grid-cols-2">
-                  <TabsTrigger value="request">请求 Request</TabsTrigger>
-                  <TabsTrigger value="response">响应 Response</TabsTrigger>
+                  <TabsTrigger value="request">{swt("interface.m1100")}</TabsTrigger>
+                  <TabsTrigger value="response">{swt("interface.m1101")}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="request" className="min-h-0 overflow-auto">
                   {detailLoading ? (
                     <div className="flex items-center gap-2 p-5 text-xs text-muted-foreground">
                       <Loader2Icon className="size-3.5 animate-spin" />
-                      加载报文…
-                    </div>
+                      {swt("interface.m1102")}</div>
                   ) : (
                     <HttpCodeBlock raw={requestWithHost(detail?.req ?? "", selected)} />
                   )}
@@ -760,8 +760,7 @@ export default function TrafficPage() {
                   {detailLoading ? (
                     <div className="flex items-center gap-2 p-5 text-xs text-muted-foreground">
                       <Loader2Icon className="size-3.5 animate-spin" />
-                      加载报文…
-                    </div>
+                      {swt("interface.m1102")}</div>
                   ) : (
                     <HttpCodeBlock raw={detail?.resp ?? ""} />
                   )}
@@ -784,34 +783,29 @@ export default function TrafficPage() {
             <AlertDialogDescription>
               {deleteMode === "all" && (
                 <>
-                  将永久删除全部 <span className="font-semibold tabular-nums">{traffic?.count ?? 0}</span>{" "}
-                  条流量记录（含请求/响应原文），忽略当前的筛选条件，此操作不可撤销。已绑定到漏洞的流量证据保存在独立的证据库中，不受影响。
-                  <br />
+                  {swt("interface.m1103")}<span className="font-semibold tabular-nums">{traffic?.count ?? 0}</span>{" "}
+                  {swt("interface.m1104")}<br />
                   <span className="text-muted-foreground">
-                    清空后会顺带压实存储，把索引占用的磁盘空间还给系统；这期间流量录制会短暂暂停。
-                  </span>
+                    {swt("interface.m1105")}</span>
                 </>
               )}
               {deleteMode === "selected" && (
                 <>
-                  将永久删除 <span className="font-semibold tabular-nums">{selectedHosts.length}</span> 个目标（
-                  <span className="font-mono">
+                  {swt("interface.m0252")}<span className="font-semibold tabular-nums">{selectedHosts.length}</span> {swt("interface.m1106")}<span className="font-mono">
                     {selectedHosts.slice(0, 3).join("、")}
                     {selectedHosts.length > 3 ? "…" : ""}
                   </span>
-                  ）的所有流量记录（含请求/响应原文），此操作不可撤销。
-                </>
+                  {swt("interface.m1107")}</>
               )}
               {deleteMode === "filter" && (
                 <>
-                  将永久删除 host 包含 <span className="font-mono font-semibold">{hostQ}</span>{" "}
-                  的所有流量记录（含请求/响应原文），此操作不可撤销。
-                </>
+                  {swt("interface.m1108")}<span className="font-mono font-semibold">{hostQ}</span>{" "}
+                  {swt("interface.m1109")}</>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{swt("interface.m0063")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -820,7 +814,7 @@ export default function TrafficPage() {
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? `${deleteVerb}中…` : `确认${deleteVerb}`}
+              {deleting ? swt("interface.m1110", { p0: deleteVerb }) : swt("interface.m1111", { p0: deleteVerb })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
