@@ -54,7 +54,8 @@ const STATUS_COLOR: Record<Status, string> = {
   error: "bg-red-500",
 };
 
-const TERM_THEME = {
+// GitHub-dark ANSI palette (used when the app is in dark mode).
+const DARK_THEME = {
   background: "#0d1117",
   foreground: "#e6edf3",
   cursor: "#58a6ff",
@@ -78,6 +79,38 @@ const TERM_THEME = {
   brightWhite: "#f0f6fc",
 };
 
+// GitHub-light ANSI palette — darker foreground colors stay legible on a light
+// background so the terminal follows the app theme instead of staying black.
+const LIGHT_THEME = {
+  background: "#ffffff",
+  foreground: "#1f2328",
+  cursor: "#0969da",
+  cursorAccent: "#ffffff",
+  selectionBackground: "#0969da33",
+  black: "#24292f",
+  brightBlack: "#57606a",
+  red: "#cf222e",
+  brightRed: "#a40e26",
+  green: "#116329",
+  brightGreen: "#1a7f37",
+  yellow: "#7d4e00",
+  brightYellow: "#9a6700",
+  blue: "#0969da",
+  brightBlue: "#218bff",
+  magenta: "#8250df",
+  brightMagenta: "#a475f9",
+  cyan: "#1b7c83",
+  brightCyan: "#3192aa",
+  white: "#6e7781",
+  brightWhite: "#8c959f",
+};
+
+// The app toggles dark mode with a `.dark` class on <html> (see globals.css).
+function readTheme() {
+  const dark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+  return dark ? DARK_THEME : LIGHT_THEME;
+}
+
 if (store.sessions.length === 0) {
   const s = makeSession();
   store.sessions = [s];
@@ -100,7 +133,7 @@ export default function TerminalClient() {
     setStatus("connecting");
 
     const term = new Terminal({
-      theme: TERM_THEME,
+      theme: readTheme(),
       fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace',
       fontSize: 14,
       lineHeight: 1.45,
@@ -182,6 +215,17 @@ export default function TerminalClient() {
     };
   }, [activeId, connect]);
 
+  // Follow the app's light/dark theme: re-apply the terminal palette whenever
+  // the <html> `dark` class toggles so the terminal is no longer always black.
+  React.useEffect(() => {
+    const apply = () => {
+      if (termRef.current) termRef.current.options.theme = readTheme();
+    };
+    const obs = new MutationObserver(apply);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+
   const switchTo = React.useCallback(
     (id: string) => {
       if (id === activeId) return;
@@ -228,8 +272,8 @@ export default function TerminalClient() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-var(--header-height,4rem))] min-h-0 flex-col bg-[#0d1117]">
-      <div className="flex flex-shrink-0 items-center border-b border-[#30363d] bg-[#010409]">
+    <div className="flex h-[calc(100vh-var(--header-height,4rem))] min-h-0 flex-col bg-background">
+      <div className="flex flex-shrink-0 items-center border-b border-border bg-muted">
         <div className="flex min-w-0 flex-1 items-end gap-px overflow-x-auto px-2 pt-1.5">
           {sessions.map((s) => {
             const isActive = s.id === activeId;
@@ -239,8 +283,8 @@ export default function TerminalClient() {
                 onClick={() => switchTo(s.id)}
                 className={`group flex cursor-pointer items-center gap-1.5 rounded-t px-3 py-1.5 text-xs whitespace-nowrap transition-colors select-none ${
                   isActive
-                    ? "border border-b-0 border-[#30363d] bg-[#0d1117] text-[#e6edf3]"
-                    : "border border-transparent bg-transparent text-[#8b949e] hover:bg-[#161b22] hover:text-[#c9d1d9]"
+                    ? "border border-b-0 border-border bg-background text-foreground"
+                    : "border border-transparent bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
                 }`}
               >
                 <span className="font-mono">bash {s.label}</span>
@@ -259,14 +303,14 @@ export default function TerminalClient() {
           <button
             onClick={newSession}
             title="New session"
-            className="mb-0.5 flex size-7 flex-shrink-0 items-center justify-center rounded text-[#8b949e] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3]"
+            className="mb-0.5 flex size-7 flex-shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <PlusIcon className="size-4" />
           </button>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5 px-4">
           <span className={`inline-block size-2 rounded-full ${STATUS_COLOR[status]}`} />
-          <span className="font-mono text-[10px] text-[#8b949e]">{status}</span>
+          <span className="font-mono text-[10px] text-muted-foreground">{status}</span>
         </div>
       </div>
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden" style={{ padding: "6px 4px 4px 8px" }} />

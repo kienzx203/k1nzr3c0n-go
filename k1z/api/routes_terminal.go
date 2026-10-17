@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -71,6 +73,52 @@ func init() {
 	}()
 }
 
+// terminalHome returns a usable HOME for the shell. A server started by systemd
+// often has no HOME in its environment, which breaks `cd`, shell startup files,
+// and tools (e.g. opencode) that store their config under $HOME.
+func terminalHome() string {
+	if h := os.Getenv("HOME"); h != "" {
+		return h
+	}
+	if u, err := user.Current(); err == nil && u.HomeDir != "" {
+		return u.HomeDir
+	}
+	return "/root"
+}
+
+// terminalEnv builds the PTY environment, guaranteeing HOME/USER/SHELL/PATH/LANG
+// so the login shell and any spawned tools behave like a normal interactive
+// session. Existing values from the server environment are never overridden.
+func terminalEnv() []string {
+	env := os.Environ()
+	has := func(key string) bool {
+		pref := key + "="
+		for _, e := range env {
+			if strings.HasPrefix(e, pref) {
+				return true
+			}
+		}
+		return false
+	}
+	set := func(key, val string) {
+		if val != "" && !has(key) {
+			env = append(env, key+"="+val)
+		}
+	}
+	uname := ""
+	if u, err := user.Current(); err == nil {
+		uname = u.Username
+	}
+	set("HOME", terminalHome())
+	set("USER", uname)
+	set("LOGNAME", uname)
+	set("SHELL", "/bin/bash")
+	set("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+	set("LANG", "C.UTF-8")
+	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor")
+	return env
+}
+
 func getPTY(sessionID string) (*ptySession, error) {
 	ptyMu.Lock()
 	defer ptyMu.Unlock()
@@ -78,7 +126,10 @@ func getPTY(sessionID string) (*ptySession, error) {
 		return s, nil
 	}
 	cmd := exec.Command("/bin/bash", "-l")
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
+	cmd.Env = terminalEnv()
+	if home := terminalHome(); home != "" {
+		cmd.Dir = home
+	}
 	tty, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 200})
 	if err != nil {
 		return nil, err
