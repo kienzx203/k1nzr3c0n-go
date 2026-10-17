@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Seed expert-grade Task templates (Bug Bounty / Penetration Test / Red Team) into
-# the autonomous Task engine via POST /api/task-templates (ARTEX API — needs a login
-# token). Each description is a senior-operator playbook. Re-runnable; no secrets.
+# Seed expert-grade Task templates into the autonomous Task engine via
+# POST /api/task-templates (ARTEX API — needs a login token).
+# Templates: Bug Bounty, Penetration Test, Red Team, Recon — All Endpoints.
+# Each description is a senior-operator playbook. Re-runnable; no secrets.
 #
 # Auth — provide ONE of:
 #   ARTEX_TOKEN=...        # from the browser console: localStorage.getItem('artex_token')
-#   ARTEX_PASSWORD=...     # script logs in (ARTEX_USER defaults to "admin")
+#   ARTEX_PASSWORD=...     # script logs in (ARTEX_USER defaults to "ARTEX")
 #
 # Usage:
 #   BASE_URL=http://127.0.0.1:8000 ARTEX_TOKEN=... ./scripts/add-task-templates.sh
@@ -161,8 +162,72 @@ recommendations, and the full deconfliction/action log.
 EOF
 )
 
+ENDPOINT_DESC=$(cat <<'EOF'
+ROLE: Senior recon specialist. Build the MOST COMPLETE endpoint / attack-surface
+inventory possible for the in-scope target — every URL, API route, parameter, and
+hidden surface — mined from passive history, live crawling, JavaScript (deeply), and
+smart brute-force. Coverage and depth beat speed. Deduplicate and classify everything.
+
+HARD RULES (deny-wins): In-scope assets only. No DoS; throttle crawling/fuzzing. Record
+state-changing endpoints (admin/delete/write/payment) as SURFACE — do NOT trigger them.
+ask_human before hitting anything state-changing or ambiguous.
+
+0) SEED: httpx-verify live in-scope hosts; record base URLs, tech stack, and CDNs.
+
+1) PASSIVE URL HARVEST (finds removed/forgotten endpoints):
+   - gau / waybackurls / waymore (Wayback + CommonCrawl + URLScan + OTX + VirusTotal —
+     provider keys configured), URLScan.io search, AlienVault OTX, VT.
+   - crt.sh / cert SANs for extra hostnames -> feed back into the loop. Keep everything
+     (old params, old .js URLs); sort -u.
+
+2) ACTIVE CRAWL (render + follow):
+   - katana -jc -kf all (headless, parses JS, follows links/forms), depth-tuned.
+   - gospider / hakrawler as a second pass. Capture forms, params, and XHR/fetch calls
+     seen on rendered pages.
+
+3) JAVASCRIPT — THE BIG ONE (most hidden endpoints live here):
+   - Collect ALL JS: katana -jc, subjs, getJS, plus inline <script> and on* handlers.
+   - HISTORICAL JS: pull OLD versions of each .js from Wayback (removed routes often
+     survive in old bundles) and diff versions.
+   - Extract endpoints: linkfinder, xnLinkFinder, jsluice (URLs + fetch/axios/XHR paths),
+     regex for /api/, route tables, template literals, GraphQL query strings.
+   - RESOLVE relative paths against the correct base (SPA <base href>, import.meta,
+     webpack publicPath) — never drop ./ or ../ references.
+   - SOURCE MAPS: fetch every *.js.map and reconstruct original source (sourcemapper) —
+     recovers clean route definitions, internal API clients, and developer comments.
+   - BUNDLES: unpack webpack/vite chunks; follow dynamic import() chunk names to more JS.
+   - SECRETS in JS: trufflehog, mantra, secretfinder, jsluice — API keys, tokens,
+     internal hostnames, S3/GCS buckets, feature flags, debug endpoints.
+
+4) STRUCTURED API SURFACE:
+   - Swagger/OpenAPI (/swagger, /openapi.json, /v2/api-docs, /api-docs), GraphQL
+     introspection (+ graphql-path-enum), WADL, Postman collections, .well-known/*,
+     robots.txt, sitemap.xml, security.txt. WebSocket (ws/wss) and gRPC-web from JS.
+
+5) PARAMETER DISCOVERY (per endpoint):
+   - arjun, x8, paramspider; mine params from harvested URLs + JS; Param-Miner-style
+     guessing (GET/POST/JSON/headers) on promising endpoints.
+
+6) CONTENT BRUTE-FORCE (fill gaps — right wordlist):
+   - ffuf / feroxbuster with common.txt + raft lists; recurse interesting dirs;
+     per-stack extensions; hunt backups (.bak/.old/~/.swp), VCS (.git/.svn), .env/config,
+     admin/debug/actuator, upload dirs. Throttle; stay in scope.
+
+7) NORMALIZE & CLASSIFY (the deliverable):
+   - Dedup + canonicalize (strip fragments, sort params, unify host casing).
+   - Classify each endpoint: auth, admin, api, upload, payment, internal/debug, static.
+   - Per entry record: method(s), parameters, auth-required?, and why it is interesting
+     (IDOR/SSRF/redirect/upload candidate).
+
+OUTPUT: a single deduplicated + classified endpoint inventory (URL + method + params +
+discovery source + classification), the list of secrets/internal hosts found in JS, and
+a shortlist of the highest-value endpoints to attack next.
+EOF
+)
+
 echo "Creating expert task templates on $BASE_URL ..."
-create "Bug Bounty"       "Find in-scope, non-duplicate, high-severity vulnerabilities and prove real impact with a minimal reproducible PoC." "$BOUNTY_DESC"
-create "Penetration Test" "Deliver methodical, RoE-compliant coverage of the scope with CVSS-rated, evidenced findings and prioritized remediation." "$PENTEST_DESC"
-create "Red Team"         "Reach the agreed objective stealthily via realistic ATT&CK TTPs and surface detection & response gaps." "$REDTEAM_DESC"
+create "Bug Bounty"          "Find in-scope, non-duplicate, high-severity vulnerabilities and prove real impact with a minimal reproducible PoC." "$BOUNTY_DESC"
+create "Penetration Test"    "Deliver methodical, RoE-compliant coverage of the scope with CVSS-rated, evidenced findings and prioritized remediation." "$PENTEST_DESC"
+create "Red Team"            "Reach the agreed objective stealthily via realistic ATT&CK TTPs and surface detection & response gaps." "$REDTEAM_DESC"
+create "Recon — All Endpoints" "Build the most complete deduplicated, classified endpoint inventory from passive history, crawling, JavaScript (source maps/bundles/historical), APIs, params and brute-force." "$ENDPOINT_DESC"
 echo "Done. Open New task -> Task template dropdown, or Manage templates."
