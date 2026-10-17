@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-<<<<<<< HEAD
 # Seed expert-grade Task templates (Bug Bounty / Penetration Test / Red Team) into
 # the autonomous Task engine via POST /api/task-templates (ARTEX API — needs a login
 # token). Each description is a senior-operator playbook. Re-runnable; no secrets.
@@ -37,26 +36,6 @@ create() { # create <name> <goal> <description>
     401|403) printf '  FAIL  %s (HTTP %s — token invalid/expired)\n' "$1" "$code" ;;
     *)       printf '  FAIL  %s (HTTP %s)\n' "$1" "$code" ;;
   esac
-=======
-# Seed expert-grade Task templates (Bug Bounty / Penetration Test / Red Team) via
-# POST /api/v1/task-templates. Each description is a senior-operator playbook that
-# steers the autonomous planner/worker engine. Re-runnable; no secrets.
-#
-# Usage:
-#   BASE_URL=http://127.0.0.1:8000 ./scripts/add-task-templates.sh
-#   BASE_URL=http://192.168.52.103:8000 ARTEX_TOKEN=... ./scripts/add-task-templates.sh
-set -euo pipefail
-BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-AUTH=()
-[ -n "${ARTEX_TOKEN:-}" ] && AUTH=(-H "Authorization: Bearer ${ARTEX_TOKEN}")
-
-create() { # create <name> <goal> <description>
-  local payload code
-  payload=$(NAME="$1" GOAL="$2" DESC="$3" python3 -c 'import json,os; print(json.dumps({"name":os.environ["NAME"],"goal":os.environ["GOAL"],"description":os.environ["DESC"],"max_workers":3}))')
-  code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/v1/task-templates" \
-    -H 'Content-Type: application/json' "${AUTH[@]}" --data "$payload" 2>/dev/null || echo 000)
-  case "$code" in 200|201) printf '  ok    %s\n' "$1" ;; *) printf '  FAIL  %s (HTTP %s)\n' "$1" "$code" ;; esac
->>>>>>> 1f40d0d356d5a666fc51756ff371dead882a014d
 }
 
 BOUNTY_DESC=$(cat <<'EOF'
