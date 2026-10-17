@@ -86,6 +86,31 @@ func terminalHome() string {
 	return "/root"
 }
 
+// loginShell returns the user's real login shell so the browser terminal behaves
+// like their native terminal — in particular it sources the right rc file
+// (~/.zshrc, ~/.bashrc, …), which is where tools like opencode add themselves to
+// PATH. A hardcoded /bin/bash would never see a PATH export made only in .zshrc.
+func loginShell() string {
+	if sh := os.Getenv("SHELL"); sh != "" {
+		if _, err := os.Stat(sh); err == nil {
+			return sh
+		}
+	}
+	if u, err := user.Current(); err == nil {
+		if data, err := os.ReadFile("/etc/passwd"); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				f := strings.Split(line, ":")
+				if len(f) >= 7 && f[0] == u.Username && f[6] != "" {
+					if _, err := os.Stat(f[6]); err == nil {
+						return f[6]
+					}
+				}
+			}
+		}
+	}
+	return "/bin/bash"
+}
+
 // terminalEnv builds the PTY environment, guaranteeing HOME/USER/SHELL/PATH/LANG
 // so the login shell and any spawned tools behave like a normal interactive
 // session. Existing values from the server environment are never overridden.
@@ -112,7 +137,7 @@ func terminalEnv() []string {
 	set("HOME", terminalHome())
 	set("USER", uname)
 	set("LOGNAME", uname)
-	set("SHELL", "/bin/bash")
+	set("SHELL", loginShell())
 	set("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
 	set("LANG", "C.UTF-8")
 	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor")
@@ -125,7 +150,7 @@ func getPTY(sessionID string) (*ptySession, error) {
 	if s, ok := ptySessions[sessionID]; ok {
 		return s, nil
 	}
-	cmd := exec.Command("/bin/bash", "-l")
+	cmd := exec.Command(loginShell(), "-l")
 	cmd.Env = terminalEnv()
 	if home := terminalHome(); home != "" {
 		cmd.Dir = home
