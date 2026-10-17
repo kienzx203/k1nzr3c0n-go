@@ -16,13 +16,13 @@ BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # ── acquire a token ──────────────────────────────────────────────────────────
 TOKEN="${ARTEX_TOKEN:-}"
 if [ -z "$TOKEN" ] && [ -n "${ARTEX_PASSWORD:-}" ]; then
-  TOKEN=$(U="${ARTEX_USER:-admin}" P="$ARTEX_PASSWORD" python3 -c 'import json,os;print(json.dumps({"username":os.environ["U"],"password":os.environ["P"]}))' \
+  TOKEN=$(U="${ARTEX_USER:-ARTEX}" P="$ARTEX_PASSWORD" python3 -c 'import json,os;print(json.dumps({"username":os.environ["U"],"password":os.environ["P"]}))' \
     | curl -sS -X POST "$BASE_URL/api/auth/login" -H 'Content-Type: application/json' --data @- 2>/dev/null \
     | python3 -c 'import json,sys;print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)
 fi
 if [ -z "$TOKEN" ]; then
   echo "error: no token. Set ARTEX_TOKEN (browser: localStorage.getItem('artex_token'))" >&2
-  echo "       or ARTEX_PASSWORD=... (and optionally ARTEX_USER, default admin)." >&2
+  echo "       or ARTEX_PASSWORD=... (ARTEX_USER defaults to ARTEX)." >&2
   exit 1
 fi
 
