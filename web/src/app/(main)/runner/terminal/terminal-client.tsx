@@ -29,7 +29,7 @@ function genId(): string {
 }
 
 function makeSession(): Session {
-  return { id: genId(), label: String(store.nextLabel++), snapshot: "" };
+  return { id: genId(), label: "bash " + String(store.nextLabel++), snapshot: "" };
 }
 
 function wsToken(): string {
@@ -121,6 +121,17 @@ export default function TerminalClient() {
   const [sessions, setSessions] = React.useState<Session[]>(() => [...store.sessions]);
   const [activeId, setActiveId] = React.useState<string | null>(() => store.activeId);
   const [status, setStatus] = React.useState<Status>("disconnected");
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [editValue, setEditValue] = React.useState("");
+  const commitRename = (id: string, nameRaw: string) => {
+    const name = nameRaw.trim();
+    const sess = store.sessions.find((x) => x.id === id);
+    if (sess && name) {
+      sess.label = name;
+      setSessions([...store.sessions]);
+    }
+    setEditingId(null);
+  };
 
   const containerRef = React.useRef<HTMLDivElement>(null);
   const termRef = React.useRef<Terminal | null>(null);
@@ -287,7 +298,32 @@ export default function TerminalClient() {
                     : "border border-transparent bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
                 }`}
               >
-                <span className="font-mono">bash {s.label}</span>
+                {editingId === s.id ? (
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onBlur={() => commitRename(s.id, editValue)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitRename(s.id, editValue);
+                      else if (e.key === "Escape") setEditingId(null);
+                    }}
+                    className="w-24 rounded bg-transparent px-1 font-mono text-xs outline-none ring-1 ring-border"
+                  />
+                ) : (
+                  <span
+                    className="font-mono"
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      setEditingId(s.id);
+                      setEditValue(s.label);
+                    }}
+                    title="Double-click to rename"
+                  >
+                    {s.label}
+                  </span>
+                )}
                 <button
                   onClick={(e) => closeSession(e, s.id)}
                   title="Close session"
