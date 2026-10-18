@@ -18,9 +18,10 @@ import (
 	"github.com/creack/pty"
 )
 
-// PTY sessions keyed by session ID; survive disconnect, killed after 30min
-// idle. A new socket for the same session displaces the old one (close 4000
-// "session taken over" — Python parity).
+// PTY sessions keyed by session ID. A session OWNS a long-lived shell + one
+// reader goroutine that broadcasts PTY output to the currently-attached sockets.
+// Sessions survive socket disconnect (switching browser tabs) and are reaped
+// after 30min idle — closing a socket never kills the shell.
 var (
 	ptyMu       sync.Mutex
 	ptySessions = map[string]*ptySession{}
@@ -33,18 +34,49 @@ type ptySession struct {
 	conns map[*websocket.Conn]struct{}
 }
 
-func (p *ptySession) closeConns(reason string) {
-	for c := range p.conns {
-		go c.Close(4000, reason)
-	}
-	p.conns = map[*websocket.Conn]struct{}{}
-}
-
 func (p *ptySession) write(b []byte) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.tty.Write(b)
 	p.last = time.Now()
+}
+
+// broadcast fans PTY output out to every attached socket; a socket that errors
+// is dropped (its own handler cleans up), the shell keeps running.
+func (p *ptySession) broadcast(b []byte) {
+	p.mu.Lock()
+	conns := make([]*websocket.Conn, 0, len(p.conns))
+	for c := range p.conns {
+		conns = append(conns, c)
+	}
+	p.last = time.Now()
+	p.mu.Unlock()
+	for _, c := range conns {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := c.Write(ctx, websocket.MessageBinary, b)
+		cancel()
+		if err != nil {
+			p.mu.Lock()
+			delete(p.conns, c)
+			p.mu.Unlock()
+			go c.Close(websocket.StatusNormalClosure, "")
+		}
+	}
+}
+
+func (p *ptySession) addConn(c *websocket.Conn) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.conns == nil {
+		p.conns = map[*websocket.Conn]struct{}{}
+	}
+	p.conns[c] = struct{}{}
+}
+
+func (p *ptySession) dropConn(c *websocket.Conn) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.conns, c)
 }
 
 type winsize struct {
@@ -161,17 +193,37 @@ func getPTY(sessionID string) (*ptySession, error) {
 	}
 	s := &ptySession{tty: tty, last: time.Now(), conns: map[*websocket.Conn]struct{}{}}
 	ptySessions[sessionID] = s
-	go func() { // reap on exit
+
+	// One reader per session: PTY output -> broadcast to attached sockets. Runs
+	// until the shell exits (tty read error); it does NOT stop on disconnect.
+	go func() {
+		buf := make([]byte, 8192)
+		for {
+			n, err := tty.Read(buf)
+			if n > 0 {
+				chunk := make([]byte, n)
+				copy(chunk, buf[:n])
+				s.broadcast(chunk)
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	go func() { // reap on shell exit
 		cmd.Wait()
 		ptyMu.Lock()
 		delete(ptySessions, sessionID)
 		ptyMu.Unlock()
+		tty.Close()
 	}()
 	return s, nil
 }
 
 // handleTerminalWS is the browser terminal: binary frames = raw PTY bytes,
-// text frames = {"type":"resize","rows":N,"cols":N}.
+// text frames = {"type":"resize","rows":N,"cols":N}. The socket only carries
+// input to the PTY; output arrives via the session's broadcast reader. Closing
+// the socket detaches this viewer but leaves the shell running.
 func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("session_id")
 	conn, err := websocket.Accept(w, r, nil)
@@ -185,45 +237,18 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// takeover: displace any previous socket for this session (close 4000)
-	ptyMu.Lock()
-	if sess.conns == nil {
-		sess.conns = map[*websocket.Conn]struct{}{}
-	}
+	// takeover: displace any previous socket for this session (close 4001 so the
+	// old tab stops; parity with the "session taken over" behaviour).
+	sess.mu.Lock()
 	for prev := range sess.conns {
-		go prev.Close(4000, "session taken over")
+		go prev.Close(4001, "session taken over")
 	}
 	sess.conns = map[*websocket.Conn]struct{}{conn: {}}
-	ptyMu.Unlock()
-	defer func() {
-		ptyMu.Lock()
-		delete(sess.conns, conn)
-		ptyMu.Unlock()
-	}()
+	sess.last = time.Now()
+	sess.mu.Unlock()
+	defer sess.dropConn(conn)
 
-	// PTY → client
-	readerDone := make(chan struct{})
-	go func() {
-		defer close(readerDone)
-		buf := make([]byte, 8192)
-		for {
-			n, err := sess.tty.Read(buf)
-			if n > 0 {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				if werr := conn.Write(ctx, websocket.MessageBinary, buf[:n]); werr != nil {
-					cancel()
-					return
-				}
-				cancel()
-				sess.last = time.Now()
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-
-	// client → PTY
+	// client → PTY (output is delivered by the session reader via broadcast)
 	for {
 		mt, data, err := conn.Read(r.Context())
 		if err != nil {
@@ -250,11 +275,5 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	select {
-	case <-readerDone:
-	default:
-		sess.tty.Close() // unblock reader
-		<-readerDone
-	}
-	log.Printf("[terminal] session %s closed", sessionID)
+	log.Printf("[terminal] viewer detached from session %s", sessionID)
 }
