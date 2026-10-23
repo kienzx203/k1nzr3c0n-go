@@ -32,6 +32,7 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
   const bottomRef = useRef(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [filter, setFilter] = useState('')
+  const [level, setLevel] = useState('all')  // all | error | warn | info
   const [scrollTop, setScrollTop] = useState(0)
   const [extraLogs, setExtraLogs] = useState([])   // older logs loaded from API
   const [loadingOlder, setLoadingOlder] = useState(false)
@@ -42,8 +43,13 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
   const hiddenCount = Math.max(0, allLogs.length - MAX_BUFFER)
   const buffered = hiddenCount > 0 ? allLogs.slice(hiddenCount) : allLogs
 
-  const visible = filter
-    ? buffered.filter(l => typeof l === 'string' && l.toLowerCase().includes(filter.toLowerCase()))
+  const visible = (filter || level !== 'all')
+    ? buffered.filter(l => {
+        if (typeof l !== 'string') return level === 'all'
+        if (level !== 'all' && classify(l) !== `log-${level}`) return false
+        if (filter && !l.toLowerCase().includes(filter.toLowerCase())) return false
+        return true
+      })
     : buffered
 
   // Auto-scroll to bottom
@@ -92,6 +98,16 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
     }
   }, [runId, loadingOlder, logs.length, extraLogs.length, totalLogs])
 
+  const downloadLogs = () => {
+    try {
+      const blob = new Blob([allLogs.join('\n')], { type: 'text/plain' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `run-${runId || 'logs'}.log`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+    } catch (_) { /* noop */ }
+  }
   const serverTotal = totalLogs || allLogs.length
   const canLoadOlder = runId && (allLogs.length < serverTotal || olderLoaded === 0)
 
@@ -109,12 +125,24 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
           <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} className="accent-[var(--accent)]" />
           Auto-scroll
         </label>
+        <div className="flex items-center gap-1">
+          {[['all', 'All'], ['error', 'Err'], ['warn', 'Warn'], ['info', 'Info']].map(([v, lbl]) => (
+            <button key={v} onClick={() => setLevel(v)} title={`Show ${lbl} lines`}
+              className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${level === v ? 'border-[var(--accent)] text-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-3)] hover:text-[var(--text-2)]'}`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
         <span className="text-xs text-[var(--text-2)] ml-auto">
           {visible.length.toLocaleString()} lines
           {serverTotal > visible.length && !filter && (
             <span className="text-[var(--text-2)]"> / {serverTotal.toLocaleString()} total</span>
           )}
         </span>
+        <button onClick={downloadLogs} title="Download all buffered logs"
+          className="text-[10px] font-mono px-2 py-0.5 rounded border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--text)] hover:border-[#6e7681] transition-colors">
+          ⬇ Download
+        </button>
         {running && <span className="text-xs text-[var(--green)] animate-pulse font-mono">● live</span>}
       </div>
 
