@@ -159,6 +159,14 @@ export default function ScreenshotGallery({ runId, steps = [] }) {
               <div className="flex items-center gap-2 flex-shrink-0">
                 <a
                   href={imgUrl(lightbox.file)}
+                  download={(lightbox.file || 'screenshot').split('/').pop()}
+                  className="px-2 py-1 text-xs rounded border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--text)] hover:border-[#6e7681] transition-colors"
+                  onClick={e => e.stopPropagation()}
+                >
+                  ⬇ Save
+                </a>
+                <a
+                  href={imgUrl(lightbox.file)}
                   target="_blank"
                   rel="noreferrer"
                   className="px-2 py-1 text-xs rounded border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--text)] hover:border-[#6e7681] transition-colors"

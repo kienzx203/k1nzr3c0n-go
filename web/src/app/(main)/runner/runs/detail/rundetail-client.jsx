@@ -401,6 +401,10 @@ export default function RunDetail() {
                   >
                     ↺ Reparse Findings
                   </button>
+                  <a href={api.reportDraftUrl(id, 'hackerone')} className="btn btn-accent" style={{ fontSize: 12 }}
+                     title="Submission-ready HackerOne markdown drafts for every open vuln">⬇ Draft H1</a>
+                  <a href={api.reportDraftUrl(id, 'bugcrowd')} className="btn btn-ghost" style={{ fontSize: 12 }}
+                     title="Submission-ready Bugcrowd markdown drafts">⬇ Draft BC</a>
                 </div>
                 <p className="text-xs text-[var(--text-2)]">
                   The report opens in a new tab and can be saved as PDF via browser print (Ctrl+P → Save as PDF).

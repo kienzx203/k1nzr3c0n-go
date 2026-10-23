@@ -106,6 +106,17 @@ export default function STIntelPanel({ runId }) {
     setTimeout(() => setMsg(''), 4000)
   }
 
+  function saveContent() {
+    try {
+      const blob = new Blob([content || ''], { type: 'text/plain' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = sel ? sel.name : 'st-intel.txt'
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+    } catch (_) { /* noop */ }
+  }
+
   if (!checked) return <div className="p-6 text-xs" style={{ color: 'var(--text-3)' }}>Loading…</div>
 
   if (files.length === 0) {
@@ -192,6 +203,12 @@ export default function STIntelPanel({ runId }) {
                        placeholder={`search ${lines.length} lines…`}
                        value={query} onChange={e => setQuery(e.target.value)} />
               )}
+              <button onClick={() => { try { navigator.clipboard.writeText(content || '') } catch (_) {} }}
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded border" title="Copy all"
+                      style={{ color: 'var(--text-2)', borderColor: 'var(--border)' }}>⧉ Copy</button>
+              <button onClick={saveContent}
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded border" title="Download"
+                      style={{ color: 'var(--text-2)', borderColor: 'var(--border)' }}>⬇</button>
               <span className="text-[10px] font-mono" style={{ color: 'var(--text-3)' }}>{sel.name}</span>
             </div>
           )}

@@ -33,6 +33,7 @@ export default function FindingsPanel({ runId }) {
   const [expanded, setExpanded] = useState(null)
   const [loading, setLoading] = useState(false)
   const [reparsing, setReparsing] = useState(false)
+  const [q, setQ] = useState('')  // free-text search
   const pollRef = useRef(null)
 
   // Clear the reparse poll on unmount — otherwise it keeps firing load()
@@ -79,7 +80,32 @@ export default function FindingsPanel({ runId }) {
   const byKind = items.reduce((acc, f) => { acc[f.kind] = (acc[f.kind] || 0) + 1; return acc }, {})
   const bySev  = items.reduce((acc, f) => { if (f.kind === 'vuln') { acc[f.severity] = (acc[f.severity] || 0) + 1 } return acc }, {})
 
-  const hasActiveFilter = filter.kind || filter.severity || filter.status
+  const ql = q.trim().toLowerCase()
+  const visibleItems = ql
+    ? items.filter(f => [f.name, f.host, f.url, f.template_id, f.title, f.ip]
+        .some(v => v && String(v).toLowerCase().includes(ql)))
+    : items
+
+  const exportFindings = (fmt) => {
+    try {
+      let blob
+      if (fmt === 'csv') {
+        const cols = ['kind', 'severity', 'status', 'name', 'host', 'ip', 'port', 'url', 'template_id', 'title']
+        const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+        const rows = [cols.join(',')].concat(visibleItems.map(f => cols.map(c => esc(f[c])).join(',')))
+        blob = new Blob([rows.join('\n')], { type: 'text/csv' })
+      } else {
+        blob = new Blob([JSON.stringify(visibleItems, null, 2)], { type: 'application/json' })
+      }
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `run-${runId}-findings.${fmt}`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+    } catch (_) { /* noop */ }
+  }
+
+  const hasActiveFilter = filter.kind || filter.severity || filter.status || q
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -100,11 +126,17 @@ export default function FindingsPanel({ runId }) {
           <option value="resolved">Resolved</option>
         </select>
         {hasActiveFilter && (
-          <button className="btn btn-ghost text-[10px]" onClick={() => setFilter({ kind: '', severity: '', status: '' })}>
+          <button className="btn btn-ghost text-[10px]" onClick={() => { setFilter({ kind: '', severity: '', status: '' }); setQ('') }}>
             ✕ Clear
           </button>
         )}
-        <span className="text-xs text-[var(--text-2)] ml-auto">{data?.total ?? '—'} findings</span>
+        <input className="input py-1 text-xs w-44 ml-auto" placeholder="Search findings…"
+               value={q} onChange={e => setQ(e.target.value)} />
+        <span className="text-xs text-[var(--text-2)]">{ql ? `${visibleItems.length}/` : ''}{data?.total ?? '—'} findings</span>
+        <button onClick={() => exportFindings('json')} disabled={!visibleItems.length}
+                className="btn btn-ghost text-[10px] disabled:opacity-40" title="Export filtered findings as JSON">⬇ JSON</button>
+        <button onClick={() => exportFindings('csv')} disabled={!visibleItems.length}
+                className="btn btn-ghost text-[10px] disabled:opacity-40" title="Export filtered findings as CSV">⬇ CSV</button>
         <button onClick={reparse} disabled={reparsing} className="btn btn-ghost text-xs disabled:opacity-40">
           {reparsing ? '⌛ Reparsing…' : '↺ Reparse'}
         </button>
@@ -144,14 +176,16 @@ export default function FindingsPanel({ runId }) {
       {/* Table */}
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="p-8 text-center text-xs text-[var(--text-2)] animate-pulse">Loading findings…</div>}
-        {!loading && items.length === 0 && (
+        {!loading && visibleItems.length === 0 && (
           <div className="p-8 text-center text-xs text-[var(--text-2)]">
             {data?.total === 0
               ? 'No findings yet. Nuclei/httpx/naabu/SecretFinder results appear here.'
+              : ql
+              ? `No findings match “${q}”.`
               : 'No findings match the current filter.'}
           </div>
         )}
-        {!loading && items.map(f => (
+        {!loading && visibleItems.map(f => (
           <div key={f.id} className="border-b border-[var(--surface-2)] hover:bg-[var(--surface-2)] cursor-pointer transition-colors"
             onClick={() => setExpanded(expanded === f.id ? null : f.id)}>
             <div className="flex items-center gap-3 px-4 py-2.5 flex-wrap">
