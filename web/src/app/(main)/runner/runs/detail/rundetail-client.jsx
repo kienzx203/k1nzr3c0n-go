@@ -93,7 +93,7 @@ export default function RunDetail() {
           // Append only NEW live lines; history already loaded via HTTP above
           setLogs(prev => {
             const next = prev.length >= MAX_LIVE_LOGS ? prev.slice(prev.length - MAX_LIVE_LOGS + 1) : prev.slice()
-            next.push(data.message)
+            next.push(data.message ?? '')
             return next
           })
           setTotalLogs(prev => prev + 1)
