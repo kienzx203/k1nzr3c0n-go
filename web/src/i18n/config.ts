@@ -2,7 +2,7 @@
 // and the node tests. Keep this module free of DOM access and path aliases so
 // `node --test` can import it directly.
 
-import definition from "../../../locale/definitions.json" with { type: "json" };
+import definition from "./locale-definitions.json" with { type: "json" };
 
 // The union provides compile-time catalog coverage; the shared declaration
 // controls runtime support, labels, Intl mappings and aliases.
