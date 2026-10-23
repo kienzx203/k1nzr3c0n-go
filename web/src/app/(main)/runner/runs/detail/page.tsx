@@ -11,7 +11,9 @@ const Client = dynamic(() => import("./rundetail-client"), {
 export default function Page() {
   return (
     <React.Suspense fallback={<div className="text-muted-foreground p-6 text-sm">Loading…</div>}>
-      <Client />
+      <div className="h-[calc(100vh-var(--header-height,4rem))] min-h-0">
+        <Client />
+      </div>
     </React.Suspense>
   );
 }
