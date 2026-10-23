@@ -7,6 +7,7 @@ const WIN_ROWS = 300    // how many rows to render in the DOM at once
 const MAX_BUFFER = 3000 // rolling live-stream buffer
 
 function classify(line) {
+  if (typeof line !== 'string') return 'log-plain'
   // Workflow engine markers
   if (line.startsWith('[+]'))    return 'log-ok'
   if (line.startsWith('[!]'))    return 'log-warn'
@@ -42,7 +43,7 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
   const buffered = hiddenCount > 0 ? allLogs.slice(hiddenCount) : allLogs
 
   const visible = filter
-    ? buffered.filter(l => l.toLowerCase().includes(filter.toLowerCase()))
+    ? buffered.filter(l => typeof l === 'string' && l.toLowerCase().includes(filter.toLowerCase()))
     : buffered
 
   // Auto-scroll to bottom
