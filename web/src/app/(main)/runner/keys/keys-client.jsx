@@ -94,6 +94,8 @@ export default function Keys() {
   const [editing, setEditing] = useState({})
   const [saving, setSaving]   = useState({})
   const [error, setError]     = useState(null)
+  const [checks, setChecks]   = useState({})
+  const [checking, setChecking] = useState(false)
 
   const configured    = keys.filter(k => k.configured).length
   const configuredSet = new Set(keys.filter(k => k.configured).map(k => k.provider))
@@ -107,6 +109,17 @@ export default function Keys() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function checkAll() {
+    setChecking(true)
+    try {
+      const res = await api.checkKeys()
+      const m = {}
+      for (const it of (res.items || [])) m[it.provider] = it
+      setChecks(m)
+    } catch (e) { setError(e.message) }
+    finally { setChecking(false) }
+  }
 
   function startEdit(provider) {
     setEditing(prev => ({ ...prev, [provider]: '' }))
@@ -153,6 +166,11 @@ export default function Keys() {
           </span>
           <span className="text-[#6e7681] text-sm"> / {keys.length}</span>
           <p className="text-[#6e7681] text-xs">configured</p>
+          <button onClick={checkAll} disabled={checking}
+                  className="btn btn-ghost text-xs mt-2 disabled:opacity-40"
+                  title="Test each configured key against its provider — flags expired/invalid keys">
+            {checking ? '⌛ Checking…' : '🔍 Check keys'}
+          </button>
         </div>
       </div>
 
@@ -253,6 +271,7 @@ export default function Keys() {
                   onCancel={() => cancelEdit(k.provider)}
                   onChange={v => setEditing(prev => ({ ...prev, [k.provider]: v }))}
                   onSave={() => save(k.provider)}
+                  check={checks[k.provider]}
                   onDelete={() => del(k.provider)}
                 />
               ))}
@@ -268,7 +287,7 @@ export default function Keys() {
   )
 }
 
-function ProviderRow({ k, editValue, saving, onEdit, onCancel, onChange, onSave, onDelete }) {
+function ProviderRow({ k, check, editValue, saving, onEdit, onCancel, onChange, onSave, onDelete }) {
   const isEditing = editValue !== undefined
   const envVar    = k.meta?.env_var   // e.g. "SHODAN_API_KEY"
 
@@ -306,6 +325,18 @@ function ProviderRow({ k, editValue, saving, onEdit, onCancel, onChange, onSave,
               color: k.configured ? '#3fb950' : 'var(--text-3)',
             }}>
               ${envVar}
+            </span>
+          )}
+
+          {/* Key check status (live validation) */}
+          {check && (
+            <span title={check.detail || ''} style={{
+              fontSize: 8, padding: '1px 6px', borderRadius: 3, fontFamily: 'monospace',
+              background: check.status === 'valid' ? '#0a1f0e22' : check.status === 'invalid' ? '#2d0a0a' : 'var(--bg-soft)',
+              border: `1px solid ${check.status === 'valid' ? '#3fb95066' : check.status === 'invalid' ? '#f8514966' : 'var(--surface-2)'}`,
+              color: check.status === 'valid' ? '#3fb950' : check.status === 'invalid' ? '#f85149' : check.status === 'error' ? '#d29922' : 'var(--text-3)',
+            }}>
+              {check.status === 'valid' ? '✓ valid' : check.status === 'invalid' ? '✗ expired' : check.status === 'error' ? '? error' : 'unchecked'}{check.http_code ? ` ${check.http_code}` : ''}
             </span>
           )}
 
