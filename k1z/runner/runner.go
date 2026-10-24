@@ -604,6 +604,7 @@ func (r *Runner) ExecuteRun(runID string) {
 		r.publishDone(runID, "completed", elapsed, &zero)
 		_ = parsers.ParseWorkspace(r.St, run, r.Bus)
 		go notify.RunFinished(r.St, run, "completed")
+		go r.maybeAutoTriage(run)
 	default:
 		msg := statusErr.Error()
 		if we, ok := statusErr.(*workflow.WorkflowError); ok {

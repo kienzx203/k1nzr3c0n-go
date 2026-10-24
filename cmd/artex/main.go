@@ -21,6 +21,8 @@ import (
 	"github.com/Autumn-27/artex/k1z"
 	"github.com/Autumn-27/artex/selfupdate"
 	"github.com/Autumn-27/artex/server"
+	"github.com/Autumn-27/artex/db"
+	k1zrunner "github.com/Autumn-27/artex/k1z/runner"
 )
 
 // version is the build version, injected at release time via
@@ -118,6 +120,13 @@ func run() int {
 
 	// Mount k1nzr3c0n's workflow-runner backend under /api/v1/* + /ws/* (own
 	// SQLite store + runner). ARTEX/ScopeWeaver owns everything else.
+	// integration D: continuous recon -> auto-spawn an ARTEX triage Task (env-gated).
+	k1zrunner.AutoTriageHook = func(target, goal, brief string) {
+		if _, err := mgr.CreateTaskWithOptions(brief, goal, db.TaskCreateOptions{Name: "Auto-triage " + target}); err != nil {
+			log.Printf("[auto-triage] create task failed: %v", err)
+		}
+	}
+
 	k1zHandler, k1zShutdown, k1zErr := k1z.BuildHandler(ctx)
 	if k1zErr != nil {
 		log.Printf("[k1z] workflow-runner unavailable: %v", k1zErr)
