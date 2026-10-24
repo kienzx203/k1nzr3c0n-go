@@ -169,6 +169,8 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 				_ = c.Close()
 			}
 		}
+		// integration B: read-only Workflow-Runner recon lookups for every agent.
+		extra = append(extra, reconTools()...)
 		def := agent.DeferredInfo{
 			Deferred:    allNames,
 			GlobalNames: globalNames,

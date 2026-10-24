@@ -62,6 +62,7 @@ func run() int {
 	// hand the build version to the server package so GET /api/health can report it
 	// to the frontend top bar.
 	server.BuildVersion = version
+	server.SetReconAPIBase(*addr)  // recon tools call the mounted k1z API over localhost
 
 	printBanner(*addr)
 
