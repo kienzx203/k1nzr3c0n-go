@@ -7,6 +7,7 @@ package server
 // handler panic into a plain tool error, so these can't crash the engine.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -143,5 +144,69 @@ func reconTools() []actool.CoreTool {
 				q.Set("limit", fmt.Sprint(p.Limit))
 				return "/api/v1/assets?" + q.Encode()
 			}),
+		reconReadTool("run_status",
+			"Check a Workflow Runner run's progress (status, step counts, findings so far). Poll after run_workflow until status is completed/failed/paused, then read results with recon_findings/recon_assets.",
+			rtObj(map[string]any{"run_id": rtStr("the run id returned by run_workflow")}, "run_id"),
+			func(in json.RawMessage) string {
+				var p struct {
+					RunID string `json:"run_id"`
+				}
+				_ = json.Unmarshal(in, &p)
+				return "/api/v1/runs/" + url.PathEscape(p.RunID)
+			}),
+		reconRunWorkflow(),
 	}
+}
+
+// targetExists reports whether a target is registered (so it carries a deny-wins
+// scope). Autonomous scans are only allowed against registered targets.
+func targetExists(ctx context.Context, name string) bool {
+	req, err := http.NewRequestWithContext(ctx, "GET", ReconAPIBase+"/api/v1/targets/"+url.PathEscape(name), nil)
+	if err != nil {
+		return false
+	}
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	return resp.StatusCode == 200
+}
+
+// reconRunWorkflow (integration C): let the worker launch a recon workflow against
+// a REGISTERED target. Write tool; scope-guarded to registered targets only.
+func reconRunWorkflow() actool.CoreTool {
+	return actool.Build(actool.Spec{
+		Name: "run_workflow",
+		Description: "Launch a Workflow Runner recon workflow against a REGISTERED target (a deny-wins scope must already exist for it). Returns a run_id immediately; poll run_status, then read results with recon_findings/recon_assets. Only run recon you don't already have — check recon_findings first.",
+		Schema: rtObj(map[string]any{
+			"target":   rtStr("registered target domain, e.g. example.com"),
+			"workflow": rtStr("workflow file name, e.g. 01-full-recon-pipeline.yaml"),
+			"vars":     map[string]any{"type": "object", "description": "optional variable overrides (key -> value)"},
+		}, "target", "workflow"),
+		ReadOnly:    func(json.RawMessage) bool { return false },
+		Concurrent:  func(json.RawMessage) bool { return false },
+		Permissions: func(context.Context, json.RawMessage, permission.Context) permission.Decision { return permission.Allowed() },
+		Run: func(ctx context.Context, in json.RawMessage, _ *actool.ToolContext) (actool.Result, error) {
+			var p struct {
+				Target   string            `json:"target"`
+				Workflow string            `json:"workflow"`
+				Vars     map[string]string `json:"vars"`
+			}
+			_ = json.Unmarshal(in, &p)
+			if p.Target == "" || p.Workflow == "" {
+				return actool.Errorf("target and workflow are required"), nil
+			}
+			if !targetExists(ctx, strings.ToLower(p.Target)) {
+				return actool.Errorf("Target '" + p.Target + "' is not registered. Register it with a scope first (POST /api/v1/targets) — autonomous scans must stay inside a defined deny-wins scope. Ask the operator if unsure."), nil
+			}
+			var vars []string
+			for k, v := range p.Vars {
+				vars = append(vars, k+"="+v)
+			}
+			body, _ := json.Marshal(map[string]any{"workflow": p.Workflow, "target": p.Target, "vars": vars})
+			return reconHTTP(ctx, "POST", "/api/v1/runs", bytes.NewReader(body)), nil
+		},
+	})
 }
