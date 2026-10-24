@@ -249,6 +249,7 @@ func (s *Server) routes() {
 
 	// keys
 	m.HandleFunc("GET /api/v1/keys/providers", s.handleKeyProviders)
+	m.HandleFunc("GET /api/v1/keys/check", s.handleKeyCheck)
 	m.HandleFunc("GET /api/v1/keys/stats", s.handleKeyStats)
 	m.HandleFunc("GET /api/v1/keys/export/subfinder", s.handleKeyExportSubfinder)
 	m.HandleFunc("GET /api/v1/keys/env-status", s.handleKeyEnvStatus)

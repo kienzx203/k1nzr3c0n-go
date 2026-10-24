@@ -237,6 +237,7 @@ export const api = {
 
   // API Keys
   getKeys:      () => req('GET', '/keys'),
+  checkKeys:    () => req('GET', '/keys/check'),  // live-validate configured keys
   getKeysStats: () => req('GET', '/keys/stats'),
   getEnvStatus: () => req('GET', '/keys/env-status'),
   setKey:       (provider, value) => req('PUT', `/keys/${provider}`, { value }),
