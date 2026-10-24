@@ -21,7 +21,6 @@ import (
 	"github.com/Autumn-27/artex/k1z"
 	"github.com/Autumn-27/artex/selfupdate"
 	"github.com/Autumn-27/artex/server"
-	"github.com/Autumn-27/artex/db"
 	k1zrunner "github.com/Autumn-27/artex/k1z/runner"
 )
 
@@ -122,7 +121,7 @@ func run() int {
 	// SQLite store + runner). ARTEX/ScopeWeaver owns everything else.
 	// integration D: continuous recon -> auto-spawn an ARTEX triage Task (env-gated).
 	k1zrunner.AutoTriageHook = func(target, goal, brief string) {
-		if _, err := mgr.CreateTaskWithOptions(brief, goal, db.TaskCreateOptions{Name: "Auto-triage " + target}); err != nil {
+		if _, err := srv.CreateTriageTask("Auto-triage "+target, goal, brief); err != nil {
 			log.Printf("[auto-triage] create task failed: %v", err)
 		}
 	}

@@ -21,6 +21,8 @@ import (
 
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
+
+	"github.com/Autumn-27/artex/db"
 )
 
 // ReconAPIBase is the base URL of the mounted k1z API. Default is overridden by
@@ -209,4 +211,20 @@ func reconRunWorkflow() actool.CoreTool {
 			return reconHTTP(ctx, "POST", "/api/v1/runs", bytes.NewReader(body)), nil
 		},
 	})
+}
+
+// CreateTriageTask creates AND launches an autonomous task from a recon handoff
+// (integrations A/D). This mirrors the POST /api/tasks flow: CreateTaskWithOptions
+// then launchTask — the latter is what actually starts the planner/engine, which a
+// bare Manager.CreateTaskWithOptions does not do.
+func (s *Server) CreateTriageTask(name, goal, brief string) (*Task, error) {
+	if goal == "" {
+		goal = "Triage the recon surface and prove impact with a minimal PoC. Stay strictly in scope."
+	}
+	t, err := s.m.CreateTaskWithOptions(brief, goal, db.TaskCreateOptions{Name: name})
+	if err != nil {
+		return nil, err
+	}
+	s.launchTask(t, brief+" "+goal, false)
+	return t, nil
 }

@@ -215,9 +215,9 @@ export default function RunDetail() {
         goal: `Triage & exploit the recon surface of ${brief.target} (workflow run ${id}). Stay strictly in scope; prove impact with a minimal PoC.`,
         description: brief.markdown,
         coverageEnabled: true,
-        seedFirstIntent: false,
+        seedFirstIntent: true,   // act on the recon brief immediately (don't wait for a planning round)
       })
-      navigate(`/function/tasks/detail?id=${task.id}`)
+      navigate(`/function/tasks/detail?id=${encodeURIComponent(task.id)}`)
     } catch (e) {
       setHandoff(false)
       window.alert('Send to Agent failed: ' + (e?.message || e))
