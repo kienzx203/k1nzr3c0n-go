@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { api, wsUrl } from '@/lib/k1z-api'
+import { api as artex } from '@/lib/api'  // ARTEX task-create for the handoff
 import { formatDuration, durSecs, fmtDate } from '@/lib/k1z-utils'
 import LogViewer from '@/components/k1z/LogViewer'
 import FileExplorer from '@/components/k1z/FileExplorer'
@@ -25,6 +26,7 @@ export default function RunDetail() {
   const [newAssets, setNewAssets] = useState(null)
   const [pausing, setPausing] = useState(false)
   const [resuming, setResuming] = useState(false)
+  const [handoff, setHandoff] = useState(false)
   const wsRef = useRef(null)
   // Latest run.status readable inside the WS effect without re-running it
   // (the old [run?.status] dep reopened the socket on every status event).
@@ -204,6 +206,24 @@ export default function RunDetail() {
     }
   }
 
+  async function sendToAgent() {
+    setHandoff(true)
+    try {
+      const brief = await api.reconBrief(id)
+      const task = await artex.createTask({
+        name: `Triage ${brief.target}`,
+        goal: `Triage & exploit the recon surface of ${brief.target} (workflow run ${id}). Stay strictly in scope; prove impact with a minimal PoC.`,
+        description: brief.markdown,
+        coverageEnabled: true,
+        seedFirstIntent: false,
+      })
+      navigate(`/function/tasks/detail?id=${task.id}`)
+    } catch (e) {
+      setHandoff(false)
+      window.alert('Send to Agent failed: ' + (e?.message || e))
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -240,6 +260,10 @@ export default function RunDetail() {
           </div>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
+          <button className="btn btn-accent" onClick={sendToAgent} disabled={handoff}
+                  title="Create an autonomous ARTEX Task pre-loaded with this run's recon surface (findings, hosts, endpoints, scope)">
+            {handoff ? '⌛ Sending…' : '🚀 Send to Agent'}
+          </button>
           {isActive && !pausing && (
             <button
               className="btn"
