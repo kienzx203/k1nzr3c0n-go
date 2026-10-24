@@ -195,6 +195,7 @@ func (s *Server) routes() {
 		m.HandleFunc("DELETE "+prefix+"/runs/{run_id}/pause", s.handleRunPauseCancel)
 		m.HandleFunc("POST "+prefix+"/runs/{run_id}/resume", s.handleRunResume)
 		m.HandleFunc("GET "+prefix+"/runs/{run_id}/findings", s.handleRunFindings)
+		m.HandleFunc("GET "+prefix+"/runs/{run_id}/recon-brief", s.handleReconBrief)
 		m.HandleFunc("POST "+prefix+"/runs/{run_id}/findings/reparse", s.handleRunReparse)
 		m.HandleFunc("GET "+prefix+"/runs/{run_id}/screenshots", s.handleScreenshots)
 		m.HandleFunc("GET "+prefix+"/runs/{run_id}/files", s.handleListFiles)

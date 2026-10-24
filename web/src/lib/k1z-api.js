@@ -154,6 +154,7 @@ export const api = {
   },
   getStats: () => req('GET', '/runs/stats'),
   getRun: (id) => req('GET', `/runs/${id}`),
+  reconBrief: (id) => req('GET', `/runs/${id}/recon-brief`),  // bridge: compile recon surface for a Task
   createRun: (body) => req('POST', '/runs', body),
   cancelRun: (id) => req('POST', `/runs/${id}/cancel`),
   pauseRun:       (id) => req('POST',   `/runs/${id}/pause`),
