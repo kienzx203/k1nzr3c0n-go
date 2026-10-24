@@ -40,7 +40,7 @@ var keyCheckRecipes = map[string]keyRecipe{
 		return getReq("https://api.shodan.io/api-info?key=" + url.QueryEscape(v))
 	}, valid: httpOK},
 	"github": {build: func(v string) *http.Request {
-		return getReq("https://api.github.com/rate_limit", [2]string{"Authorization", "token " + v}, [2]string{"Accept", "application/vnd.github+json"})
+		return getReq("https://api.github.com/rate_limit", [2]string{"Authorization", "Bearer " + v}, [2]string{"Accept", "application/vnd.github+json"})
 	}, valid: httpOK},
 	"securitytrails": {build: func(v string) *http.Request {
 		return getReq("https://api.securitytrails.com/v1/ping", [2]string{"APIKEY", v})
