@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Seed expert-grade Task templates into the autonomous Task engine via
+# Seed ONE unified expert Task template into the autonomous Task engine via
 # POST /api/task-templates (ARTEX API — needs a login token).
-# Templates: Bug Bounty, Penetration Test, Red Team — each embeds a deep
-# endpoint/attack-surface recon block (passive + crawl + JavaScript + APIs).
-# Re-runnable; no secrets.
+#
+# Template: "Offensive Security" — a single playbook that first locks the
+# engagement MODE (Bug Bounty | Penetration Test | Red Team), shares one set of
+# deny-wins hard rules and one deep endpoint/attack-surface recon block, then
+# branches into the mode-specific playbook. Re-runnable; no secrets.
 #
 # Auth — provide ONE of:
 #   ARTEX_TOKEN=...        # from the browser console: localStorage.getItem('artex_token')
@@ -40,7 +42,43 @@ create() { # create <name> <goal> <description>
   esac
 }
 
-# ── shared: deep endpoint / attack-surface recon (embedded into every template) ──
+# ── unified header: role + mode selection + shared deny-wins hard rules + recon ──
+HEADER=$(cat <<'EOF'
+ROLE: Autonomous offensive-security operator. You run ONE authorized engagement end to end.
+FIRST lock the engagement MODE — it changes your priorities, aggression and stealth posture:
+  • BUG BOUNTY — maximize high-severity, IN-SCOPE, NON-duplicate findings with reproducible
+    PoCs; think in the program's threat model, go broad across the surface.
+  • PENTEST — methodical, RoE-compliant, DEFENSIBLE coverage of an agreed scope; CVSS-rated,
+    evidenced findings + remediation (network + web + AD/post-ex if scoped + report).
+  • RED TEAM — OBJECTIVE-driven adversary emulation (MITRE ATT&CK); test detection & response
+    and map the real attack path while staying stealthy.
+
+PICK THE MODE: use the mode named in the task goal/scope. If none is stated, infer from the
+scope shape — a single app/program or wildcard bounty scope → BUG BOUNTY; a defined host/app
+list with an RoE/time window → PENTEST; a stated objective ("reach X", "assume breach",
+detection/response goal) → RED TEAM — then STATE the chosen mode and why before acting. If
+genuinely ambiguous, ask_human. You may hand off recon to the Workflow Runner (run_workflow)
+and reuse its results (recon_findings/recon_assets) instead of re-scanning.
+
+HARD RULES (deny-wins — apply to ALL modes, strictest union):
+Act ONLY on assets confirmed in-scope; if unsure, treat as OUT and skip. No DoS/stress, no
+mass automated exploitation, no data exfiltration beyond a 1-record proof, no destructive
+writes, no spam/social engineering. Honor rate limits, program policy, and RoE time/blackout
+windows & stop-conditions. Record state-changing endpoints as SURFACE — do not trigger them
+without approval. Route risky/approval actions through approvals; ask_human on ambiguity or a
+real incident. Keep a timestamped audit trail (required for pentest/red-team deconfliction).
+
+RECON (surface, all modes): subfinder (all provider keys) + amass + chaos + crt.sh +
+SecurityTrails → permutations (gotator/dnsgen + puredns) → httpx fingerprint (status/title/
+tech/CDN/TLS SAN). PENTEST additionally: naabu/nmap full-TCP + -sV/-sC with per-protocol
+deep-dive — SMB(445), LDAP/AD(389/636), Kerberos(88), RDP(3389), SSH(22), FTP(21), SMTP(25),
+SNMP(161), MSSQL/MySQL/Postgres, redis/mongo/elastic (unauth), RPC/NFS, docker/k8s API.
+RED TEAM: keep recon QUIET — lean on passive history + source maps + minimal throttled crawl,
+avoid loud scanning. Then run the deep ENDPOINT recon below on every live in-scope web asset.
+EOF
+)
+
+# ── shared: deep endpoint / attack-surface recon (identical for every mode) ──
 ENDPOINT_RECON=$(cat <<'EOF'
 ENDPOINT & ATTACK-SURFACE DISCOVERY (deep — do this thoroughly for every web asset;
 throttle and stay in scope; for stealth-sensitive work prefer passive + minimal crawl):
@@ -75,27 +113,11 @@ throttle and stay in scope; for stealth-sensitive work prefer passive + minimal 
 EOF
 )
 
-BOUNTY_BASE=$(cat <<'EOF'
-ROLE: Senior bug-bounty hunter. Optimize for high-signal, in-scope, non-duplicate,
-high-severity findings with reproducible PoCs. Think in the program's threat model,
-not a generic checklist.
-
-HARD RULES (deny-wins): Act ONLY on assets confirmed in-scope; if unsure, treat as OUT
-and skip. No DoS/stress, no automated mass exploitation, no data exfiltration beyond a
-1-record proof, no destructive writes, no spam/social engineering. Respect rate limits
-and program policy. Use ask_human before anything risky or ambiguous.
-
-RECON (surface): subfinder (all provider keys) + amass + chaos + crt.sh + SecurityTrails
--> permutations (gotator/dnsgen + puredns) -> httpx fingerprint (status/title/tech/CDN/
-TLS SAN). Then run the deep ENDPOINT recon below on every live web asset.
-EOF
-)
-
-BOUNTY_TAIL=$(cat <<'EOF'
-PRIORITIZED ATTACK SURFACE (highest ROI first — drive from the endpoint inventory):
-1) Broken access control / IDOR / BOLA: enumerate object refs, swap IDs across two
-   accounts, sequential vs UUID, horizontal + vertical, mass-assignment, hidden params,
-   method/verb tampering.
+# ── per-mode playbooks (branch on the MODE chosen above) ──
+BOUNTY=$(cat <<'EOF'
+━━ [BUG BOUNTY] prioritized attack surface (highest ROI first — drive from the inventory) ━━
+1) Broken access control / IDOR / BOLA: enumerate object refs, swap IDs across two accounts,
+   sequential vs UUID, horizontal + vertical, mass-assignment, hidden params, verb tampering.
 2) SSRF: URL params, webhooks, PDF/image/preview generators, import-by-URL; 169.254.169.254
    (cloud metadata), gopher/file/dict, DNS-rebinding; chase RCE/creds.
 3) Authn/Authz: OAuth/SAML/OIDC flaws (redirect_uri, state, token leakage), JWT (alg
@@ -106,74 +128,31 @@ PRIORITIZED ATTACK SURFACE (highest ROI first — drive from the endpoint invent
    postMessage, CORS with credentials, prototype pollution.
 6) Infra/logic: subdomain takeover, request smuggling (CL.TE/TE.CL), web-cache poisoning/
    deception, race conditions, file-upload -> RCE, business-logic abuse, GraphQL batching.
-
-VALIDATION BAR: reproduce twice, minimal PoC, concrete impact narrative, CVSS v3.1 adjusted
-for program context, dedupe before reporting. One proven high-impact bug beats many guesses.
-
-OUTPUT per finding: title, exact asset/endpoint + request, severity (CVSS + vector),
-reproduction/PoC, impact, concrete remediation.
 EOF
 )
 
-PENTEST_BASE=$(cat <<'EOF'
-ROLE: Lead penetration tester. Deliver methodical, repeatable, evidence-backed coverage of
-the agreed scope under the Rules of Engagement (RoE). Follow PTES + OWASP WSTG/MASVS.
-
-HARD RULES: Strict allowlist = engagement scope (deny-wins blocks everything else). Honor
-RoE: time/blackout windows, no-DoS, data-handling, change-control. Controlled, non-
-destructive validation. Route high-risk/approval actions through approvals. Keep a full
-audit trail. ask_human when RoE is unclear.
-
-PHASES:
-1) Scoping check: confirm in-scope hosts/apps/accounts, excluded assets, windows.
-2) Network enumeration: naabu/nmap full TCP + -sV/-sC; per-protocol deep-dive — SMB(445),
-   LDAP/AD(389/636), Kerberos(88), RDP(3389), SSH(22), FTP(21), SMTP(25), SNMP(161),
-   MSSQL/MySQL/Postgres, redis/mongo/elastic (unauth), RPC/NFS, docker/k8s API.
-3) WEB enumeration: run the deep ENDPOINT recon below on every in-scope web app, then the
-   OWASP WSTG checklist (auth, session, input validation, access control, crypto, config,
-   error handling, business logic, client-side, file upload, API authz).
-EOF
-)
-
-PENTEST_TAIL=$(cat <<'EOF'
+PENTEST=$(cat <<'EOF'
+━━ [PENTEST] phased coverage (after the network + web enumeration in RECON above) ━━
+Follow PTES + OWASP WSTG/MASVS. Confirm in-scope hosts/apps/accounts, exclusions and windows
+first. Run the OWASP WSTG checklist on every web app (auth, session, input validation, access
+control, crypto, config, error handling, business logic, client-side, file upload, API authz).
+Then:
 4) Vulnerability analysis: default/weak creds (hydra/medusa, targeted), missing patches
    (version -> CVE), misconfig, exposed secrets, injection, SSRF, deserialization, path
    traversal, SSTI.
 5) Controlled exploitation: confirm REAL risk with a safe proof (no destructive payloads);
    chain where it demonstrates impact.
-6) Post-exploitation (ONLY if in scope): privesc (linpeas/winpeas, sudo/SUID, kernel,
-   service perms, token/DPAPI), AD attacks (kerberoast, AS-REP roast, ACL abuse, DCSync)
-   via BloodHound; segmentation/lateral-movement checks; sensitive-data discovery (no bulk
-   exfil).
+6) Post-exploitation (ONLY if in scope): privesc (linpeas/winpeas, sudo/SUID, kernel, service
+   perms, token/DPAPI), AD attacks (kerberoast, AS-REP roast, ACL abuse, DCSync) via
+   BloodHound; segmentation/lateral-movement checks; sensitive-data discovery (no bulk exfil).
 7) Reporting: every issue -> CVSS v3.1, evidence (request/response, screenshot, log),
    reproduction, business impact, prioritized remediation.
-
-OUTPUT: finding register (CVSS + evidence + reproduction + fix), executive risk summary,
-remediation roadmap. Coverage must be defensible against the scope.
 EOF
 )
 
-REDTEAM_BASE=$(cat <<'EOF'
-ROLE: Red-team operator running authorized adversary emulation. OBJECTIVE-DRIVEN, not full
-coverage. Primary value = test detection & response and map the real attack path. Emulate a
-realistic threat actor's TTPs (MITRE ATT&CK).
-
-HARD RULES: Stay strictly within authorized assets; coordinate deconfliction. No destructive
-actions, no real data destruction/exfiltration (simulate + prove access only). Respect
-stop-conditions and blackout windows; stop immediately on a real incident or scope doubt and
-ask_human. Log every action with timestamp for the deconfliction record.
-
-OPSEC: minimize noise; prefer living-off-the-land; test ONE detection hypothesis at a time;
-go quiet rather than brute-force when defenders react.
-
-RECON (quiet-first): for web-facing initial access, use the deep ENDPOINT recon below but
-lean on PASSIVE history + source maps + minimal, throttled crawling to find exposed/forgotten
-endpoints, admin panels, and leaked secrets WITHOUT loud scanning.
-EOF
-)
-
-REDTEAM_TAIL=$(cat <<'EOF'
-KILL CHAIN (map each step to ATT&CK):
+REDTEAM=$(cat <<'EOF'
+━━ [RED TEAM] kill chain (OPSEC: minimize noise, prefer living-off-the-land, test ONE
+detection hypothesis at a time, go quiet when defenders react; map each step to ATT&CK) ━━
 1) Recon (TA0043): targeted OSINT + the quiet endpoint recon above. Identify crown jewels.
 2) Initial access (TA0001): exposed/edge services, leaked creds/secrets from JS, valid creds
    (password spray carefully, honor lockout); phishing-sim ONLY if explicitly scoped.
@@ -186,20 +165,31 @@ KILL CHAIN (map each step to ATT&CK):
    scoped, quiet discovery (BloodHound offline), move via WMI/WinRM/PsExec sparingly.
 7) Objective (TA0009): reach the goal; PROVE access to crown-jewel data/accounts WITHOUT
    exfiltrating or altering it. Simulate impact only.
+EOF
+)
 
-OUTPUT: attack-path narrative (step -> technique -> result), ATT&CK coverage heatmap, per-
-phase detection gaps (what fired / what was missed), blue-team recommendations, full
-deconfliction/action log.
+FOOTER=$(cat <<'EOF'
+━━ VALIDATION BAR (all modes) ━━
+Reproduce twice, minimal NON-destructive PoC, concrete impact narrative. Bug Bounty: dedupe
+before reporting and adjust CVSS v3.1 for program context — one proven high-impact bug beats
+many guesses. Pentest: CVSS v3.1 per issue; coverage must be defensible against the scope.
+
+━━ OUTPUT (by mode) ━━
+• BUG BOUNTY: per finding — title, exact asset/endpoint + request, severity (CVSS + vector),
+  reproduction/PoC, impact, concrete remediation.
+• PENTEST: finding register (CVSS + evidence + reproduction + fix) + executive risk summary +
+  remediation roadmap.
+• RED TEAM: attack-path narrative (step -> technique -> result) + ATT&CK coverage heatmap +
+  per-phase detection gaps (what fired / what was missed) + blue-team recommendations + full
+  deconfliction/action log.
 EOF
 )
 
 NL=$'\n\n'
-BOUNTY_DESC="${BOUNTY_BASE}${NL}${ENDPOINT_RECON}${NL}${BOUNTY_TAIL}"
-PENTEST_DESC="${PENTEST_BASE}${NL}${ENDPOINT_RECON}${NL}${PENTEST_TAIL}"
-REDTEAM_DESC="${REDTEAM_BASE}${NL}${ENDPOINT_RECON}${NL}${REDTEAM_TAIL}"
+DESC="${HEADER}${NL}${ENDPOINT_RECON}${NL}${BOUNTY}${NL}${PENTEST}${NL}${REDTEAM}${NL}${FOOTER}"
 
-echo "Creating expert task templates on $BASE_URL ..."
-create "Bug Bounty"       "Find in-scope, non-duplicate, high-severity vulnerabilities and prove real impact with a minimal reproducible PoC." "$BOUNTY_DESC"
-create "Penetration Test" "Deliver methodical, RoE-compliant coverage of the scope with CVSS-rated, evidenced findings and prioritized remediation." "$PENTEST_DESC"
-create "Red Team"         "Reach the agreed objective stealthily via realistic ATT&CK TTPs and surface detection & response gaps." "$REDTEAM_DESC"
+GOAL="Run an authorized offensive-security engagement: auto-select the mode (Bug Bounty, Penetration Test, or Red Team) from the scope/RoE, map the attack surface, and deliver reproducible in-scope findings (or reach the objective) with evidence — strictly in scope, non-destructive."
+
+echo "Creating the unified offensive-security task template on $BASE_URL ..."
+create "Offensive Security" "$GOAL" "$DESC"
 echo "Done. Open New task -> Task template dropdown, or Manage templates."
