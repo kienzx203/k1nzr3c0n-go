@@ -136,7 +136,7 @@ Check in order; do not advance until the preceding step is complete.
 3. [ ] **Phase 1b**: Anchor windows + binding layer → `param_candidates.json` → [Phase 1b](#phase-1b-parameter-reconstruction)
 4. [ ] **Phase 2**: three authentication gates → `config.json` → [Phase 2](#phase-2-three-authentication-gates)
 5. [ ] **Gate B**: Adapt runtime scripts → [Phase 3](#phase-3-runtime)
-6. [ ] **Phase 3**: depth / coverage / both；verify shell entry; parameter trigger matrix → `param_samples.json`
+6. [ ] **Phase 3**: depth / coverage / both; verify shell entry; parameter trigger matrix → `param_samples.json`
 7. [ ] **Phase 4**if needed: permission tree → patch stubs → rerun Phase 3 → [Phase 4](#phase-4-permission-tree-reconstruction)
 8. [ ] **Phase 5**: Merge outputs + report + `insert_assets` → [Phase 5](#phase-5-merge-and-report)
 
@@ -345,7 +345,7 @@ grep -rhoaE '"/api[^"]*(permission|perm|role|menu|acl)[^"]*"' OUTDIR/js/*.js | s
 grep -rhoaE 'userRouteAuth|getResultTree|routeMap|routeLink|menuList|authList' OUTDIR/js/*.js | head -20
 ```
 
-Typical chain:`role_permissions`（flat codes）+ `permissions/all`（tree）→ `getResultTree` → `userRouteAuth[CODE].url`.
+Typical chain:`role_permissions` (flat codes) + `permissions/all` (tree) → `getResultTree` → `userRouteAuth[CODE].url`.
 
 ```bash
 python3 recon/extract_route_map.py recon/js recon/
