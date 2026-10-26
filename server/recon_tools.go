@@ -182,7 +182,7 @@ func targetExists(ctx context.Context, name string) bool {
 
 // reconRunWorkflow (integration C): let the worker launch a recon workflow against
 // a REGISTERED target. Write tool; scope-guarded to registered targets only.
-const runWorkflowWaitCap = 20 * time.Minute // how long run_workflow blocks before handing back a run_id to poll
+const runWorkflowWaitCap = 60 * time.Minute // block until the run finishes (covers full-recon); only hand back a run_id to poll if it's slower than this
 
 // reconRaw is a raw HTTP call to the local k1z API returning (body, status, err),
 // used where the tool needs to parse the response (run id) rather than surface it.
@@ -364,7 +364,7 @@ func reconRunWorkflow() actool.CoreTool {
 				}
 				return actool.Text(fmt.Sprintf("Run %s (%s) completed. Read results with recon_findings / recon_assets (target=%s).", runID, p.Workflow, p.Target)), nil
 			case perr == context.DeadlineExceeded:
-				return actool.Text(fmt.Sprintf("Run %s (%s) is STILL RUNNING after %s — it was NOT abandoned. Keep polling run_status(run_id=%s); read recon_findings/recon_assets once status=completed. Do NOT treat empty interim results as 'no findings'.", runID, p.Workflow, runWorkflowWaitCap, runID)), nil
+				return actool.Text(fmt.Sprintf("Run %s (%s) is STILL RUNNING after %s — it was NOT abandoned and its findings are NOT lost. RECORD a TodoWrite item \"poll run_status(%s) and read %s results\" so you don't forget, keep polling run_status(run_id=%s) until status=completed, then read recon_findings/recon_assets. Do NOT treat empty interim results as 'no findings', and do NOT wrap up while this run is unread.", runID, p.Workflow, runWorkflowWaitCap, runID, p.Workflow, runID)), nil
 			case perr == context.Canceled:
 				return actool.Text(fmt.Sprintf("run_workflow wait was cancelled; run %s may still be running — poll run_status(run_id=%s) later.", runID, runID)), nil
 			default:
