@@ -119,9 +119,11 @@ WORKFLOW_LOOP=$(cat <<'EOF'
 You have tools wired to the Workflow Runner; prefer them over re-scanning by hand:
 0) REUSE FIRST: recon_findings(target) + recon_assets(target) pull surface a prior run already
    mapped. If that already covers the surface, skip straight to the mode playbook.
-1) LAUNCH (non-blocking): run_workflow(target=<REGISTERED target>, workflow="01-full-recon-pipeline.yaml")
-   returns a run_id IMMEDIATELY — it does NOT block. Only registered targets carry a deny-wins scope;
-   if the target is not registered, STOP and ask_human (never widen scope yourself).
+1) CHOOSE + LAUNCH (non-blocking): call list_workflows to see EVERY available workflow with its
+   description, then run_workflow the one(s) that FIT the goal — AUTO-SELECT, do not hardcode a name.
+   Launch SEVERAL when the goal is broad (e.g. full-recon pipeline for surface + JS/secrets recon +
+   parameter discovery). Each run_workflow returns a run_id IMMEDIATELY (non-blocking). Only registered
+   targets carry a deny-wins scope; if the target is not registered, STOP and ask_human (never widen).
 2) MONITOR WHILE YOU WORK: poll run_status(run_id) for progress but DON'T sit idle. As soon as results
    land, read them and START triaging the live, high-value endpoints — recon and exploitation OVERLAP.
 3) READ OUTPUT: recon_findings (kinds vuln/http/port/subdomain/url, filter by severity) and recon_assets
@@ -129,8 +131,9 @@ You have tools wired to the Workflow Runner; prefer them over re-scanning by han
 4) CONTINUE / LOOP: whenever triage reveals NEW subdomains/hosts/params, run_workflow AGAIN scoped to
    that new surface (narrow loop), read its output, and keep going — repeat recon -> read -> exploit
    until the surface is covered or the objective is met. Record which run produced each finding.
-Other Runner workflows to launch the same way when relevant: 02-js-secrets-recon.yaml (JS/secret
-mining), 03-param-discovery.yaml (parameter discovery).
+Always pick workflows by PURPOSE from list_workflows (new workflows appear there automatically) —
+never assume a fixed filename. Typical set: a full-recon pipeline (broad surface), a JS/secrets recon,
+and a parameter-discovery workflow; run the ones the situation calls for, several in parallel if useful.
 EOF
 )
 

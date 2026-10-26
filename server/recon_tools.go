@@ -156,6 +156,10 @@ func reconTools() []actool.CoreTool {
 				_ = json.Unmarshal(in, &p)
 				return "/api/v1/runs/" + url.PathEscape(p.RunID)
 			}),
+		reconReadTool("list_workflows",
+			"List the recon workflows available to run_workflow, each with a description. Call this FIRST to pick the workflow(s) that fit the current situation — then run_workflow the ones you need (you can run several). Pick by purpose: broad surface mapping, JS/secrets, parameter discovery, etc.",
+			rtObj(map[string]any{}),
+			func(json.RawMessage) string { return "/api/v1/workflows?detail=1" }),
 		reconRunWorkflow(),
 	}
 }
@@ -181,7 +185,7 @@ func targetExists(ctx context.Context, name string) bool {
 func reconRunWorkflow() actool.CoreTool {
 	return actool.Build(actool.Spec{
 		Name: "run_workflow",
-		Description: "Launch a Workflow Runner recon workflow against a REGISTERED target (a deny-wins scope must already exist for it). Returns a run_id immediately; poll run_status, then read results with recon_findings/recon_assets. Only run recon you don't already have — check recon_findings first.",
+		Description: "Launch a Workflow Runner recon workflow against a REGISTERED target (a deny-wins scope must already exist for it). Returns a run_id IMMEDIATELY (non-blocking); poll run_status while you work, then read results with recon_findings/recon_assets. CHOOSE the workflow that fits the situation — call list_workflows to see all options with descriptions, and launch SEVERAL when the goal spans multiple needs (e.g. full recon + JS/secrets + parameter discovery). Only run recon you don't already have — check recon_findings first.",
 		Schema: rtObj(map[string]any{
 			"target":   rtStr("registered target domain, e.g. example.com"),
 			"workflow": rtStr("workflow file name, e.g. 01-full-recon-pipeline.yaml"),

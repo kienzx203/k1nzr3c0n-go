@@ -3140,6 +3140,7 @@ function CreateTaskSheet({
   const [seedFirstIntent, setSeedFirstIntent] = React.useState(false); // Seed intent lets Workers start before initial planning; off by default for standard plan-then-execute flow.
   const [reconFirst, setReconFirst] = React.useState(false); // Recon-first: run a recon workflow before pentest (opt-in).
   const [reconTarget, setReconTarget] = React.useState(""); // Optional explicit recon target; empty = derive domain from goal/description.
+  const [reconWorkflow, setReconWorkflow] = React.useState("all"); // Which recon workflow(s) to run first: "all" = every workflow.
   const [coverageEnabled, setCoverageEnabled] = React.useState(true); // Coverage defaults on. Off disables calculation/display, scope accumulation, and scope tools; company links remain.
   const [interceptRules, setInterceptRules] = React.useState<AssetInterceptRuleInput[]>([]); // Task-specific asset interception rules, never written to the global table.
   // Before task creation, stage uploads in drafts/<draftId>/uploads/ and append returned absolute paths to description.
@@ -3208,6 +3209,7 @@ function CreateTaskSheet({
         seedFirstIntent,
         reconFirst,
         reconTarget: reconTarget.trim() || undefined,
+        reconWorkflow,
         planHeartbeatSeconds: heartbeatSec,
         coverageEnabled,
         interceptRules: interceptRules
@@ -3228,6 +3230,7 @@ function CreateTaskSheet({
       setSeedFirstIntent(false);
       setReconFirst(false);
       setReconTarget("");
+      setReconWorkflow("all");
       setCoverageEnabled(true);
       setInterceptRules([]);
       setUploadCount(0);
@@ -3440,13 +3443,26 @@ function CreateTaskSheet({
                     Chỉ áp dụng cho target đã đăng ký scope (Targets). Để trống ô dưới = tự tách domain từ mục tiêu.
                   </p>
                   {reconFirst && (
-                    <Input
-                      id="recon-target"
-                      className="w-full"
-                      placeholder="Target recon (vd example.com) — để trống = tự tách từ mô tả/mục tiêu"
-                      value={reconTarget}
-                      onChange={(e) => setReconTarget(e.target.value)}
-                    />
+                    <>
+                      <Input
+                        id="recon-target"
+                        className="w-full"
+                        placeholder="Target recon (vd example.com) — để trống = tự tách từ mô tả/mục tiêu"
+                        value={reconTarget}
+                        onChange={(e) => setReconTarget(e.target.value)}
+                      />
+                      <select
+                        id="recon-workflow"
+                        className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
+                        value={reconWorkflow}
+                        onChange={(e) => setReconWorkflow(e.target.value)}
+                      >
+                        <option value="all">Tất cả workflow (all)</option>
+                        <option value="01-full-recon-pipeline.yaml">01 — Full recon pipeline</option>
+                        <option value="02-js-secrets-recon.yaml">02 — JS & secrets</option>
+                        <option value="03-param-discovery.yaml">03 — Param discovery</option>
+                      </select>
+                    </>
                   )}
                 </div>
                 <div className="grid gap-2">

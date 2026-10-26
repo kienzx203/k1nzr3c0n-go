@@ -49,7 +49,37 @@ func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 	if names == nil {
 		names = []string{}
 	}
+	// ?detail=1 returns [{name, description}] so an agent can auto-select the right
+	// workflow for a situation; the default []string shape is kept for the UI.
+	if r.URL.Query().Get("detail") != "" {
+		type wfInfo struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		}
+		out := make([]wfInfo, 0, len(names))
+		for _, n := range names {
+			out = append(out, wfInfo{Name: n, Description: workflowDescription(n)})
+		}
+		writeJSON(w, 200, out)
+		return
+	}
 	writeJSON(w, 200, names)
+}
+
+// workflowDescription reads a workflow file's top-level `description` field (best
+// effort; empty if missing or unreadable).
+func workflowDescription(name string) string {
+	data, err := os.ReadFile(filepath.Join(config.WorkflowsDir(), name))
+	if err != nil {
+		return ""
+	}
+	var parsed struct {
+		Description string `yaml:"description"`
+	}
+	if yaml.Unmarshal(data, &parsed) != nil {
+		return ""
+	}
+	return parsed.Description
 }
 
 func (s *Server) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
