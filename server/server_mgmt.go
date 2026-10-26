@@ -25,6 +25,7 @@ import (
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/locale"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/skill"
 )
@@ -228,6 +229,12 @@ func (s *Server) pgListAgents(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
+	}
+	// Localize the stock reporter/retester name+description to the request language
+	// (edited values stay verbatim) so the UI shows English, not the seed's zh-Hans.
+	lang := locale.FromContext(r.Context())
+	for _, a := range ags {
+		localizeSeededAgentMetadata(a, lang)
 	}
 	dtos := agentDTOs(ags)
 	// overlay per-agent binding counts (mcp/skill by id, tools by key) — best-effort.
@@ -472,6 +479,7 @@ func (s *Server) pgGetAgent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	localizeSeededAgentMetadata(a, locale.FromContext(r.Context())) // stock reporter/retester → request language
 	cur, _ := pg.CurrentPrompt(a.ID)
 	vars, _ := pg.PromptVars(a.ID)
 	vars = withGlobalVars(vars)
