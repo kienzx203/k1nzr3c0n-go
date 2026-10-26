@@ -80,8 +80,9 @@ EOF
 
 # ── shared: deep endpoint / attack-surface recon (identical for every mode) ──
 ENDPOINT_RECON=$(cat <<'EOF'
-ENDPOINT & ATTACK-SURFACE DISCOVERY (deep — do this thoroughly for every web asset;
-throttle and stay in scope; for stealth-sensitive work prefer passive + minimal crawl):
+ENDPOINT & ATTACK-SURFACE DISCOVERY (the deep menu — used by the RECON ORCHESTRATION below as the
+GAP CHECKLIST after the workflows run, NOT a from-scratch manual rerun; throttle and stay in scope;
+for stealth-sensitive work prefer passive + minimal crawl):
 - Passive URL history: gau / waybackurls / waymore (Wayback + CommonCrawl + URLScan +
   OTX + VirusTotal — provider keys configured). Keep old params and old .js URLs.
 - Active crawl (render + follow): katana -jc -kf all (headless, parses JS, follows
@@ -115,30 +116,38 @@ EOF
 
 # ── workflow-runner automation: the recon <-> exploit loop (all modes) ──
 WORKFLOW_LOOP=$(cat <<'EOF'
-━━ WORKFLOW RUNNER AUTOMATION (recon <-> exploit loop — drive recon with the Runner, never idle) ━━
-You have tools wired to the Workflow Runner; prefer them over re-scanning by hand:
-0) REUSE FIRST: recon_findings(target) + recon_assets(target) pull surface a prior run already
-   mapped. If that already covers the surface, skip straight to the mode playbook.
-1) CHOOSE + LAUNCH (non-blocking): call list_workflows to see EVERY available workflow with its
-   description, then run_workflow the one(s) that FIT the goal — AUTO-SELECT, do not hardcode a name.
-   Launch SEVERAL when the goal is broad (e.g. full-recon pipeline for surface + JS/secrets recon +
-   parameter discovery). Each run_workflow returns a run_id IMMEDIATELY (non-blocking). Only registered
-   targets carry a deny-wins scope; if the target is not registered, STOP and ask_human (never widen).
-2) GET THE OUTPUT: by DEFAULT run_workflow waits for the run and returns the recon brief directly, so
-   you cannot miss it — triage the live, high-value endpoints from that brief. Only when you launched
-   with wait=false (parallel), or it handed back a run_id because the run was slow, do you poll
-   run_status(run_id) until completed and then read recon_findings/recon_assets. NEVER treat empty
-   interim results as "no findings" while a run is still in progress.
-3) READ OUTPUT: recon_findings (kinds vuln/http/port/subdomain/url, filter by severity) and recon_assets
-   (live hosts: status/title/tech/ip/port). Normalize + tag, then feed into your mode playbook below.
-4) CONTINUE / LOOP: whenever triage reveals NEW subdomains/hosts/params, run_workflow AGAIN scoped to
-   that new surface (narrow loop), read its output, and keep going — repeat recon -> read -> exploit
-   until the surface is covered or the objective is met. Record which run produced each finding.
-Always pick workflows by PURPOSE from list_workflows (new workflows appear there automatically) —
-never assume a fixed filename. Typical set: a full-recon pipeline (broad surface), a JS/secrets recon,
-and a parameter-discovery workflow; run the ones the situation calls for, several in parallel if useful.
-By default run_workflow enables ALL of a workflow's options for maximum coverage (the pivot scan and
-neighbor /24 PTR sweep stay off for scope safety); pass full=false to use the workflow's own defaults.
+━━ RECON ORCHESTRATION — ONE surface, synchronized, NO gaps (do this BEFORE the mode playbook) ━━
+The Workflow Runner is your PRIMARY recon engine; hand-recon only FILLS GAPS it doesn't cover. Keep
+ONE unified inventory (assets + endpoints) that EVERY source feeds into — so nothing is scanned twice
+and nothing is skipped.
+0) REUSE FIRST — read what's already mapped: recon_findings(target) + recon_assets(target). This is
+   your starting inventory; never re-scan what's already there.
+1) AUTOMATE BREADTH — run the workflows: call list_workflows, then run_workflow the one(s) that fit the
+   goal (AUTO-SELECT by purpose, NEVER hardcode a filename). For full coverage launch the FULL set — a
+   full-recon pipeline + a JS/secrets recon + a parameter-discovery workflow — each only for surface not
+   already covered. run_workflow WAITS and returns the recon brief by default (all options ON), so you
+   get the output directly and cannot miss it; to run several at once pass wait=false then poll
+   run_status(run_id) to completion. Registered target only (deny-wins) — if not registered, STOP +
+   ask_human (never widen scope). NEVER treat empty interim results as "no findings" while a run is live.
+2) RECONCILE — merge EVERY run's output (recon_findings: vuln/http/port/subdomain/url + recon_assets:
+   live hosts status/title/tech/ip/port) into the one inventory: dedupe + canonicalize, tag each
+   endpoint (auth/admin/api/upload/payment/internal), and record which run produced it. The workflows
+   already cover most of the ENDPOINT DISCOVERY menu above (passive URLs, JS/secrets, params, dirs) —
+   so do NOT repeat those by hand.
+3) GAP-FILL BY HAND — only now, and ONLY for what the workflows did NOT produce: source-map
+   reconstruction on key apps, deep JS endpoint extraction on high-value hosts, targeted param mining,
+   GraphQL introspection — use the ENDPOINT DISCOVERY menu above as the GAP CHECKLIST, not a from-scratch
+   rerun.
+4) COVERAGE LEDGER (anti-miss) — with TodoWrite, list EVERY in-scope live asset and high-value endpoint
+   as an item and mark it tested / untested as you work. This ledger is how you guarantee nothing is
+   skipped: you may wrap up ONLY when no high-value in-scope surface is still untested (or it is
+   explicitly out of scope, with a reason).
+5) LOOP — whenever triage or exploitation reveals NEW subdomains/hosts/params, run_workflow AGAIN scoped
+   to that new surface (narrow), reconcile it into the inventory + ledger, and continue
+   recon -> reconcile -> exploit until the ledger is clear or the objective is met.
+run_workflow enables ALL of a workflow's options for max coverage (pivot scan + neighbor /24 PTR sweep
+stay off for scope safety; pass full=false for the workflow's own defaults). Pick workflows by PURPOSE
+from list_workflows — new workflows appear there automatically, so never assume a fixed filename.
 EOF
 )
 
@@ -211,6 +220,13 @@ many guesses. Pentest: CVSS v3.1 per issue; coverage must be defensible against 
 • RED TEAM: attack-path narrative (step -> technique -> result) + ATT&CK coverage heatmap +
   per-phase detection gaps (what fired / what was missed) + blue-team recommendations + full
   deconfliction/action log.
+
+━━ WRAP-UP GATE (no gaps) ━━
+Before concluding, re-check the COVERAGE LEDGER: every in-scope live asset and high-value endpoint
+must be either tested (with a result — vuln, or a reasoned negative) or explicitly marked
+out-of-scope/not-applicable with a reason. Do NOT wrap up while any high-value in-scope surface is
+still untested, and do NOT stop just because the first routes were exhausted — loop back to recon
+(run_workflow on uncovered surface) until the ledger is clear or the objective is met.
 EOF
 )
 
