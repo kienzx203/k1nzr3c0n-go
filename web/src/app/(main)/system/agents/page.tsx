@@ -107,7 +107,7 @@ function AgentGridCard({
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>{swt("interface.m1137")}{agent.name}」？</AlertDialogTitle>
+              <AlertDialogTitle>{swt("interface.m1137")}{agent.name}”?</AlertDialogTitle>
               <AlertDialogDescription>
                 {swt("interface.m1138")}</AlertDialogDescription>
             </AlertDialogHeader>

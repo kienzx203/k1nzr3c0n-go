@@ -469,7 +469,7 @@ function SyncResult({ result }: { result: Awaited<ReturnType<typeof api.ssSync>>
         ))}
       </div>
       {result.companies && result.companies.length > 0 && (
-        <p className="text-muted-foreground">{swt("interface.m0492")}{result.companies.join("、")}</p>
+        <p className="text-muted-foreground">{swt("interface.m0492")}{result.companies.join(", ")}</p>
       )}
       {result.warnings && result.warnings.length > 0 && (
         <ul className="list-inside list-disc text-amber-600 dark:text-amber-500">

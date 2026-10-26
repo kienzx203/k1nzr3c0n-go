@@ -449,7 +449,7 @@ export default function MCPPage() {
               <TabsList>
                 <TabsTrigger value="config">{swt("interface.m1473")}</TabsTrigger>
                 <TabsTrigger value="tools">
-                  {swt("interface.m1474")}{" "}{tools.length ? `（${tools.length}）` : ""}
+                  {swt("interface.m1474")}{" "}{tools.length ? `(${tools.length})` : ""}
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto">

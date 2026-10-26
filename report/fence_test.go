@@ -32,7 +32,7 @@ func TestFenceFor(t *testing.T) {
 	}
 }
 
-// tricky 里的三反引号行在修复前会提前闭合固定围栏，把 <script> 泄漏成顶层 Markdown。
+// The triple-backtick line in tricky would, before the fix, close a fixed fence early and leak <script> as top-level Markdown.
 const tricky = "Vulnerable parameter reflected:\n```\n<script>alert(1)</script>\n```"
 
 func TestFindingsMarkdownEvidenceFence(t *testing.T) {
@@ -46,19 +46,19 @@ func TestFindingsMarkdownEvidenceFence(t *testing.T) {
 	}
 	for name, out := range rendered {
 		if !strings.Contains(out, "````\n"+tricky+"\n````") {
-			t.Errorf("%s: evidence 未被 4 反引号围栏原样包裹，存在逃逸风险", name)
+			t.Errorf("%s: evidence is not wrapped verbatim in a 4-backtick fence, risking escape", name)
 		}
 	}
 }
 
 func TestMarkdownPoCFence(t *testing.T) {
-	// poc 含 4 连反引号，围栏必须加长到 5 才无法被内容提前闭合。
+	// poc contains 4 consecutive backticks, so the fence must grow to 5 to keep the content from closing it early.
 	poc := "poc" + strings.Repeat("`", 4) + " inside"
 	payload := fmt.Sprintf(`{"severity":"critical","name":"cmd injection","summary":"exec","evidence":{"poc":%s}}`,
 		strconv.Quote(poc))
 	node := &db.Node{Kind: "finding", Payload: []byte(payload)}
 	out := Markdown(Input{Title: "t", Goal: "g", GeneratedAt: time.Now(), Findings: []*db.Node{node}})
 	if !strings.Contains(out, "`````\n"+poc+"\n`````") {
-		t.Errorf("PoC 未被加长围栏原样包裹，存在逃逸风险:\n%s", out)
+		t.Errorf("PoC is not wrapped verbatim in a lengthened fence, risking escape:\n%s", out)
 	}
 }

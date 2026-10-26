@@ -279,7 +279,7 @@ function RefList({ title, items }: { title: string; items: CoverageAssetRef[] })
   return (
     <div>
       <h4 className="text-muted-foreground mb-1 text-xs font-medium">
-        {title}（{items.length}）
+        {title}({items.length})
       </h4>
       <div className="flex flex-col gap-1">
         {items.map((r) => (
@@ -427,7 +427,7 @@ function FoldSheet({
           <>
             <SheetHeader className="border-b p-4">
               <SheetTitle className="text-base">
-                {swt("interface.m0581")}{" "}{meta.label}（{fold.hidden.length}）
+                {swt("interface.m0581")}{" "}{meta.label}({fold.hidden.length})
               </SheetTitle>
               <p className="text-muted-foreground text-xs">{swt("interface.m0582")}</p>
             </SheetHeader>
@@ -458,7 +458,7 @@ function FoldSheet({
             </ScrollArea>
             <div className="border-t p-3">
               <Button className="w-full" variant="outline" onClick={() => onShowMore(fold.groupId)}>
-                {swt("interface.m0583")}{FOLD_STEP}）
+                {swt("interface.m0583")}{FOLD_STEP})
               </Button>
             </div>
           </>

@@ -47,7 +47,7 @@ func TestReviewRetryRecoveryAndBudget(t *testing.T) {
 			if calls != tc.wantCalls || out.Action != tc.wantAction || (err == nil) != (tc.wantAction != "") {
 				t.Fatalf("calls=%d out=%+v err=%v", calls, out, err)
 			}
-			if err != nil && !strings.Contains(err.Error(), "次未成功") {
+			if err != nil && !strings.Contains(err.Error(), "did not succeed") {
 				t.Fatalf("missing attempt count: %v", err)
 			}
 		})

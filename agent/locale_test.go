@@ -12,13 +12,13 @@ func TestBuiltinPromptLanguageAndInterpolation(t *testing.T) {
 	old := PromptOverride
 	PromptOverride = nil
 	defer func() { PromptOverride = old }()
-	en := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: "用户目标 / 원문"}, locale.En)
-	ko := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: "用户目标 / 원문"}, locale.Ko)
+	en := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: "user goal / 원문"}, locale.En)
+	ko := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: "user goal / 원문"}, locale.Ko)
 	if !strings.Contains(en, "You are the planner") || !strings.Contains(ko, "당신은") {
 		t.Fatal("prompt language selection failed")
 	}
 	for _, text := range []string{en, ko} {
-		if !strings.Contains(text, "用户目标 / 원문") || strings.Contains(text, "{{.Goal}}") {
+		if !strings.Contains(text, "user goal / 원문") || strings.Contains(text, "{{.Goal}}") {
 			t.Fatal("goal altered or not interpolated")
 		}
 	}
@@ -27,10 +27,10 @@ func TestBuiltinPromptLanguageAndInterpolation(t *testing.T) {
 func TestEditedPromptIsNotTranslated(t *testing.T) {
 	old := PromptOverride
 	defer func() { PromptOverride = old }()
-	const custom = "用户自己写的模板 {{.Goal}}"
+	const custom = "user's own template {{.Goal}}"
 	PromptOverride = func(string) (string, bool) { return custom, true }
 	got := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: "original"}, locale.Ko)
-	if got != "用户自己写的模板 original" {
+	if got != "user's own template original" {
 		t.Fatalf("edited prompt changed: %q", got)
 	}
 }
@@ -64,10 +64,10 @@ func TestBuiltinToolMetadataLanguagePreservesEdits(t *testing.T) {
 	var edited map[string]any
 	_ = json.Unmarshal(data, &edited)
 	props := edited["properties"].(map[string]any)
-	props["id"].(map[string]any)["description"] = "用户原文 custom description"
-	custom := DecorateTool(en, "用户原文 custom tool", edited)
+	props["id"].(map[string]any)["description"] = "user's original custom description"
+	custom := DecorateTool(en, "user's original custom tool", edited)
 	localized := localizeBuiltinTools([]actool.CoreTool{custom}, locale.Ko)[0]
-	if localized.Description() != "用户原文 custom tool" || localized.InputSchema()["properties"].(map[string]any)["id"].(map[string]any)["description"] != "用户原文 custom description" {
+	if localized.Description() != "user's original custom tool" || localized.InputSchema()["properties"].(map[string]any)["id"].(map[string]any)["description"] != "user's original custom description" {
 		t.Fatal("edited metadata changed")
 	}
 	if localized.Name() != en.Name() {
@@ -108,12 +108,12 @@ func TestAllShippedBuiltinPromptTranslations(t *testing.T) {
 	old := PromptOverride
 	PromptOverride = nil
 	defer func() { PromptOverride = old }()
-	raw := "用户目标 / 원문 / {{.Goal}}"
+	raw := "user goal / 원문 / {{.Goal}}"
 	rendered := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: raw}, locale.ZhHans)
-	if !strings.Contains(rendered, "你是") || !strings.Contains(rendered, raw) || strings.Contains(rendered, "%!") {
+	if !strings.Contains(rendered, "You are") || !strings.Contains(rendered, raw) || strings.Contains(rendered, "%!") {
 		t.Fatalf("Chinese interpolation corrupted: %s", rendered)
 	}
-	if !strings.Contains(outputLanguageInstruction(locale.ZhHans), "不得翻译") {
+	if !strings.Contains(outputLanguageInstruction(locale.ZhHans), "Do not translate") {
 		t.Fatal("Chinese raw-content boundary missing")
 	}
 }
@@ -140,9 +140,9 @@ func TestToolMetadataAllShippedLanguagesAndReverse(t *testing.T) {
 	}
 	editedSchema := cloneToolSchema(original.InputSchema())
 	property := editedSchema["properties"].(map[string]any)["id"].(map[string]any)
-	property["description"] = "用户 raw custom"
-	property["default"] = "用户 raw default"
-	edited := DecorateTool(original, "用户 raw prose", editedSchema)
+	property["description"] = "user raw custom"
+	property["default"] = "user raw default"
+	edited := DecorateTool(original, "user raw prose", editedSchema)
 	translated := localizeBuiltinTools([]actool.CoreTool{edited}, locale.ZhHans)[0]
 	actual := translated.InputSchema()["properties"].(map[string]any)["id"].(map[string]any)
 	if translated.Description() != edited.Description() || actual["description"] != property["description"] || actual["default"] != property["default"] {

@@ -61,7 +61,7 @@ export function ConfigField({
       <div className="flex items-center gap-2 text-sm">
         <Switch checked={value === true} onCheckedChange={onChange} aria-label={def.label} />
         {def.label}
-        {def.help && <span className="text-muted-foreground">（{def.help}）</span>}
+        {def.help && <span className="text-muted-foreground">({def.help})</span>}
       </div>
     );
   }

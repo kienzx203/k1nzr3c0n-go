@@ -14,7 +14,7 @@ import (
 
 func TestExportsPutUnknownSeverityAfterKnownLevels(t *testing.T) {
 	now := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
-	for _, unknown := range []string{"info", "中危", "Critical", "typo", ""} {
+	for _, unknown := range []string{"info", "Medium", "Critical", "typo", ""} {
 		t.Run(unknown, func(t *testing.T) {
 			levels := []string{unknown, "low", "high", "critical", "medium"}
 			findings := make([]*db.DBFinding, 0, len(levels))

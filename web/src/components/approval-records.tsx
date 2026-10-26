@@ -499,7 +499,7 @@ export function ApprovalDetail({
                 </Collapsible>
               ) : null}
               <CodeBlock
-                label={`${initialLabel}：${actionLabels[audit.initial_action] ?? audit.initial_action}`}
+                label={`${initialLabel}: ${actionLabels[audit.initial_action] ?? audit.initial_action}`}
                 text={audit.initial_reason.replace(/^\[(?:模型|Model|모델)\]\s*/, "")}
               />
               <CodeBlock
@@ -880,14 +880,14 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
         <section className="overflow-hidden rounded-xl border">
           <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-3 font-medium text-sm">
             <ShieldAlertIcon className="size-4" />
-            {swt("interface.m2156")}{pending.length}）<span className="text-muted-foreground text-xs">{swt("interface.m2157")}</span>
+            {swt("interface.m2156")}{pending.length})<span className="text-muted-foreground text-xs">{swt("interface.m2157")}</span>
           </div>
           <ApprovalTable rows={pending} busy={deciding} decide={decide} revision={revision} label={swt("interface.m2158")} />
         </section>
       ) : null}
       <section className="overflow-hidden rounded-xl border">
         <div className="border-b px-4 py-3 font-medium text-sm">
-          {filtered ? swt("interface.m2159") : swt("interface.m2160")}（{total}）
+          {filtered ? swt("interface.m2159") : swt("interface.m2160")}({total})
         </div>
         {loading ? (
           <div className="flex flex-col gap-3 p-4">

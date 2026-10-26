@@ -715,7 +715,7 @@ function CustomToolDialog({
 
           {kind === "command" && (
             <div className="grid gap-1.5">
-              <Label className="text-xs">{swt("interface.m1879")}{" "}{"{param}"}{swt("interface.m1880")}{" "}{"{ports}"} {"{target}"}）</Label>
+              <Label className="text-xs">{swt("interface.m1879")}{" "}{"{param}"}{swt("interface.m1880")}{" "}{"{ports}"} {"{target}"})</Label>
               <Textarea className="font-mono text-xs" rows={2} value={ex.command}
                 onChange={(e) => setEx({ ...ex, command: e.target.value })} />
             </div>
@@ -736,17 +736,17 @@ function CustomToolDialog({
                   <Input className="w-24" value={ex.method} onChange={(e) => setEx({ ...ex, method: e.target.value })} />
                 </div>
                 <div className="grid flex-1 gap-1.5">
-                  <Label className="text-xs">{swt("interface.m1882")}{" "}{"{param}"}）</Label>
+                  <Label className="text-xs">{swt("interface.m1882")}{" "}{"{param}"})</Label>
                   <Input className="font-mono text-xs" value={ex.url} onChange={(e) => setEx({ ...ex, url: e.target.value })} />
                 </div>
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-xs">{swt("interface.m1883")}{" "}{"{param}"}）</Label>
+                <Label className="text-xs">{swt("interface.m1883")}{" "}{"{param}"})</Label>
                 <Textarea className="font-mono text-xs" rows={2} value={ex.headers}
                   placeholder={'{"Authorization": "Bearer {token}"}'} onChange={(e) => setEx({ ...ex, headers: e.target.value })} />
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-xs">{swt("interface.m1884")}{" "}{"{param}"}）</Label>
+                <Label className="text-xs">{swt("interface.m1884")}{" "}{"{param}"})</Label>
                 <Textarea className="font-mono text-xs" rows={2} value={ex.body} onChange={(e) => setEx({ ...ex, body: e.target.value })} />
               </div>
               <div className="flex items-center gap-4">

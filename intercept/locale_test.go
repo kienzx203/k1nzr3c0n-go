@@ -40,7 +40,7 @@ func TestJudgePromptLanguagesPreservePolicyAndCustomText(t *testing.T) {
 		if strings.Count(p, contract) != 1 {
 			t.Fatalf("%s duplicated/missing output contract", lang)
 		}
-		custom := "用户自定义策略 한국어"
+		custom := "user-defined policy 한국어"
 		if got := EffectiveJudgePrompt(custom, lang); !strings.HasPrefix(got, custom) {
 			t.Fatal("custom policy rewritten")
 		}

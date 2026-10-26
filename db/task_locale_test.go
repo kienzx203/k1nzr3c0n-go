@@ -73,7 +73,7 @@ func TestChineseTaskLanguagePersistenceAndCanonicalValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	raw := "用户原文 한국어"
+	raw := "user original text 한국어"
 	task, err := d.CreateTaskWithOptions(raw, raw, TaskCreateOptions{Language: locale.ZhHans})
 	if err != nil {
 		t.Fatal(err)

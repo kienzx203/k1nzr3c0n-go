@@ -57,25 +57,25 @@ func TestDefinitionDrivenNewLanguages(t *testing.T) {
 func TestRegisterAllRetainsAdditionalLanguagesAndMerges(t *testing.T) {
 	const key = "test.keyed"
 	defer delete(catalog, key)
-	RegisterAll(map[string]map[Lang]string{key: {En: "Hello %s", Ko: "안녕 %s", ZhHans: "你好 %s", "ja": "こんにちは %s"}})
+	RegisterAll(map[string]map[Lang]string{key: {En: "Hello %s", Ko: "안녕 %s", ZhHans: "Hello %s", "ja": "こんにちは %s"}})
 	Register(key, "Hi %s", "")
 	RegisterAll(map[string]map[Lang]string{key: {Ko: ""}})
 	if got, _ := Raw(Ko, key); got != "안녕 %s" {
 		t.Fatal("empty Korean merge erased existing translation")
 	}
-	if got, ok := Raw(ZhHans, key); !ok || got != "你好 %s" {
+	if got, ok := Raw(ZhHans, key); !ok || got != "Hello %s" {
 		t.Fatalf("additional language lost: %q", got)
 	}
 	if got, _ := Raw("ja", key); got != "こんにちは %s" {
 		t.Fatal("unshipped keyed language discarded")
 	}
-	if got := T("unknown", key, "原文"); got != "Hi 原文" {
+	if got := T("unknown", key, "original text"); got != "Hi original text" {
 		t.Fatalf("English fallback changed: %s", got)
 	}
 	if err := ValidateTranslations([]string{key}); err != nil {
 		t.Fatal(err)
 	}
-	RegisterAll(map[string]map[Lang]string{key: {ZhHans: "你好 %d"}})
+	RegisterAll(map[string]map[Lang]string{key: {ZhHans: "Hello %d"}})
 	if err := ValidateTranslations([]string{key}); err == nil {
 		t.Fatal("incompatible translation passed")
 	}

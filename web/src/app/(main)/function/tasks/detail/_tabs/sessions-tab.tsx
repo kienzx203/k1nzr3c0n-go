@@ -2127,7 +2127,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
         >
           <AlertDialogContent className="max-w-[min(32rem,calc(100vw-2rem))]">
             <AlertDialogHeader>
-              <AlertDialogTitle>{swt("interface.m0758")}{cancelIntent?.intent_id}？</AlertDialogTitle>
+              <AlertDialogTitle>{swt("interface.m0758")}{cancelIntent?.intent_id}?</AlertDialogTitle>
               <AlertDialogDescription className="break-words whitespace-normal">
                 {deleteMode === "hard" ? (
                   <>

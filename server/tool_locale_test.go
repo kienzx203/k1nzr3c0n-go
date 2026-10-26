@@ -30,9 +30,9 @@ func TestStoredToolAllLanguagesAndCustomFields(t *testing.T) {
 				t.Fatal("custom tool changed")
 			}
 			row.System = true
-			row.Description = "用户 custom"
+			row.Description = "user custom"
 			custom = translatedStoredTool(row, variants, locale.ZhHans)
-			if custom.Description != row.Description || row.Description != "用户 custom" {
+			if custom.Description != row.Description || row.Description != "user custom" {
 				t.Fatal("edited description mutated")
 			}
 		}

@@ -736,7 +736,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <CoinsIcon className="size-4 text-amber-500" /> {swt("interface.m0624")}<span className="text-muted-foreground text-xs font-normal">
-              {swt("interface.m0625")}{" "}{tokenTotals.calls > 0 ? swt("interface.m0626", { p0: tokenTotals.calls }) : ""}）
+              {swt("interface.m0625")}{" "}{tokenTotals.calls > 0 ? swt("interface.m0626", { p0: tokenTotals.calls }) : ""})
             </span>
           </CardTitle>
         </CardHeader>

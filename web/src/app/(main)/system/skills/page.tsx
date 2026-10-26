@@ -269,7 +269,7 @@ function SkillsOverview({
         {/* Unused skills may need cleanup or discovery improvements. */}
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground">
-            {swt("interface.m1778")}{" "}{agg.neverUsed.length > 0 && <span className="ml-1 font-normal">（{agg.neverUsed.length}）</span>}
+            {swt("interface.m1778")}{" "}{agg.neverUsed.length > 0 && <span className="ml-1 font-normal">({agg.neverUsed.length})</span>}
           </Label>
           {agg.neverUsed.length === 0 ? (
             <p className="text-muted-foreground text-xs">{swt("interface.m1779")}</p>
@@ -549,7 +549,7 @@ export default function SkillsPage() {
     setDetailMcps(next);
     try {
       await api.updateSkillMeta(skillName, { mcps: next });
-      toast.success(`${mcpOn ? swt("interface.m1787") : swt("interface.m1788")}「${mcpName}」`);
+      toast.success(`${mcpOn ? swt("interface.m1787") : swt("interface.m1788")}“${mcpName}”`);
       load();
     } catch (e) {
       // roll back on error

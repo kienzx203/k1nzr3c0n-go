@@ -305,7 +305,7 @@ function LLMProfileRow({
   const [open, setOpen] = React.useState(false);
   const activeDefault = profiles.find((p) => p.is_default);
   const current = selected != null ? profiles.find((p) => Number(p.id) === selected) : null;
-  const label = current ? current.name : swt("interface.m0074", { p0: activeDefault ? `（${activeDefault.name}）` : "" });
+  const label = current ? current.name : swt("interface.m0074", { p0: activeDefault ? `(${activeDefault.name})` : "" });
 
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-1 px-1 pt-0.5 pb-1">
@@ -337,7 +337,7 @@ function LLMProfileRow({
               selected == null && "bg-accent",
             )}
           >
-            <span className="text-sm">{swt("interface.m0077")}{" "}{activeDefault ? `（${activeDefault.name}）` : ""}</span>
+            <span className="text-sm">{swt("interface.m0077")}{" "}{activeDefault ? `(${activeDefault.name})` : ""}</span>
             {activeDefault && (
               <span className="text-muted-foreground text-[11px]">
                 {activeDefault.format} · {activeDefault.model}
@@ -1003,7 +1003,7 @@ const ConversationItem = React.memo(function ConversationItem({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{swt("interface.m0102")}{conv.title || swt("interface.m0092")}」？</AlertDialogTitle>
+            <AlertDialogTitle>{swt("interface.m0102")}{conv.title || swt("interface.m0092")}”?</AlertDialogTitle>
             <AlertDialogDescription>{swt("interface.m0103")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1313,8 +1313,8 @@ export default function ChatPage() {
       if (failed.length > 0) {
         const details = failed
           .slice(0, 3)
-          .map((item) => `#${item.id}（${item.error}）`)
-          .join("；");
+          .map((item) => `#${item.id}(${item.error})`)
+          .join("; ");
         toast.error(swt("interface.m0113", { p0: failed.length, p1: details, p2: failed.length > 3 ? swt("interface.m0114") : "" }));
       }
       setBulkDeleteOpen(false);
@@ -1388,7 +1388,7 @@ export default function ChatPage() {
                   <SelectItem value="all">{swt("interface.m0120")}</SelectItem>
                   {agentFilterOptions.map((agent) => (
                     <SelectItem key={agent.key} value={`agent:${agent.key}`}>
-                      {agent.name}（{agent.count}）
+                      {agent.name}({agent.count})
                     </SelectItem>
                   ))}
                 </SelectGroup>

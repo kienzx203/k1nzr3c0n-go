@@ -322,7 +322,7 @@ function TaskTemplateManager({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{swt("interface.m2352")}{draft.name || swt("interface.m2353")}」？</AlertDialogTitle>
+            <AlertDialogTitle>{swt("interface.m2352")}{draft.name || swt("interface.m2353")}”?</AlertDialogTitle>
             <AlertDialogDescription>{swt("interface.m2354")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -513,7 +513,7 @@ export function TaskTemplateControls({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{swt("interface.m2364")}{pendingTemplate?.name}」？</AlertDialogTitle>
+            <AlertDialogTitle>{swt("interface.m2364")}{pendingTemplate?.name}”?</AlertDialogTitle>
             <AlertDialogDescription>{swt("interface.m2365")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

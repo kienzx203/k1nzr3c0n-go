@@ -256,7 +256,7 @@ export function UpdateCard() {
           <p className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
             <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
             {swt("interface.m1609")}{info.error}
-            {"　"}{swt("interface.m1610")}</p>
+            {" "}{swt("interface.m1610")}</p>
         )}
 
         {info && !info.comparable && info.reason && <p className="text-xs text-muted-foreground">{info.reason}</p>}
@@ -270,7 +270,7 @@ export function UpdateCard() {
         {info?.has_update && info.asset_available !== false && (
           <p className="text-xs text-muted-foreground">
             {swt("interface.m1614")}<span className="font-mono">{info.asset}</span>
-            {info.size ? `（${humanSize(info.size)}）` : ""}{swt("interface.m1615")}</p>
+            {info.size ? `(${humanSize(info.size)})` : ""}{swt("interface.m1615")}</p>
         )}
 
         {info && !info.has_update && info.comparable && !info.error && (
@@ -282,7 +282,7 @@ export function UpdateCard() {
         {info?.mode === "docker" && info.has_update && (
           <p className="text-xs text-muted-foreground">
             {swt("interface.m1617")}<span className="font-mono"> docker compose up -d </span>
-            {swt("interface.m1618")}<span className="font-mono"> docker compose pull artex &amp;&amp; docker compose up -d artex</span>。
+            {swt("interface.m1618")}<span className="font-mono"> docker compose pull artex &amp;&amp; docker compose up -d artex</span>.
           </p>
         )}
 

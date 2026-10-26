@@ -311,7 +311,7 @@ export function FindingsTable({
                           <AlertDialogHeader>
                             <AlertDialogTitle>{swt("interface.m0335")}</AlertDialogTitle>
                             <AlertDialogDescription className="break-words">
-                              「
+                              “
                               <span className="break-all">
                                 {f.name || f.vulnclass || f.summary || `#${f.finding_id}`}
                               </span>

@@ -144,22 +144,22 @@ func TestRejectedLanguageWeights(t *testing.T) {
 }
 
 func TestLocalizedErrorPreservesWrapping(t *testing.T) {
-	cause := errors.New("user supplied 原文 %s")
+	cause := errors.New("user supplied original text %s")
 	Register("Operation %s failed: %w", "Operation %s failed: %w", "작업 %s 실패: %w")
 	err := Errorf("Operation %s failed: %w", "raw-id", cause)
 	if !errors.Is(err, cause) {
 		t.Fatal("error wrapping lost")
 	}
-	if got := ErrorMessage(Ko, err); got != "작업 raw-id 실패: user supplied 原文 %s" {
+	if got := ErrorMessage(Ko, err); got != "작업 raw-id 실패: user supplied original text %s" {
 		t.Fatalf("raw cause changed: %q", got)
 	}
 }
 
 func TestJoinedErrorsPreserveRawCauses(t *testing.T) {
 	Register("Missing task", "Missing task", "작업 없음")
-	raw := errors.New("driver 原文 %s")
+	raw := errors.New("driver original text %s")
 	joined := errors.Join(NewError("Missing task"), raw)
-	if got := ErrorMessage(Ko, joined); got != "작업 없음\ndriver 原文 %s" {
+	if got := ErrorMessage(Ko, joined); got != "작업 없음\ndriver original text %s" {
 		t.Fatalf("joined localization altered raw content: %q", got)
 	}
 	if !errors.Is(joined, raw) {

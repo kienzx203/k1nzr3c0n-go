@@ -190,11 +190,11 @@ export function RetryRuleFields({
         </div>
         {/* List specific triggering status codes so users can see why a retry setting may not affect an error. */}
         <p className="text-muted-foreground text-xs">
-          <span className="font-medium text-foreground">{swt("interface.m1311")}</span>：{meta.trigger}
+          <span className="font-medium text-foreground">{swt("interface.m1311")}</span>: {meta.trigger}
         </p>
         {!compact && meta.skips && (
           <p className="text-muted-foreground text-xs">
-            <span className="font-medium text-foreground">{swt("interface.m1312")}</span>：{meta.skips}
+            <span className="font-medium text-foreground">{swt("interface.m1312")}</span>: {meta.skips}
           </p>
         )}
         {!compact && <p className="text-muted-foreground text-xs">{meta.desc}</p>}
@@ -225,7 +225,7 @@ export function RetryRuleFields({
           <span className="text-muted-foreground text-xs">{human ? swt("interface.m1316", { p0: human }) : meta.defInterval}</span>
         </div>
       </div>
-      {!compact && <p className="text-muted-foreground text-xs">{swt("interface.m1317")}{meta.offHint}。</p>}
+      {!compact && <p className="text-muted-foreground text-xs">{swt("interface.m1317")}{meta.offHint}.</p>}
     </div>
   );
 }

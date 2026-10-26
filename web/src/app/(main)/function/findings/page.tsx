@@ -1236,7 +1236,7 @@ export default function FindingsPage() {
                 <label htmlFor="export-format-csv" className="flex items-center gap-2 text-sm">
                   <RadioGroupItem id="export-format-csv" value="csv" /> {swt("interface.m0422")}</label>
                 <label htmlFor="export-format-json" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-json" value="json" /> JSON（.json）
+                  <RadioGroupItem id="export-format-json" value="json" /> JSON (.json)
                 </label>
               </RadioGroup>
             </div>

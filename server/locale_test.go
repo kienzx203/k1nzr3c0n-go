@@ -35,8 +35,8 @@ func TestLocaleMiddlewareErrorAndSSE(t *testing.T) {
 func TestLocaleMiddlewarePreservesUnknownUserError(t *testing.T) {
 	w := httptest.NewRecorder()
 	lw := &localeWriter{w, locale.Ko}
-	writeErr(lw, 400, "用户提供的数据 원문")
-	if !strings.Contains(w.Body.String(), "用户提供的数据 원문") {
+	writeErr(lw, 400, "user-provided data 원문")
+	if !strings.Contains(w.Body.String(), "user-provided data 원문") {
 		t.Fatal("unknown content changed")
 	}
 }
@@ -44,7 +44,7 @@ func TestLocaleMiddlewarePreservesUnknownUserError(t *testing.T) {
 func TestDynamicErrorLocalizesBeforeInterpolation(t *testing.T) {
 	const template = "Asset %s is outside the authorized scope (task %d)"
 	locale.Register(template, template, "자산 %s은(는) 승인 범위 밖입니다(작업 %d)")
-	raw := "用户原文/한국어/%s?q=<raw>"
+	raw := "user-original/한국어/%s?q=<raw>"
 	err := locale.Errorf(template, raw, 17)
 	h := withLocale(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { writeError(w, 400, err) }))
 	r := httptest.NewRequest("GET", "/api/test", nil)

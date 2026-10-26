@@ -30,10 +30,10 @@ func TestSeededMetadataAllLanguagesReverseAndCustom(t *testing.T) {
 		if a.Name != "Report writer" || a.Description != "Writes detailed vulnerability reports: triggered by findings, reads evidence and execution traces, then saves a Markdown report." {
 			t.Fatal("stock metadata reverse failed")
 		}
-		a.Name = "用户 custom"
-		a.Description = "用户 custom"
+		a.Name = "user custom"
+		a.Description = "user custom"
 		localizeSeededAgentMetadata(a, locale.ZhHans)
-		if a.Name != "用户 custom" || a.Description != "用户 custom" {
+		if a.Name != "user custom" || a.Description != "user custom" {
 			t.Fatal("edited metadata changed")
 		}
 	}

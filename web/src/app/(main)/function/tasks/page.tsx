@@ -154,7 +154,7 @@ const UPLOAD_MARKER = swt("interface.m0816");
 // Read/Bash-friendly manifest — the worker opens them by path. Keeps one marked block:
 // first upload adds the header, later uploads append bullets under it.
 function appendUploads(desc: string, atts: ChatAttachment[]): string {
-  const bullets = atts.map((a) => `- ${a.abs ?? a.path}（${fmtBytes(a.size)}）`).join("\n");
+  const bullets = atts.map((a) => `- ${a.abs ?? a.path}(${fmtBytes(a.size)})`).join("\n");
   if (desc.includes(UPLOAD_MARKER)) {
     return `${desc.replace(/\s*$/, "")}\n${bullets}\n`;
   }
@@ -219,7 +219,7 @@ function deleteDetails(result: DeleteCounts): string[] {
 
 function deleteSummary(result: DeleteTaskResult): string {
   const details = deleteDetails(result);
-  return details.length > 0 ? swt("interface.m0824", { p0: details.join("，") }) : swt("interface.m0825");
+  return details.length > 0 ? swt("interface.m0824", { p0: details.join(", ") }) : swt("interface.m0825");
 }
 
 // fmtDateTime renders a unix-seconds timestamp as a compact local date-time
@@ -642,7 +642,7 @@ export default function TasksPage() {
           total.files_deleted = total.files_deleted || r.files_deleted;
           total.findings_deleted += r.findings_deleted;
           total.llm_records_deleted += r.llm_records_deleted;
-          if (r.cleanup_warning) warnings.push(`#${id}：${r.cleanup_warning}`);
+          if (r.cleanup_warning) warnings.push(`#${id}: ${r.cleanup_warning}`);
           deleted.push(id);
         } catch (e) {
           failed.push({ id, message: (e as Error).message });
@@ -657,9 +657,9 @@ export default function TasksPage() {
           return next;
         });
         const details = deleteDetails(total);
-        const summary = swt("interface.m0839", { p0: deleted.length }) + (details.length > 0 ? `（${details.join("，")}）` : "");
+        const summary = swt("interface.m0839", { p0: deleted.length }) + (details.length > 0 ? `(${details.join(", ")})` : "");
         if (warnings.length > 0) {
-          toast.warning(swt("interface.m0829", { p0: summary, p1: warnings.join("；") }));
+          toast.warning(swt("interface.m0829", { p0: summary, p1: warnings.join("; ") }));
         } else {
           toast.success(summary);
         }
@@ -667,8 +667,8 @@ export default function TasksPage() {
       if (failed.length > 0) {
         const head = failed
           .slice(0, 3)
-          .map((f) => `#${f.id}（${f.message}）`)
-          .join("；");
+          .map((f) => `#${f.id}(${f.message})`)
+          .join("; ");
         toast.error(swt("interface.m0840", { p0: failed.length, p1: head, p2: failed.length > 3 ? swt("interface.m0114") : "" }));
       }
       load();
@@ -700,8 +700,8 @@ export default function TasksPage() {
       toast.error(
         swt("interface.m0842", { p0: failed.length, p1: failed
           .slice(0, 3)
-          .map((item) => `#${item.id}（${item.error || swt("interface.m0843")}）`)
-          .join("；") }),
+          .map((item) => `#${item.id}(${item.error || swt("interface.m0843")})`)
+          .join("; ") }),
       );
     }
     setSelectedIds(new Set());
@@ -732,8 +732,8 @@ export default function TasksPage() {
         if (failed.length > 0) {
           const details = failed
             .slice(0, 3)
-            .map((item) => `#${item.id}（${item.error || swt("interface.m0843")}）`)
-            .join("；");
+            .map((item) => `#${item.id}(${item.error || swt("interface.m0843")})`)
+            .join("; ");
           toast.error(swt("interface.m0848", { p0: failed.length, p1: details, p2: failed.length > 3 ? swt("interface.m0114") : "" }));
         }
         lastRef.current = "";
@@ -769,8 +769,8 @@ export default function TasksPage() {
         if (failed.length > 0) {
           const details = failed
             .slice(0, 3)
-            .map((item) => `#${item.id}（${item.error || swt("interface.m0853")}）`)
-            .join("；");
+            .map((item) => `#${item.id}(${item.error || swt("interface.m0853")})`)
+            .join("; ");
           toast.error(swt("interface.m0854", { p0: failed.length, p1: details, p2: failed.length > 3 ? swt("interface.m0114") : "" }));
         }
         refreshCategoriesAndTasks();
@@ -2207,15 +2207,15 @@ function DeleteTaskDialog({
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{swt("interface.m0955")}{task.id}？</AlertDialogTitle>
+          <AlertDialogTitle>{swt("interface.m0955")}{task.id}?</AlertDialogTitle>
           <AlertDialogDescription className="break-words">
             {task.description ? (
               <>
-                「
+                “
                 <span className="break-all">
                   {task.description.length > 80 ? `${task.description.slice(0, 80)}…` : task.description}
                 </span>
-                」
+                ”
               </>
             ) : (
               swt("interface.m0956")
@@ -2587,7 +2587,7 @@ function CategoryPicker({
               className="flex w-full items-center gap-2 px-2 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
             >
               {creating ? <Spinner className="size-4" /> : <PlusIcon className="size-4" />}
-              {swt("interface.m0981")}{trimmed}」
+              {swt("interface.m0981")}{trimmed}”
             </button>
           ) : (
             <div className="px-2 py-2 text-sm text-muted-foreground">{swt("interface.m0982")}</div>
@@ -2610,7 +2610,7 @@ function companyScopeSummary(company: Company): string {
   if (rows.length === 0) return swt("interface.m0983");
   const preview = rows.slice(0, 3).map((row) => {
     const value = row.raw || row.value || row.domain || row.net || "";
-    return `${COMPANY_SCOPE_LABELS[row.kind] ?? row.kind}：${value}`;
+    return `${COMPANY_SCOPE_LABELS[row.kind] ?? row.kind}: ${value}`;
   });
   return `${preview.join(" · ")}${rows.length > preview.length ? swt("interface.m0984", { p0: rows.length - preview.length }) : ""}`;
 }
@@ -3085,7 +3085,7 @@ function CategoryManagementSheet({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{swt("interface.m1020")}{selectedCategory?.name || swt("interface.m1021")}」？</AlertDialogTitle>
+            <AlertDialogTitle>{swt("interface.m1020")}{selectedCategory?.name || swt("interface.m1021")}”?</AlertDialogTitle>
             <AlertDialogDescription>
               {swt("interface.m1022")}{" "}{selectedCategory?.task_count ?? 0} {swt("interface.m1023")}</AlertDialogDescription>
           </AlertDialogHeader>

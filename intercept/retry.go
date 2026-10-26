@@ -15,10 +15,10 @@ const (
 // ValidateRetry rejects invalid settings before any configuration is written.
 func (c JudgeConfig) ValidateRetry() error {
 	if c.RetryCount < 0 || c.RetryCount > maxJudgeRetries {
-		return fmt.Errorf("retry_count 必须在 0 到 %d 之间", maxJudgeRetries)
+		return fmt.Errorf("retry_count must be between 0 and %d", maxJudgeRetries)
 	}
 	if c.RetryIntervalMS < 0 || c.RetryIntervalMS > maxJudgeRetryIntervalMS {
-		return fmt.Errorf("retry_interval_ms 必须在 0 到 %d 之间", maxJudgeRetryIntervalMS)
+		return fmt.Errorf("retry_interval_ms must be between 0 and %d", maxJudgeRetryIntervalMS)
 	}
 	return nil
 }
@@ -78,12 +78,12 @@ func reviewWithRetry(ctx context.Context, rv Reviewer, cfg JudgeConfig, input Re
 			case "allow", "deny", "ask":
 				return out, nil
 			default:
-				err = errors.New("模型输出无法解析")
+				err = errors.New("model output could not be parsed")
 			}
 		}
 		var permanent permanentReviewError
 		if errors.As(err, &permanent) || attempt == cfg.RetryCount {
-			return out, fmt.Errorf("审核尝试 %d 次未成功: %w", attempt+1, err)
+			return out, fmt.Errorf("review did not succeed after %d attempts: %w", attempt+1, err)
 		}
 	}
 	return out, err

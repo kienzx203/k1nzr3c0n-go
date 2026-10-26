@@ -56,14 +56,14 @@ func severityRank(severity string) int {
 // Markdown renders the report.
 func Markdown(in Input) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# 渗透测试报告 — %s\n\n", nz(in.Title, "未命名任务"))
-	fmt.Fprintf(&b, "- **任务目标**：%s\n", nz(in.Goal, "（未指定）"))
-	fmt.Fprintf(&b, "- **生成时间**：%s\n\n", in.GeneratedAt.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(&b, "# Penetration Test Report — %s\n\n", nz(in.Title, "Untitled task"))
+	fmt.Fprintf(&b, "- **Goal**: %s\n", nz(in.Goal, "(unspecified)"))
+	fmt.Fprintf(&b, "- **Generated at**: %s\n\n", in.GeneratedAt.Format("2006-01-02 15:04:05"))
 
 	// summary
-	fmt.Fprintf(&b, "## 摘要\n\n")
-	fmt.Fprintf(&b, "- 确认发现：**%d** 个\n", len(in.Findings))
-	fmt.Fprintf(&b, "- 资产：")
+	fmt.Fprintf(&b, "## Summary\n\n")
+	fmt.Fprintf(&b, "- Confirmed findings: **%d**\n", len(in.Findings))
+	fmt.Fprintf(&b, "- Assets: ")
 	var types []string
 	for t := range in.AssetCounts {
 		types = append(types, t)
@@ -71,16 +71,16 @@ func Markdown(in Input) string {
 	sort.Strings(types)
 	for i, t := range types {
 		if i > 0 {
-			b.WriteString("、")
+			b.WriteString(", ")
 		}
 		fmt.Fprintf(&b, "%s %d", t, in.AssetCounts[t])
 	}
 	b.WriteString("\n\n")
 
 	// findings
-	fmt.Fprintf(&b, "## 发现\n\n")
+	fmt.Fprintf(&b, "## Findings\n\n")
 	if len(in.Findings) == 0 {
-		b.WriteString("_本次未确认漏洞。_\n\n")
+		b.WriteString("_No vulnerabilities confirmed this time._\n\n")
 	} else {
 		fs := make([]findingView, 0, len(in.Findings))
 		for _, n := range in.Findings {
@@ -88,11 +88,11 @@ func Markdown(in Input) string {
 		}
 		sort.SliceStable(fs, func(i, j int) bool { return severityRank(fs[i].Severity) < severityRank(fs[j].Severity) })
 		for i, f := range fs {
-			fmt.Fprintf(&b, "### %d. [%s] %s\n\n", i+1, strings.ToUpper(nz(f.Severity, "info")), nz(f.Name, nz(f.VulnClass, "未分类")))
+			fmt.Fprintf(&b, "### %d. [%s] %s\n\n", i+1, strings.ToUpper(nz(f.Severity, "info")), nz(f.Name, nz(f.VulnClass, "Uncategorized")))
 			fmt.Fprintf(&b, "%s\n\n", nz(f.Summary, ""))
 			if f.PoC != "" {
 				fence := fenceFor(f.PoC)
-				fmt.Fprintf(&b, "**PoC / 证据：**\n\n%s\n%s\n%s\n\n", fence, f.PoC, fence)
+				fmt.Fprintf(&b, "**PoC / Evidence:**\n\n%s\n%s\n%s\n\n", fence, f.PoC, fence)
 			}
 		}
 	}
@@ -107,8 +107,9 @@ func nz(s, d string) string {
 	return s
 }
 
-// fenceFor 返回一段严格长于 s 内任何反引号连续串的围栏（CommonMark 加固写法），
-// 保证不可信的证据/PoC 文本无法提前闭合代码块、向报告注入 Markdown 结构。
+// fenceFor returns a fence strictly longer than any run of backticks in s (a
+// CommonMark-hardened approach), ensuring untrusted evidence/PoC text cannot
+// close the code block early and inject Markdown structure into the report.
 func fenceFor(s string) string {
 	maxRun, n := 2, 0
 	for _, c := range s {

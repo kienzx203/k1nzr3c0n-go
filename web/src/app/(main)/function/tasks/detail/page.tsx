@@ -378,7 +378,7 @@ function TaskDetailInner() {
               <AlertDialogTrigger asChild>{archiveTrigger}</AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>{swt("interface.m0813")}{task.id}？</AlertDialogTitle>
+                  <AlertDialogTitle>{swt("interface.m0813")}{task.id}?</AlertDialogTitle>
                   <AlertDialogDescription>
                     {swt("interface.m0814")}</AlertDialogDescription>
                 </AlertDialogHeader>

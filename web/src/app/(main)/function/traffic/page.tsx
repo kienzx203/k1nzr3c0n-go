@@ -455,7 +455,7 @@ export default function TrafficPage() {
                   setPickerOpen(false);
                 }}
               >
-                {swt("interface.m1079")}{selectedHosts.length}）
+                {swt("interface.m1079")}{selectedHosts.length})
               </Button>
             </div>
           </PopoverContent>
@@ -792,7 +792,7 @@ export default function TrafficPage() {
               {deleteMode === "selected" && (
                 <>
                   {swt("interface.m0252")}<span className="font-semibold tabular-nums">{selectedHosts.length}</span> {swt("interface.m1106")}<span className="font-mono">
-                    {selectedHosts.slice(0, 3).join("、")}
+                    {selectedHosts.slice(0, 3).join(", ")}
                     {selectedHosts.length > 3 ? "…" : ""}
                   </span>
                   {swt("interface.m1107")}</>

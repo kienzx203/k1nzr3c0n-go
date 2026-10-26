@@ -301,7 +301,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
                         <SelectItem value="__follow__">{swt("interface.m1918")}</SelectItem>
                         {llmProfiles.map((p) => (
                           <SelectItem key={p.id} value={String(p.id)}>
-                            {p.name}（{p.model}）{p.is_default ? swt("interface.m1919") : ""}
+                            {p.name}({p.model}){p.is_default ? swt("interface.m1919") : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1125,7 +1125,7 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
                 {t.on_task_create && t.task_create_message && <div className="line-clamp-1">{swt("interface.m2031")}{t.task_create_message}</div>}
                 {t.on_tool_call && (
                   <>
-                    <div className="line-clamp-1">{swt("interface.m2032")}{t.tool_names.join("、") || swt("interface.m2033")}</div>
+                    <div className="line-clamp-1">{swt("interface.m2032")}{t.tool_names.join(", ") || swt("interface.m2033")}</div>
                     {t.tool_call_message && <div className="line-clamp-1">{swt("interface.m2034")}{t.tool_call_message}</div>}
                   </>
                 )}

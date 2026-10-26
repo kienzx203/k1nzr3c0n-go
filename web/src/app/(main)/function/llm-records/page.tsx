@@ -303,7 +303,7 @@ export default function LLMRecordsPage() {
               tasks.map((t) => (
                 <SelectItem key={t.task_id} value={t.task_id}>
                   <span className="font-mono">#{t.task_id}</span>
-                  <span className="ml-2 text-muted-foreground">（{t.count}）</span>
+                  <span className="ml-2 text-muted-foreground">({t.count})</span>
                 </SelectItem>
               ))
             )}
