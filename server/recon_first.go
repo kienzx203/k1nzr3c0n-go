@@ -17,12 +17,58 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Autumn-27/artex/db"
 )
+
+// pendingPushBack maps a recon run id -> task id for runs an agent launched via
+// run_workflow but may NOT consume inline (wait=false, or a run slower than the
+// blocking cap). When such a run completes, OnReconRunCompleted seeds its brief back
+// into the originating task, so a slow run is never silently skipped.
+var pendingPushBack sync.Map // runID string -> taskID string
+
+func registerPushBack(runID, taskID string) {
+	if runID != "" && taskID != "" && taskID != "0" {
+		pendingPushBack.Store(runID, taskID)
+	}
+}
+
+// OnReconRunCompleted is wired to the k1z runner's RunCompletedHook. If the finished
+// run was registered for push-back, fetch its recon brief and seed it back into the
+// task that launched it (reviving a terminal task), so results that landed after the
+// agent moved on are acted on instead of lost.
+func (s *Server) OnReconRunCompleted(runID string) {
+	defer func() { _ = recover() }()
+	v, ok := pendingPushBack.LoadAndDelete(runID)
+	if !ok {
+		return
+	}
+	taskID, _ := v.(string)
+	t, ok := s.m.Task(taskID)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	defer cancel()
+	data, code, err := s.reconJSON(ctx, "GET", "/api/v1/runs/"+url.PathEscape(runID)+"/recon-brief", nil)
+	if err != nil || code >= 300 {
+		return
+	}
+	brief := reconBriefMarkdown(data)
+	if strings.TrimSpace(brief) == "" {
+		return
+	}
+	s.seedIntentText(t, "Recon run "+runID+" completed — its results arrived AFTER the earlier recon call:\n\n"+brief+
+		"\n\nReview and act on any uncovered surface from this run; do not skip it.")
+	s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
+		Summary: "📥 Recon run " + runID + " completed — results pushed back into the task."})
+	s.reviveTask(t)
+}
 
 const (
 	defaultReconWorkflow = "01-full-recon-pipeline.yaml"

@@ -20,6 +20,12 @@ import (
 // signature is string-only so this package never imports ARTEX/Postgres.
 var AutoTriageHook func(target, goal, brief string)
 
+// RunCompletedHook, when set, is called with a run's id right after it completes
+// successfully. ARTEX uses it to push a finished run's recon brief back into the
+// task that launched it (via run_workflow), so a run that finished after the agent
+// moved on is never silently skipped. String-only to avoid importing ARTEX.
+var RunCompletedHook func(runID string)
+
 var (
 	triageMu   sync.Mutex
 	lastTriage = map[string]time.Time{}

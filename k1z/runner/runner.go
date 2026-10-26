@@ -605,6 +605,9 @@ func (r *Runner) ExecuteRun(runID string) {
 		_ = parsers.ParseWorkspace(r.St, run, r.Bus)
 		go notify.RunFinished(r.St, run, "completed")
 		go r.maybeAutoTriage(run)
+		if RunCompletedHook != nil {
+			go RunCompletedHook(run.ID) // push the brief back to the task that launched it (if registered)
+		}
 	default:
 		msg := statusErr.Error()
 		if we, ok := statusErr.(*workflow.WorkflowError); ok {

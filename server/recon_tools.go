@@ -16,12 +16,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 
+	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -351,8 +353,15 @@ func reconRunWorkflow() actool.CoreTool {
 			_ = json.Unmarshal(data, &started)
 			runID := started.ID
 
+			// Task that launched this run (for push-back if the agent doesn't consume it inline).
+			taskID := ""
+			if ri := agent.RunInfoFrom(ctx); ri.TaskID > 0 {
+				taskID = strconv.FormatInt(ri.TaskID, 10)
+			}
+
 			if (p.Wait != nil && !*p.Wait) || runID == "" {
-				return actool.Text(fmt.Sprintf("Launched run %s for workflow %s against %s (non-blocking). Poll run_status with run_id=%s until status=completed, THEN read recon_findings/recon_assets. Empty results while it is still running do NOT mean 'no findings'.", runID, p.Workflow, p.Target, runID)), nil
+				registerPushBack(runID, taskID) // async launch — seed results back when it completes
+				return actool.Text(fmt.Sprintf("Launched run %s for workflow %s against %s (non-blocking). Poll run_status with run_id=%s until status=completed, THEN read recon_findings/recon_assets. Empty results while it is still running do NOT mean 'no findings' (if you move on, its brief will be pushed back into this task on completion).", runID, p.Workflow, p.Target, runID)), nil
 			}
 
 			_, perr := reconPollRun(ctx, runID, runWorkflowWaitCap)
@@ -364,6 +373,7 @@ func reconRunWorkflow() actool.CoreTool {
 				}
 				return actool.Text(fmt.Sprintf("Run %s (%s) completed. Read results with recon_findings / recon_assets (target=%s).", runID, p.Workflow, p.Target)), nil
 			case perr == context.DeadlineExceeded:
+				registerPushBack(runID, taskID) // slow run — seed its brief back when it finishes
 				return actool.Text(fmt.Sprintf("Run %s (%s) is STILL RUNNING after %s — it was NOT abandoned and its findings are NOT lost. RECORD a TodoWrite item \"poll run_status(%s) and read %s results\" so you don't forget, keep polling run_status(run_id=%s) until status=completed, then read recon_findings/recon_assets. Do NOT treat empty interim results as 'no findings', and do NOT wrap up while this run is unread.", runID, p.Workflow, runWorkflowWaitCap, runID, p.Workflow, runID)), nil
 			case perr == context.Canceled:
 				return actool.Text(fmt.Sprintf("run_workflow wait was cancelled; run %s may still be running — poll run_status(run_id=%s) later.", runID, runID)), nil

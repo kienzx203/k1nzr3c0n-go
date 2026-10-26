@@ -125,6 +125,9 @@ func run() int {
 			log.Printf("[auto-triage] create task failed: %v", err)
 		}
 	}
+	// push-back: a recon run launched by run_workflow but not consumed inline seeds its
+	// brief back into the originating task on completion (never silently skipped).
+	k1zrunner.RunCompletedHook = srv.OnReconRunCompleted
 
 	k1zHandler, k1zShutdown, k1zErr := k1z.BuildHandler(ctx)
 	if k1zErr != nil {
