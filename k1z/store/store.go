@@ -326,11 +326,18 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(15000)")
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1) // modernc sqlite + WAL: one writer connection is safest
+	// WAL lets many readers run concurrently while one writer holds the write lock.
+	// Capping at a single connection serialized EVERYTHING, so API reads (targets,
+	// keys, findings, runs) were starved while a workflow run wrote heavily — the UI
+	// hung on "Loading…". Allow several connections: reads flow concurrently, and
+	// concurrent writers are serialized by SQLite and retry within busy_timeout.
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(8)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 	s := &Store{db: db}
 	if err := s.init(); err != nil {
 		db.Close()
