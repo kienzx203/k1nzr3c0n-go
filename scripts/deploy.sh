@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# One-command deploy for K1nzr3c0n. Run from the source checkout on the server.
+# It does EVERYTHING in the right order so nothing is forgotten (the usual trap is
+# a `go build` without rebuilding the embedded frontend):
+#   pull → build FE → embed dist → build backend → sync runtime assets → restart.
+#
+# Usage:
+#   sudo bash scripts/deploy.sh                 # full deploy (FE + backend + assets)
+#   SKIP_FE=1 sudo bash scripts/deploy.sh       # backend-only (skip the slow FE build)
+#   RESEED=1 ARTEX_PASSWORD='...' sudo -E bash scripts/deploy.sh   # also re-seed the task template
+#
+# Env (override as needed):
+#   SRC=/opt/k1nzr3c0n-src   K1NZR3C0N_BASE=/opt/k1nzr3c0n   SERVICE=k1nzr3c0n-go
+#   BASE_URL=http://127.0.0.1:8000
+set -euo pipefail
+
+SRC="${SRC:-/opt/k1nzr3c0n-src}"
+BASE="${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}"
+SERVICE="${SERVICE:-k1nzr3c0n-go}"
+BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
+SKIP_FE="${SKIP_FE:-0}"
+RESEED="${RESEED:-0}"
+
+step() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+die()  { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+
+cd "$SRC" || die "source dir not found: $SRC"
+
+step "Pull origin/main"
+git fetch origin && git reset --hard origin/main
+git log --oneline -1
+
+if [ "$SKIP_FE" != "1" ]; then
+  step "Build frontend (web/ → server/webui/dist)"
+  ( cd web && npm install && npm run build:static )
+  [ -f web/out/index.html ] || die "frontend build produced no web/out/index.html"
+  rm -rf server/webui/dist && cp -r web/out server/webui/dist
+else
+  step "SKIP_FE=1 — reusing existing embedded frontend (server/webui/dist)"
+fi
+
+step "Build backend (go build -tags embedui)"
+ARTEX_SKIP_FRONTEND=1 go build -tags embedui -o k1nzr3c0n ./cmd/artex
+./k1nzr3c0n -h >/dev/null 2>&1 && echo "binary OK"
+
+step "Sync runtime assets into $BASE (scripts, workflows, wordlists, skills)"
+mkdir -p "$BASE/scripts" "$BASE/wordlists" "$BASE/skills" "$BASE/workflows"
+cp scripts/*.py       "$BASE/scripts/"   2>/dev/null && chmod +x "$BASE/scripts/"*.py 2>/dev/null || true
+cp -r workflows/*     "$BASE/workflows/" 2>/dev/null || true
+cp wordlists/*        "$BASE/wordlists/" 2>/dev/null || true
+# standard SecLists wordlists the workflows expect (copied under the exact names)
+SL=/usr/share/seclists
+[ -f "$SL/Discovery/Web-Content/common.txt" ]               && cp "$SL/Discovery/Web-Content/common.txt"               "$BASE/wordlists/common.txt"
+[ -f "$SL/Discovery/DNS/subdomains-top1million-20000.txt" ] && cp "$SL/Discovery/DNS/subdomains-top1million-20000.txt" "$BASE/wordlists/subdomains-top1million-20000.txt"
+[ -f "$SL/Discovery/Web-Content/burp-parameter-names.txt" ] && cp "$SL/Discovery/Web-Content/burp-parameter-names.txt" "$BASE/wordlists/params-medium.txt"
+# in-git skills only (leave third-party hacktricks / payloads-all-the-things as-is)
+for s in recon-first-pentest api-recon scopesentry playwright-cli; do
+  [ -d "skills/$s" ] && cp -r "skills/$s" "$BASE/skills/"
+done
+
+step "Restart $SERVICE"
+systemctl stop "$SERVICE" 2>/dev/null || true
+cp k1nzr3c0n "$BASE/"
+systemctl reset-failed "$SERVICE" 2>/dev/null || true
+systemctl start "$SERVICE"
+sleep 2
+systemctl is-active "$SERVICE" >/dev/null && echo "✓ $SERVICE active" || die "$SERVICE failed to start — check: journalctl -u $SERVICE -n 50"
+
+if [ "$RESEED" = "1" ] && [ -n "${ARTEX_PASSWORD:-}" ]; then
+  step "Re-seed task template (delete old 'Offensive Security' + recreate)"
+  TOKEN=$(curl -sS -X POST "$BASE_URL/api/auth/login" -H 'Content-Type: application/json' \
+    -d "{\"username\":\"ARTEX\",\"password\":\"${ARTEX_PASSWORD}\"}" \
+    | python3 -c 'import json,sys;print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)
+  if [ -n "$TOKEN" ]; then
+    for tid in $(curl -sS "$BASE_URL/api/task-templates" -H "Authorization: Bearer $TOKEN" \
+        | python3 -c "import json,sys;print('\n'.join(str(t['id']) for t in json.load(sys.stdin).get('templates',[]) if t['name']=='Offensive Security'))" 2>/dev/null); do
+      curl -sS -o /dev/null -X DELETE "$BASE_URL/api/task-templates/$tid" -H "Authorization: Bearer $TOKEN" && echo "deleted template $tid"
+    done
+    BASE_URL="$BASE_URL" ARTEX_TOKEN="$TOKEN" bash scripts/add-task-templates.sh || true
+  else
+    echo "  (login failed — skipping re-seed; check ARTEX_PASSWORD)"
+  fi
+fi
+
+step "Done — hard-refresh the browser (Ctrl+Shift+R)"
+echo "If you did NOT pass RESEED=1, re-seed the template manually when it changed."
