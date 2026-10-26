@@ -99,7 +99,7 @@ func (s *Server) launchTaskReconFirst(t *Task, req createTaskReq) {
 		workflows := s.resolveReconWorkflows(ctx, workflowSpec)
 		var briefs []string
 		for _, wf := range workflows {
-			runID, err := s.reconStartRun(ctx, target, wf)
+			runID, err := s.reconStartRun(ctx, target, wf, maxWorkflowVars(ctx, wf)) // full options (minus opted-out pivots)
 			if err != nil {
 				s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
 					Summary: fmt.Sprintf("⚠️ Recon-first: workflow %s không chạy được (%s) — bỏ qua.", wf, err.Error())})
@@ -213,8 +213,12 @@ func (s *Server) reconJSON(ctx context.Context, method, path string, body io.Rea
 	return data, resp.StatusCode, nil
 }
 
-func (s *Server) reconStartRun(ctx context.Context, target, workflow string) (string, error) {
-	body, _ := json.Marshal(map[string]any{"workflow": workflow, "target": target})
+func (s *Server) reconStartRun(ctx context.Context, target, workflow string, vars []string) (string, error) {
+	payload := map[string]any{"workflow": workflow, "target": target}
+	if len(vars) > 0 {
+		payload["vars"] = vars
+	}
+	body, _ := json.Marshal(payload)
 	data, code, err := s.reconJSON(ctx, "POST", "/api/v1/runs", strings.NewReader(string(body)))
 	if err != nil {
 		return "", err

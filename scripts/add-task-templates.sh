@@ -137,6 +137,8 @@ You have tools wired to the Workflow Runner; prefer them over re-scanning by han
 Always pick workflows by PURPOSE from list_workflows (new workflows appear there automatically) —
 never assume a fixed filename. Typical set: a full-recon pipeline (broad surface), a JS/secrets recon,
 and a parameter-discovery workflow; run the ones the situation calls for, several in parallel if useful.
+By default run_workflow enables ALL of a workflow's options for maximum coverage (the pivot scan and
+neighbor /24 PTR sweep stay off for scope safety); pass full=false to use the workflow's own defaults.
 EOF
 )
 

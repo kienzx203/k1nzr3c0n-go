@@ -246,6 +246,61 @@ func reconBriefMarkdown(data []byte) string {
 	return string(data)
 }
 
+// fullOptionExclude: boolean toggles that stay at their workflow default even in
+// "full options" mode — the operator opted these out as too aggressive/out-of-scope:
+// the pivot scan and the PTR sweep of neighboring /24 CIDR blocks.
+var fullOptionExclude = map[string]bool{
+	"run_st_pivot_scan": true, // pivot scan
+	"pivot_rescan_all":  true, // re-scan ALL pivots
+	"run_ip_pivot":      true, // mapcidr PTR sweep of neighboring /24 (touches out-of-scope IPs)
+}
+
+// maxWorkflowVars returns var overrides that turn ON every boolean toggle a
+// workflow defines (its run_* / pivot options) EXCEPT the fullOptionExclude set,
+// so a run exercises nearly all options — including the heavier ones (favicon/vhost
+// pivot, recursive, active amass) that ship disabled by default — while leaving the
+// opted-out pivot/neighbor-CIDR scans off. Workflow-agnostic: it reads the
+// workflow's own vars, so new workflows are covered automatically.
+func maxWorkflowVars(ctx context.Context, workflow string) []string {
+	data, code, err := reconRaw(ctx, "GET", "/api/v1/workflows/"+url.PathEscape(workflow), nil)
+	if err != nil || code >= 300 {
+		return nil
+	}
+	var parsed struct {
+		Vars map[string]any `json:"vars"`
+	}
+	if json.Unmarshal(data, &parsed) != nil {
+		return nil
+	}
+	var out []string
+	for k, v := range parsed.Vars {
+		if fullOptionExclude[k] {
+			continue // leave at the workflow's default (operator opted out)
+		}
+		if sv, ok := v.(string); ok && (sv == "true" || sv == "false") {
+			out = append(out, k+"=true")
+		}
+	}
+	return out
+}
+
+// mergeMaxVars appends the workflow's max-option overrides to vars, without
+// clobbering any key the caller already set.
+func mergeMaxVars(ctx context.Context, workflow string, vars []string) []string {
+	have := map[string]bool{}
+	for _, kv := range vars {
+		if i := strings.IndexByte(kv, '='); i > 0 {
+			have[kv[:i]] = true
+		}
+	}
+	for _, kv := range maxWorkflowVars(ctx, workflow) {
+		if i := strings.IndexByte(kv, '='); i > 0 && !have[kv[:i]] {
+			vars = append(vars, kv)
+		}
+	}
+	return vars
+}
+
 func reconRunWorkflow() actool.CoreTool {
 	return actool.Build(actool.Spec{
 		Name: "run_workflow",
@@ -255,6 +310,7 @@ func reconRunWorkflow() actool.CoreTool {
 			"workflow": rtStr("workflow file name, e.g. 01-full-recon-pipeline.yaml"),
 			"vars":     map[string]any{"type": "object", "description": "optional variable overrides (key -> value)"},
 			"wait":     map[string]any{"type": "boolean", "description": "default true: block until the run finishes and return its recon brief. false: return the run_id immediately (then poll run_status yourself) — use this to launch several workflows in parallel."},
+			"full":     map[string]any{"type": "boolean", "description": "default true: enable ALL of the workflow's options for maximum coverage (except the pivot scan and neighbor /24 PTR sweep, which stay off for scope safety). false: use the workflow's own defaults."},
 		}, "target", "workflow"),
 		ReadOnly:    func(json.RawMessage) bool { return false },
 		Concurrent:  func(json.RawMessage) bool { return false },
@@ -265,6 +321,7 @@ func reconRunWorkflow() actool.CoreTool {
 				Workflow string            `json:"workflow"`
 				Vars     map[string]string `json:"vars"`
 				Wait     *bool             `json:"wait"`
+				Full     *bool             `json:"full"`
 			}
 			_ = json.Unmarshal(in, &p)
 			if p.Target == "" || p.Workflow == "" {
@@ -276,6 +333,9 @@ func reconRunWorkflow() actool.CoreTool {
 			var vars []string
 			for k, v := range p.Vars {
 				vars = append(vars, k+"="+v)
+			}
+			if p.Full == nil || *p.Full { // default: enable all options (minus the opted-out pivots)
+				vars = mergeMaxVars(ctx, p.Workflow, vars)
 			}
 			body, _ := json.Marshal(map[string]any{"workflow": p.Workflow, "target": p.Target, "vars": vars})
 			data, code, err := reconRaw(ctx, "POST", "/api/v1/runs", bytes.NewReader(body))
