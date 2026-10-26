@@ -7,9 +7,11 @@ import (
 )
 
 func TestSeededAgentMetadataLocalePreservesEdits(t *testing.T) {
+	// Stock reporter/retester are English-only now: localization forces English for
+	// any stock/legacy value regardless of the request language.
 	for _, tc := range []struct{ key, name, want string }{
-		{"reporter", "Report writer", "보고서 작성자"},
-		{db.FindingRetestAgentKey, "Finding retest", "취약점 재검증"},
+		{"reporter", "Report writer", "Report writer"},
+		{db.FindingRetestAgentKey, "Finding retest", "Finding retest"},
 	} {
 		original := &db.Agent{Key: tc.key, Name: tc.name, Description: "Custom description 원문"}
 		result := agentDTO(original, locale.Ko)
