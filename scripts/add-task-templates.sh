@@ -113,6 +113,27 @@ throttle and stay in scope; for stealth-sensitive work prefer passive + minimal 
 EOF
 )
 
+# ── workflow-runner automation: the recon <-> exploit loop (all modes) ──
+WORKFLOW_LOOP=$(cat <<'EOF'
+━━ WORKFLOW RUNNER AUTOMATION (recon <-> exploit loop — drive recon with the Runner, never idle) ━━
+You have tools wired to the Workflow Runner; prefer them over re-scanning by hand:
+0) REUSE FIRST: recon_findings(target) + recon_assets(target) pull surface a prior run already
+   mapped. If that already covers the surface, skip straight to the mode playbook.
+1) LAUNCH (non-blocking): run_workflow(target=<REGISTERED target>, workflow="01-full-recon-pipeline.yaml")
+   returns a run_id IMMEDIATELY — it does NOT block. Only registered targets carry a deny-wins scope;
+   if the target is not registered, STOP and ask_human (never widen scope yourself).
+2) MONITOR WHILE YOU WORK: poll run_status(run_id) for progress but DON'T sit idle. As soon as results
+   land, read them and START triaging the live, high-value endpoints — recon and exploitation OVERLAP.
+3) READ OUTPUT: recon_findings (kinds vuln/http/port/subdomain/url, filter by severity) and recon_assets
+   (live hosts: status/title/tech/ip/port). Normalize + tag, then feed into your mode playbook below.
+4) CONTINUE / LOOP: whenever triage reveals NEW subdomains/hosts/params, run_workflow AGAIN scoped to
+   that new surface (narrow loop), read its output, and keep going — repeat recon -> read -> exploit
+   until the surface is covered or the objective is met. Record which run produced each finding.
+Other Runner workflows to launch the same way when relevant: 02-js-secrets-recon.yaml (JS/secret
+mining), 03-param-discovery.yaml (parameter discovery).
+EOF
+)
+
 # ── per-mode playbooks (branch on the MODE chosen above) ──
 BOUNTY=$(cat <<'EOF'
 ━━ [BUG BOUNTY] prioritized attack surface (highest ROI first — drive from the inventory) ━━
@@ -186,7 +207,7 @@ EOF
 )
 
 NL=$'\n\n'
-DESC="${HEADER}${NL}${ENDPOINT_RECON}${NL}${BOUNTY}${NL}${PENTEST}${NL}${REDTEAM}${NL}${FOOTER}"
+DESC="${HEADER}${NL}${ENDPOINT_RECON}${NL}${WORKFLOW_LOOP}${NL}${BOUNTY}${NL}${PENTEST}${NL}${REDTEAM}${NL}${FOOTER}"
 
 GOAL="Run an authorized offensive-security engagement: auto-select the mode (Bug Bounty, Penetration Test, or Red Team) from the scope/RoE, map the attack surface, and deliver reproducible in-scope findings (or reach the objective) with evidence — strictly in scope, non-destructive."
 
