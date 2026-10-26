@@ -182,14 +182,79 @@ func targetExists(ctx context.Context, name string) bool {
 
 // reconRunWorkflow (integration C): let the worker launch a recon workflow against
 // a REGISTERED target. Write tool; scope-guarded to registered targets only.
+const runWorkflowWaitCap = 20 * time.Minute // how long run_workflow blocks before handing back a run_id to poll
+
+// reconRaw is a raw HTTP call to the local k1z API returning (body, status, err),
+// used where the tool needs to parse the response (run id) rather than surface it.
+func reconRaw(ctx context.Context, method, path string, body io.Reader) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, method, ReconAPIBase+path, body)
+	if err != nil {
+		return nil, 0, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := (&http.Client{Timeout: 25 * time.Second}).Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	return data, resp.StatusCode, nil
+}
+
+// reconPollRun blocks until the run reaches a terminal state, or the cap / ctx
+// expires. Returns ("completed", nil) on success; (status, err) on a bad terminal
+// state; ("", context.DeadlineExceeded) on cap/ctx timeout; ("", context.Canceled)
+// on cancel.
+func reconPollRun(ctx context.Context, runID string, cap time.Duration) (string, error) {
+	deadline := time.Now().Add(cap)
+	for {
+		data, code, err := reconRaw(ctx, "GET", "/api/v1/runs/"+url.PathEscape(runID), nil)
+		if err == nil && code < 300 {
+			var r struct {
+				Status string `json:"status"`
+			}
+			_ = json.Unmarshal(data, &r)
+			switch strings.ToLower(r.Status) {
+			case "completed", "done", "finished", "success":
+				return "completed", nil
+			case "failed", "error", "cancelled", "canceled", "paused", "timeout":
+				return r.Status, fmt.Errorf("run %s ended with status %s", runID, r.Status)
+			}
+		}
+		if time.Now().After(deadline) {
+			return "", context.DeadlineExceeded
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(15 * time.Second):
+		}
+	}
+}
+
+func reconBriefMarkdown(data []byte) string {
+	if strings.HasPrefix(strings.TrimSpace(string(data)), "{") {
+		var r struct {
+			Markdown string `json:"markdown"`
+		}
+		if json.Unmarshal(data, &r) == nil && strings.TrimSpace(r.Markdown) != "" {
+			return r.Markdown
+		}
+	}
+	return string(data)
+}
+
 func reconRunWorkflow() actool.CoreTool {
 	return actool.Build(actool.Spec{
 		Name: "run_workflow",
-		Description: "Launch a Workflow Runner recon workflow against a REGISTERED target (a deny-wins scope must already exist for it). Returns a run_id IMMEDIATELY (non-blocking); poll run_status while you work, then read results with recon_findings/recon_assets. CHOOSE the workflow that fits the situation — call list_workflows to see all options with descriptions, and launch SEVERAL when the goal spans multiple needs (e.g. full recon + JS/secrets + parameter discovery). Only run recon you don't already have — check recon_findings first.",
+		Description: "Launch a Workflow Runner recon workflow against a REGISTERED target (a deny-wins scope must already exist for it). By DEFAULT it WAITS for the run to finish and returns the recon brief, so you never miss the output — do not assume empty results mean 'no findings'. If it is still running after ~20 min it hands back a run_id to keep polling with run_status; then read results with recon_findings/recon_assets. CHOOSE the workflow via list_workflows; to launch SEVERAL workflows in parallel, pass wait=false on each and poll run_status. Check recon_findings first — only run recon you don't already have.",
 		Schema: rtObj(map[string]any{
 			"target":   rtStr("registered target domain, e.g. example.com"),
 			"workflow": rtStr("workflow file name, e.g. 01-full-recon-pipeline.yaml"),
 			"vars":     map[string]any{"type": "object", "description": "optional variable overrides (key -> value)"},
+			"wait":     map[string]any{"type": "boolean", "description": "default true: block until the run finishes and return its recon brief. false: return the run_id immediately (then poll run_status yourself) — use this to launch several workflows in parallel."},
 		}, "target", "workflow"),
 		ReadOnly:    func(json.RawMessage) bool { return false },
 		Concurrent:  func(json.RawMessage) bool { return false },
@@ -199,6 +264,7 @@ func reconRunWorkflow() actool.CoreTool {
 				Target   string            `json:"target"`
 				Workflow string            `json:"workflow"`
 				Vars     map[string]string `json:"vars"`
+				Wait     *bool             `json:"wait"`
 			}
 			_ = json.Unmarshal(in, &p)
 			if p.Target == "" || p.Workflow == "" {
@@ -212,7 +278,38 @@ func reconRunWorkflow() actool.CoreTool {
 				vars = append(vars, k+"="+v)
 			}
 			body, _ := json.Marshal(map[string]any{"workflow": p.Workflow, "target": p.Target, "vars": vars})
-			return reconHTTP(ctx, "POST", "/api/v1/runs", bytes.NewReader(body)), nil
+			data, code, err := reconRaw(ctx, "POST", "/api/v1/runs", bytes.NewReader(body))
+			if err != nil {
+				return actool.Errorf("run_workflow start failed: " + err.Error()), nil
+			}
+			if code >= 300 {
+				return actool.Errorf(fmt.Sprintf("run_workflow start failed (HTTP %d): %s", code, strings.TrimSpace(string(data)))), nil
+			}
+			var started struct {
+				ID string `json:"id"`
+			}
+			_ = json.Unmarshal(data, &started)
+			runID := started.ID
+
+			if (p.Wait != nil && !*p.Wait) || runID == "" {
+				return actool.Text(fmt.Sprintf("Launched run %s for workflow %s against %s (non-blocking). Poll run_status with run_id=%s until status=completed, THEN read recon_findings/recon_assets. Empty results while it is still running do NOT mean 'no findings'.", runID, p.Workflow, p.Target, runID)), nil
+			}
+
+			_, perr := reconPollRun(ctx, runID, runWorkflowWaitCap)
+			switch {
+			case perr == nil:
+				bdata, bcode, berr := reconRaw(ctx, "GET", "/api/v1/runs/"+url.PathEscape(runID)+"/recon-brief", nil)
+				if berr == nil && bcode < 300 {
+					return actool.Text(fmt.Sprintf("Run %s (%s) COMPLETED.\n\n%s", runID, p.Workflow, reconBriefMarkdown(bdata))), nil
+				}
+				return actool.Text(fmt.Sprintf("Run %s (%s) completed. Read results with recon_findings / recon_assets (target=%s).", runID, p.Workflow, p.Target)), nil
+			case perr == context.DeadlineExceeded:
+				return actool.Text(fmt.Sprintf("Run %s (%s) is STILL RUNNING after %s — it was NOT abandoned. Keep polling run_status(run_id=%s); read recon_findings/recon_assets once status=completed. Do NOT treat empty interim results as 'no findings'.", runID, p.Workflow, runWorkflowWaitCap, runID)), nil
+			case perr == context.Canceled:
+				return actool.Text(fmt.Sprintf("run_workflow wait was cancelled; run %s may still be running — poll run_status(run_id=%s) later.", runID, runID)), nil
+			default:
+				return actool.Errorf(perr.Error()), nil
+			}
 		},
 	})
 }

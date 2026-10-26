@@ -124,8 +124,11 @@ You have tools wired to the Workflow Runner; prefer them over re-scanning by han
    Launch SEVERAL when the goal is broad (e.g. full-recon pipeline for surface + JS/secrets recon +
    parameter discovery). Each run_workflow returns a run_id IMMEDIATELY (non-blocking). Only registered
    targets carry a deny-wins scope; if the target is not registered, STOP and ask_human (never widen).
-2) MONITOR WHILE YOU WORK: poll run_status(run_id) for progress but DON'T sit idle. As soon as results
-   land, read them and START triaging the live, high-value endpoints — recon and exploitation OVERLAP.
+2) GET THE OUTPUT: by DEFAULT run_workflow waits for the run and returns the recon brief directly, so
+   you cannot miss it — triage the live, high-value endpoints from that brief. Only when you launched
+   with wait=false (parallel), or it handed back a run_id because the run was slow, do you poll
+   run_status(run_id) until completed and then read recon_findings/recon_assets. NEVER treat empty
+   interim results as "no findings" while a run is still in progress.
 3) READ OUTPUT: recon_findings (kinds vuln/http/port/subdomain/url, filter by severity) and recon_assets
    (live hosts: status/title/tech/ip/port). Normalize + tag, then feed into your mode playbook below.
 4) CONTINUE / LOOP: whenever triage reveals NEW subdomains/hosts/params, run_workflow AGAIN scoped to
