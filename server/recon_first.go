@@ -58,7 +58,7 @@ func (s *Server) launchTaskReconFirst(t *Task, req createTaskReq) {
 
 	if target == "" {
 		s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
-			Summary: "Recon-first: không xác định được target từ goal/mô tả — chạy luồng chuẩn."})
+			Summary: "Recon-first: could not determine a target from the goal/description — running the standard flow."})
 		s.launchTask(t, seedText, false)
 		return
 	}
@@ -70,7 +70,7 @@ func (s *Server) launchTaskReconFirst(t *Task, req createTaskReq) {
 	cancel0()
 	if !registered {
 		s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
-			Summary: fmt.Sprintf("Recon-first: target %q chưa đăng ký scope (Targets) — bỏ auto-recon, chạy luồng chuẩn. Đăng ký scope rồi thử lại.", target)})
+			Summary: fmt.Sprintf("Recon-first: target %q is not registered (Targets) — skipping auto-recon, running the standard flow. Register a scope and try again.", target)})
 		s.launchTask(t, seedText, false)
 		return
 	}
@@ -82,7 +82,7 @@ func (s *Server) launchTaskReconFirst(t *Task, req createTaskReq) {
 	}
 	s.seed(t, seedText)
 	s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
-		Summary: fmt.Sprintf("⏳ Recon-first: chuẩn bị recon trên %s…", target)})
+		Summary: fmt.Sprintf("⏳ Recon-first: preparing recon on %s…", target)})
 
 	go func() {
 		defer s.engine.decInflight(t.ID)
@@ -102,11 +102,11 @@ func (s *Server) launchTaskReconFirst(t *Task, req createTaskReq) {
 			runID, err := s.reconStartRun(ctx, target, wf, maxWorkflowVars(ctx, wf)) // full options (minus opted-out pivots)
 			if err != nil {
 				s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
-					Summary: fmt.Sprintf("⚠️ Recon-first: workflow %s không chạy được (%s) — bỏ qua.", wf, err.Error())})
+					Summary: fmt.Sprintf("⚠️ Recon-first: workflow %s could not start (%s) — skipping.", wf, err.Error())})
 				continue
 			}
 			s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
-				Summary: fmt.Sprintf("⏳ Recon-first: %s (run %s) đang chạy…", wf, runID)})
+				Summary: fmt.Sprintf("⏳ Recon-first: %s (run %s) is running…", wf, runID)})
 			if err := s.reconWaitDone(ctx, runID); err != nil {
 				s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
 					Summary: fmt.Sprintf("⚠️ Recon-first: %s — %s", wf, err.Error())})
@@ -124,20 +124,20 @@ func (s *Server) launchTaskReconFirst(t *Task, req createTaskReq) {
 		}
 
 		if len(briefs) == 0 {
-			s.reconAbort(t, "không có workflow recon nào hoàn tất")
+			s.reconAbort(t, "no recon workflow completed")
 			return
 		}
 
-		intent := strings.Join(briefs, "\n\n---\n\n") + "\n\n---\nOBJECTIVE: Dựa HOÀN TOÀN vào bề mặt recon ở trên, " +
-			"ưu tiên broken access control/IDOR, SSRF, auth/JWT/OAuth, injection (SQLi/SSTI/command), file upload trên các host sống. " +
-			"Xác minh bằng PoC tối thiểu, không phá hoại, không DoS. Giữ STRICT in-scope (deny-wins). " +
-			"Cần chi tiết thì gọi recon_findings/recon_assets; phát hiện bề mặt mới thì gọi list_workflows chọn workflow phù hợp hoặc skill recon-first-pentest."
+		intent := strings.Join(briefs, "\n\n---\n\n") + "\n\n---\nOBJECTIVE: Base your work ENTIRELY on the recon surface above. " +
+			"Prioritize broken access control/IDOR, SSRF, auth/JWT/OAuth, injection (SQLi/SSTI/command) and file upload on the live hosts. " +
+			"Validate with a minimal non-destructive PoC; no DoS. Stay STRICT in-scope (deny-wins). " +
+			"For details call recon_findings/recon_assets; when you find new surface, call list_workflows to pick a fitting workflow, or the recon-first-pentest skill."
 		s.seedIntentText(t, intent)
 		s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
-			Summary: fmt.Sprintf("✅ Recon xong (%d/%d workflow) — đã nạp brief, bắt đầu pentest.", len(briefs), len(workflows))})
+			Summary: fmt.Sprintf("✅ Recon done (%d/%d workflows) — brief loaded, starting pentest.", len(briefs), len(workflows))})
 
 		if _, err := s.admitTask(t, "bootstrap"); err != nil {
-			log.Printf("[recon-first] task %s admit lỗi: %v", t.ID, err)
+			log.Printf("[recon-first] task %s admit error: %v", t.ID, err)
 		}
 	}()
 }
@@ -184,13 +184,13 @@ func (s *Server) reconListWorkflows(ctx context.Context) []string {
 // beginTaskOperation is not reused). Mirrors launchTask's tail.
 func (s *Server) reconFallbackAdmit(t *Task) {
 	if _, err := s.admitTask(t, "bootstrap"); err != nil {
-		log.Printf("[recon-first] task %s fallback admit lỗi: %v", t.ID, err)
+		log.Printf("[recon-first] task %s fallback admit error: %v", t.ID, err)
 	}
 }
 
 func (s *Server) reconAbort(t *Task, why string) {
 	s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
-		Summary: "⚠️ Recon-first bỏ qua (" + why + ") — chạy luồng chuẩn."})
+		Summary: "⚠️ Recon-first skipped (" + why + ") — running the standard flow."})
 	s.reconFallbackAdmit(t)
 }
 
@@ -230,7 +230,7 @@ func (s *Server) reconStartRun(ctx context.Context, target, workflow string, var
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil || r.ID == "" {
-		return "", fmt.Errorf("không có run id trong phản hồi")
+		return "", fmt.Errorf("no run id in the response")
 	}
 	return r.ID, nil
 }
@@ -249,12 +249,12 @@ func (s *Server) reconWaitDone(ctx context.Context, runID string) error {
 			case "completed", "done", "finished", "success":
 				return nil
 			case "failed", "error", "paused", "cancelled", "canceled", "timeout":
-				return fmt.Errorf("run kết thúc với status=%s", r.Status)
+				return fmt.Errorf("run ended with status=%s", r.Status)
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("quá thời gian chờ recon (%s)", reconFirstMaxWait)
+			return fmt.Errorf("recon wait timed out (%s)", reconFirstMaxWait)
 		case <-tick.C:
 		}
 	}

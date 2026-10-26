@@ -3437,17 +3437,17 @@ function CreateTaskSheet({
                       checked={reconFirst}
                       onCheckedChange={(v) => setReconFirst(!!v)}
                     />
-                    🔭 Recon-first — tự chạy workflow recon trước rồi mới pentest
+                    🔭 Recon-first — run a recon workflow before pentesting
                   </label>
                   <p className="text-muted-foreground text-xs">
-                    Chỉ áp dụng cho target đã đăng ký scope (Targets). Để trống ô dưới = tự tách domain từ mục tiêu.
+                    Only for targets registered with a scope (Targets). Leave the field below empty to derive the domain from the goal.
                   </p>
                   {reconFirst && (
                     <>
                       <Input
                         id="recon-target"
                         className="w-full"
-                        placeholder="Target recon (vd example.com) — để trống = tự tách từ mô tả/mục tiêu"
+                        placeholder="Recon target (e.g. example.com) — empty = derive from the description/goal"
                         value={reconTarget}
                         onChange={(e) => setReconTarget(e.target.value)}
                       />
@@ -3457,7 +3457,7 @@ function CreateTaskSheet({
                         value={reconWorkflow}
                         onChange={(e) => setReconWorkflow(e.target.value)}
                       >
-                        <option value="all">Tất cả workflow (all)</option>
+                        <option value="all">All workflows (all)</option>
                         <option value="01-full-recon-pipeline.yaml">01 — Full recon pipeline</option>
                         <option value="02-js-secrets-recon.yaml">02 — JS & secrets</option>
                         <option value="03-param-discovery.yaml">03 — Param discovery</option>

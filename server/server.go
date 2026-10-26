@@ -1537,7 +1537,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	// Shared post-creation flow (seed + seed intent + background goal decomposition + engine.Run), reused by spawn_task.
 	// launchTask is async internally and does not block the UI — goal decomposition proceeds visibly in the background.
 	if req.ReconFirst != nil && *req.ReconFirst {
-		s.launchTaskReconFirst(t, req) // async; tự fallback launchTask nếu không recon được
+		s.launchTaskReconFirst(t, req) // async; falls back to launchTask if recon can't run
 	} else {
 		s.launchTask(t, req.Description+" "+req.Goal, req.SeedFirstIntent != nil && *req.SeedFirstIntent)
 	}
