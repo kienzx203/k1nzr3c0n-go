@@ -1459,6 +1459,10 @@ type createTaskReq struct {
 	CoverageEnabled      *bool    `json:"coverage_enabled,omitempty"`  // 资产覆盖度功能;省略/null=默认开(true)。false=关闭覆盖度计算/展示/自动累积范围+隐藏 add_task_scope/list_untested_assets。company 关联不受影响。
 	// InterceptRules 任务级资产拦截/允许规则(创建时录入,存 task_intercept_rules,不进全局表)。
 	InterceptRules []taskInterceptRuleReq `json:"intercept_rules,omitempty"`
+	// Recon-first: tự chạy recon workflow trước rồi mới pentest (xem server/recon_first.go)。
+	ReconFirst    *bool  `json:"recon_first,omitempty"`    // nil/false=luồng chuẩn
+	ReconTarget   string `json:"recon_target,omitempty"`   // rỗng=tách domain từ goal/description
+	ReconWorkflow string `json:"recon_workflow,omitempty"` // rỗng=01-full-recon-pipeline.yaml
 }
 
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
@@ -1532,7 +1536,11 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[task] 新建任务 #%s «%s» 目标: %s", t.ID, req.Description, req.Goal)
 	// 共享的建后流程(seed + 种子意图 + 后台目标分解 + engine.Run),与 spawn_task 复用同一段。
 	// launchTask 内部异步,不阻塞 UI —— 目标分解在后台可见地进行。
-	s.launchTask(t, req.Description+" "+req.Goal, req.SeedFirstIntent != nil && *req.SeedFirstIntent)
+	if req.ReconFirst != nil && *req.ReconFirst {
+		s.launchTaskReconFirst(t, req) // async; tự fallback launchTask nếu không recon được
+	} else {
+		s.launchTask(t, req.Description+" "+req.Goal, req.SeedFirstIntent != nil && *req.SeedFirstIntent)
+	}
 	writeJSON(w, 201, taskDTO(t, s.resolvedTaskStatus(t)))
 }
 
@@ -1739,7 +1747,12 @@ func (s *Server) seed(t *Task, text string) {
 // origin fact (RelDerivedFrom) so it still traces back to a fact node. Best-effort —
 // a failure just falls back to the normal planner-driven flow.
 func (s *Server) seedFirstIntent(t *Task) {
-	summary := fmt.Sprintf("完成任务目标：%s（任务：%s）", t.Goal, t.Description)
+	s.seedIntentText(t, fmt.Sprintf("完成任务目标：%s（任务：%s）", t.Goal, t.Description))
+}
+
+// seedIntentText writes ONE open seed intent with the given summary (used by
+// seedFirstIntent and by the recon-first launch to inject the recon brief).
+func (s *Server) seedIntentText(t *Task, summary string) {
 	id, err := t.Store.AddIntent(map[string]any{"summary": summary}, 8, nil, "seed")
 	if err != nil {
 		log.Printf("[seed] task %s: 下发种子意图失败: %v", t.ID, err)

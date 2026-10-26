@@ -245,6 +245,8 @@ export const api = {
     companyIds?: number[];
     timeoutSeconds?: number;
     seedFirstIntent?: boolean;
+    reconFirst?: boolean;
+    reconTarget?: string;
     planHeartbeatSeconds?: number;
     coverageEnabled?: boolean;
     interceptRules?: AssetInterceptRuleInput[];
@@ -259,6 +261,8 @@ export const api = {
       company_ids: input.companyIds ?? [],
       timeout_seconds: input.timeoutSeconds ?? 0,
       seed_first_intent: input.seedFirstIntent ?? false,
+      recon_first: input.reconFirst ?? false,
+      recon_target: input.reconTarget,
       plan_heartbeat_seconds: input.planHeartbeatSeconds ?? 0, // 0 is normalized by the backend to 600 seconds (10 minutes).
       coverage_enabled: input.coverageEnabled ?? true, // Enabled by default; false disables asset coverage.
       intercept_rules: input.interceptRules ?? [], // Task-specific asset interception rules.

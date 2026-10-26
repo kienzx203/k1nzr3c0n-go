@@ -3138,6 +3138,8 @@ function CreateTaskSheet({
   const [timeoutMin, setTimeoutMin] = React.useState(""); // Task timeout in minutes; blank/0 means unlimited.
   const [heartbeatMin, setHeartbeatMin] = React.useState("10"); // Planner heartbeat in minutes; default/minimum 10, matching the backend.
   const [seedFirstIntent, setSeedFirstIntent] = React.useState(false); // Seed intent lets Workers start before initial planning; off by default for standard plan-then-execute flow.
+  const [reconFirst, setReconFirst] = React.useState(false); // Recon-first: run a recon workflow before pentest (opt-in).
+  const [reconTarget, setReconTarget] = React.useState(""); // Optional explicit recon target; empty = derive domain from goal/description.
   const [coverageEnabled, setCoverageEnabled] = React.useState(true); // Coverage defaults on. Off disables calculation/display, scope accumulation, and scope tools; company links remain.
   const [interceptRules, setInterceptRules] = React.useState<AssetInterceptRuleInput[]>([]); // Task-specific asset interception rules, never written to the global table.
   // Before task creation, stage uploads in drafts/<draftId>/uploads/ and append returned absolute paths to description.
@@ -3204,6 +3206,8 @@ function CreateTaskSheet({
         companyIds: companyIDs,
         timeoutSeconds: timeoutSec,
         seedFirstIntent,
+        reconFirst,
+        reconTarget: reconTarget.trim() || undefined,
         planHeartbeatSeconds: heartbeatSec,
         coverageEnabled,
         interceptRules: interceptRules
@@ -3222,6 +3226,8 @@ function CreateTaskSheet({
       setTimeoutMin("");
       setHeartbeatMin("10");
       setSeedFirstIntent(false);
+      setReconFirst(false);
+      setReconTarget("");
       setCoverageEnabled(true);
       setInterceptRules([]);
       setUploadCount(0);
@@ -3420,6 +3426,28 @@ function CreateTaskSheet({
                     {swt("interface.m1054")}</label>
                   <p className="text-muted-foreground text-xs">
                     {swt("interface.m1055")}</p>
+                </div>
+                <div className="grid gap-2">
+                  <label htmlFor="recon-first" className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      id="recon-first"
+                      checked={reconFirst}
+                      onCheckedChange={(v) => setReconFirst(!!v)}
+                    />
+                    🔭 Recon-first — tự chạy workflow recon trước rồi mới pentest
+                  </label>
+                  <p className="text-muted-foreground text-xs">
+                    Chỉ áp dụng cho target đã đăng ký scope (Targets). Để trống ô dưới = tự tách domain từ mục tiêu.
+                  </p>
+                  {reconFirst && (
+                    <Input
+                      id="recon-target"
+                      className="w-full"
+                      placeholder="Target recon (vd example.com) — để trống = tự tách từ mô tả/mục tiêu"
+                      value={reconTarget}
+                      onChange={(e) => setReconTarget(e.target.value)}
+                    />
+                  )}
                 </div>
                 <div className="grid gap-2">
                   <label htmlFor="coverage-enabled" className="flex items-center gap-2 text-sm">
