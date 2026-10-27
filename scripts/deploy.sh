@@ -75,6 +75,7 @@ done
 step "Restart $SERVICE"
 systemctl stop "$SERVICE" 2>/dev/null || true
 cp k1nzr3c0n "$BASE/"
+systemctl daemon-reload 2>/dev/null || true   # pick up any edited unit file (else systemd runs the stale one)
 systemctl reset-failed "$SERVICE" 2>/dev/null || true
 systemctl start "$SERVICE"
 sleep 2
