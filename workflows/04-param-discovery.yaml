@@ -1,4 +1,4 @@
-name: 03-param-discovery
+name: 04-param-discovery
 description: 'Authenticated parameter discovery: collect URLs (fallparams/gau/katana) → extract existing params → brute-force (arjun/x8/ffuf) with session/token headers → report'
 vars:
   session_cookie: ''

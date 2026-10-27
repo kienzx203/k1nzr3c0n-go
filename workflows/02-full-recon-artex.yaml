@@ -1,4 +1,4 @@
-name: 01-full-recon-artex
+name: 02-full-recon-artex
 description: 'ARTEX recon-only pipeline (NO vuln scan): passive+active subdomain → ASN/IP recon → amass intel → org uncover → TLS SAN mining → DNS resolve → IP grouping → HTTP probe → CDN check → favicon hash pivot → vhost IP fuzz → IP/PTR pivot → URL crawl → JS analysis → takeover → cloud storage. Stops BEFORE nuclei/afrog — the ARTEX agent runs vuln testing itself.'
 # Cap on concurrent steps within a parallel level. The passive phase runs ~30
 # independent sources in one level; 8 at a time keeps RAM/CPU bounded on the

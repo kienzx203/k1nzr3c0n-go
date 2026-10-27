@@ -3458,9 +3458,10 @@ function CreateTaskSheet({
                         onChange={(e) => setReconWorkflow(e.target.value)}
                       >
                         <option value="all">All workflows (all)</option>
-                        <option value="01-full-recon-pipeline.yaml">01 — Full recon pipeline</option>
-                        <option value="02-js-secrets-recon.yaml">02 — JS & secrets</option>
-                        <option value="03-param-discovery.yaml">03 — Param discovery</option>
+                        <option value="01-full-recon-pipeline.yaml">01 — Full recon pipeline (+ vuln scan)</option>
+                        <option value="02-full-recon-artex.yaml">02 — Full recon (ARTEX, no vuln scan)</option>
+                        <option value="03-js-secrets-recon.yaml">03 — JS & secrets</option>
+                        <option value="04-param-discovery.yaml">04 — Param discovery</option>
                       </select>
                     </>
                   )}

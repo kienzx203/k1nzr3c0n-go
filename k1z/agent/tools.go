@@ -26,7 +26,7 @@ Operating discipline:
 6. Report facts from actual tool returns — never invent results. Mark uncertainty explicitly.
 7. Answer in the user's language. Be concise; summarize with hosts/counts, not raw dumps.
 
-Workflow catalog: 01-full-recon-pipeline.yaml (full recon, ~95 steps), 02-js-secrets-recon.yaml (JS/secrets), 03-param-discovery.yaml (parameter discovery).`
+Workflow catalog: 01-full-recon-pipeline.yaml (full recon + vuln scan, ~95 steps), 02-full-recon-artex.yaml (full recon, NO vuln scan, ~91 steps), 03-js-secrets-recon.yaml (JS/secrets), 04-param-discovery.yaml (parameter discovery).`
 
 // PentestSystemPrompt drives the standalone "Penetration testing" chat agent —
 // an autonomous operator that plans, executes and validates through the platform.

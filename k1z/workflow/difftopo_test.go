@@ -11,7 +11,7 @@ func TestDumpGoTopo(t *testing.T) {
 		t.Skip("set K1Z_DIFF=1")
 	}
 	out := map[string]any{}
-	for _, name := range []string{"01-full-recon-pipeline.yaml", "02-js-secrets-recon.yaml", "03-param-discovery.yaml"} {
+	for _, name := range []string{"01-full-recon-pipeline.yaml", "02-full-recon-artex.yaml", "03-js-secrets-recon.yaml", "04-param-discovery.yaml"} {
 		wf, err := Load("/mnt/c/Users/kin/Downloads/k1nzr3c0n-go/workflows/" + name)
 		if err != nil {
 			t.Fatal(err)

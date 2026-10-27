@@ -111,7 +111,7 @@ UI chia 3 nhóm ở sidebar: **Features**, **System**, **Workflow Runner**.
 Luồng chuẩn: **Targets → (chọn Workflow) → Runs → xem Run detail → Schedules/Inventory**.
 
 - **Targets** — đăng ký mục tiêu + phạm vi (scope). Mỗi target có `mode`: `bounty` / `vdp` / `oos`, và danh sách scope (`example.com` = mọi sub; `*.example.com` = 1 cấp). Scope theo nguyên tắc **deny-wins** (chặn thắng) + ghi `scope_audit`. Click 1 target để xem chi tiết: lịch sử run, findings, audit, asset mới.
-- **Workflows** — danh sách workflow YAML (nạp nóng, không cần restart). Click 1 workflow → mở **canvas editor** (kéo-thả DAG, React Flow) để xem/sửa bước. Nút **New workflow** tạo mới. 3 template có sẵn: full-recon (~95 bước), js-secrets (~20), param-discovery (~8).
+- **Workflows** — danh sách workflow YAML (nạp nóng, không cần restart). Click 1 workflow → mở **canvas editor** (kéo-thả DAG, React Flow) để xem/sửa bước. Nút **New workflow** tạo mới. 4 template có sẵn: 01 full-recon (+vuln scan, ~95 bước), 02 full-recon-artex (recon-only, ~91 bước), 03 js-secrets (~20), 04 param-discovery (~8).
 - **Runs** — khởi chạy & theo dõi. Tạo run mới (chọn workflow + target + vars). Click 1 run → **Run detail**: tab **Logs** (WebSocket live), **Findings**, **Screenshots**, **Files**, **Report**, kèm tiến độ từng bước. Có thể **Pause / Resume / Cancel**.
 - **Schedules** — recon liên tục theo cron. *+ New Schedule*: đặt Name, Target, Workflow, biểu thức cron 5 trường (có preset), var overrides, bật cảnh báo webhook khi có asset mới. Nút **Run now / Edit / Enable-Disable / Delete**.
 - **Inventory** — gom asset HTTP qua nhiều run, dedupe theo `host:port`.
