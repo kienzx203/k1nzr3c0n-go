@@ -59,12 +59,11 @@ func (s *Store) CreateCategory(name, color string) (*TaskCategory, error) {
 	if color == "" {
 		color = "#5b9bff"
 	}
-	res, err := s.db.Exec(`INSERT INTO task_categories (name, color, created_at) VALUES (?,?,?)
+	id, err := s.db.insertReturningID(`INSERT INTO task_categories (name, color, created_at) VALUES (?,?,?)
 		ON CONFLICT(name) DO UPDATE SET color=excluded.color`, name, color, SqlNow())
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	if id == 0 {
 		_ = s.db.QueryRow(`SELECT id FROM task_categories WHERE name=?`, name).Scan(&id)
 	}
@@ -117,12 +116,12 @@ func (s *Store) CreateTemplate(t *TaskTemplate) error {
 		t.MaxWorkers = 3
 	}
 	t.CreatedAt = NowUTC()
-	res, err := s.db.Exec(`INSERT INTO task_templates (name, goal, description, max_workers, created_at)
+	id, err := s.db.insertReturningID(`INSERT INTO task_templates (name, goal, description, max_workers, created_at)
 		VALUES (?,?,?,?,?)`, t.Name, t.Goal, t.Description, t.MaxWorkers, SqlTime(t.CreatedAt))
 	if err != nil {
 		return err
 	}
-	t.ID, _ = res.LastInsertId()
+	t.ID = id
 	return nil
 }
 

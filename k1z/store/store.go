@@ -740,7 +740,7 @@ func (s *Store) InsertFinding(f *Finding) error {
 	if f.Tags == "" {
 		f.Tags = "[]"
 	}
-	res, err := s.db.Exec(`INSERT INTO findings (run_id, kind, severity, host, notes, tags, ip, port,
+	id, err := s.db.insertReturningID(`INSERT INTO findings (run_id, kind, severity, host, notes, tags, ip, port,
 		status_code, protocol, name, template_id, url, title, tech, evidence, description, status,
 		screenshot, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		f.RunID, f.Kind, f.Severity, f.Host, f.Notes, f.Tags, f.IP, f.Port,
@@ -749,7 +749,7 @@ func (s *Store) InsertFinding(f *Finding) error {
 	if err != nil {
 		return err
 	}
-	f.ID, _ = res.LastInsertId()
+	f.ID = id
 	return nil
 }
 
@@ -1235,14 +1235,14 @@ func (s *Store) CreateSchedule(sc *Schedule) error {
 	if sc.VarsJSON == "" {
 		sc.VarsJSON = "{}"
 	}
-	res, err := s.db.Exec(`INSERT INTO schedules (name, workflow, target, cron_expr, vars_json,
+	id, err := s.db.insertReturningID(`INSERT INTO schedules (name, workflow, target, cron_expr, vars_json,
 		enabled, alert_new_assets, next_run_at, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
 		sc.Name, sc.Workflow, sc.Target, sc.CronExpr, sc.VarsJSON,
 		sc.Enabled, sc.AlertNewAssets, SqlTime(sc.NextRunAt), SqlTime(sc.CreatedAt))
 	if err != nil {
 		return err
 	}
-	sc.ID, _ = res.LastInsertId()
+	sc.ID = id
 	return nil
 }
 
@@ -1297,8 +1297,8 @@ func (s *Store) DeleteSchedule(id int64) error {
 // DueSchedules returns enabled schedules with next_run_at <= now.
 func (s *Store) DueSchedules(now time.Time) ([]*Schedule, error) {
 	rows, err := s.db.Query(`SELECT `+schedCols+` FROM schedules
-		WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?
-		ORDER BY next_run_at ASC`, SqlTime(now))
+		WHERE enabled = ? AND next_run_at IS NOT NULL AND next_run_at <= ?
+		ORDER BY next_run_at ASC`, true, SqlTime(now))
 	if err != nil {
 		return nil, err
 	}
@@ -1404,12 +1404,12 @@ func (s *Store) InsertNewAsset(n *NewAsset) error {
 	if n.FirstSeen.IsZero() {
 		n.FirstSeen = NowUTC()
 	}
-	res, err := s.db.Exec(`INSERT INTO new_assets (run_id, target, host, kind, first_seen)
+	id, err := s.db.insertReturningID(`INSERT INTO new_assets (run_id, target, host, kind, first_seen)
 		VALUES (?,?,?,?,?)`, n.RunID, n.Target, n.Host, n.Kind, SqlTime(n.FirstSeen))
 	if err != nil {
 		return err
 	}
-	n.ID, _ = res.LastInsertId()
+	n.ID = id
 	return nil
 }
 
@@ -1483,12 +1483,12 @@ func (s *Store) InsertScopeAudit(a *ScopeAudit) error {
 	if a.TS.IsZero() {
 		a.TS = NowUTC()
 	}
-	res, err := s.db.Exec(`INSERT INTO scope_audit (target, action, result, detail, ts) VALUES (?,?,?,?,?)`,
+	id, err := s.db.insertReturningID(`INSERT INTO scope_audit (target, action, result, detail, ts) VALUES (?,?,?,?,?)`,
 		a.Target, a.Action, a.Result, a.Detail, SqlTime(a.TS))
 	if err != nil {
 		return err
 	}
-	a.ID, _ = res.LastInsertId()
+	a.ID = id
 	return nil
 }
 

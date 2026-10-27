@@ -204,7 +204,7 @@ CREATE INDEX IF NOT EXISTS ix_llm_usage_conv ON llm_usage (conversation_id);
 func (s *Store) CreateLLMProfile(p *LLMProfile) error {
 	now := NowUTC()
 	p.CreatedAt, p.UpdatedAt = now, now
-	res, err := s.db.Exec(`INSERT INTO llm_profiles (name, base_url, api_key, model, temperature, created_at, updated_at)
+	id, err := s.db.insertReturningID(`INSERT INTO llm_profiles (name, base_url, api_key, model, temperature, created_at, updated_at)
 		VALUES (?,?,?,?,?,?,?)
 		ON CONFLICT(name) DO UPDATE SET
 		  base_url=excluded.base_url, api_key=excluded.api_key,
@@ -214,7 +214,7 @@ func (s *Store) CreateLLMProfile(p *LLMProfile) error {
 	if err != nil {
 		return err
 	}
-	if id, err := res.LastInsertId(); err == nil && id > 0 {
+	if id > 0 {
 		p.ID = id
 		return nil
 	}
@@ -281,12 +281,11 @@ func (s *Store) CreateConversation(title, agentKey string) (*Conversation, error
 	if agentKey == "" {
 		agentKey = "recon-agent"
 	}
-	res, err := s.db.Exec(`INSERT INTO conversations (title, agent_key, created_at, updated_at) VALUES (?,?,?,?)`,
+	id, err := s.db.insertReturningID(`INSERT INTO conversations (title, agent_key, created_at, updated_at) VALUES (?,?,?,?)`,
 		title, agentKey, SqlNow(), SqlNow())
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	return &Conversation{ID: id, Title: title, AgentKey: agentKey, CreatedAt: NowUTC(), UpdatedAt: NowUTC()}, nil
 }
 
@@ -374,12 +373,12 @@ func (s *Store) TouchConversation(id int64) {
 
 func (s *Store) InsertChatMessage(m *ChatMessage) error {
 	m.CreatedAt = NowUTC()
-	res, err := s.db.Exec(`INSERT INTO chat_messages (conversation_id, role, content, tool_calls, tool_call_id, created_at)
+	id, err := s.db.insertReturningID(`INSERT INTO chat_messages (conversation_id, role, content, tool_calls, tool_call_id, created_at)
 		VALUES (?,?,?,?,?,?)`, m.ConversationID, m.Role, m.Content, m.ToolCalls, m.ToolCallID, SqlTime(m.CreatedAt))
 	if err != nil {
 		return err
 	}
-	m.ID, _ = res.LastInsertId()
+	m.ID = id
 	s.TouchConversation(m.ConversationID)
 	return nil
 }
@@ -416,11 +415,10 @@ func (s *Store) UpsertCompany(name string, notes *string) (*Company, error) {
 			return &Company{ID: id, Name: name}, nil
 		}
 	}
-	res, err := s.db.Exec(`INSERT INTO companies (name, notes, created_at) VALUES (?,?,?)`, name, notes, SqlNow())
+	id, err := s.db.insertReturningID(`INSERT INTO companies (name, notes, created_at) VALUES (?,?,?)`, name, notes, SqlNow())
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	return &Company{ID: id, Name: name, Notes: notes, CreatedAt: NowUTC()}, nil
 }
 
@@ -476,12 +474,12 @@ func (s *Store) UpsertAsset(a *Asset) error {
 		return nil // dedupe
 	}
 	a.CreatedAt = NowUTC()
-	res, err := s.db.Exec(`INSERT INTO assets (company_id, type, value, meta, source, created_at) VALUES (?,?,?,?,?,?)`,
+	id, err := s.db.insertReturningID(`INSERT INTO assets (company_id, type, value, meta, source, created_at) VALUES (?,?,?,?,?,?)`,
 		a.CompanyID, a.Type, a.Value, a.Meta, a.Source, SqlTime(a.CreatedAt))
 	if err != nil {
 		return err
 	}
-	a.ID, _ = res.LastInsertId()
+	a.ID = id
 	return nil
 }
 
@@ -538,12 +536,12 @@ func (s *Store) DeleteAsset(id int64) error {
 
 func (s *Store) InsertTraffic(t *TrafficPair) error {
 	t.CreatedAt = NowUTC()
-	res, err := s.db.Exec(`INSERT INTO traffic (run_id, host, method, path, status_code, request, response, finding_id, created_at)
+	id, err := s.db.insertReturningID(`INSERT INTO traffic (run_id, host, method, path, status_code, request, response, finding_id, created_at)
 		VALUES (?,?,?,?,?,?,?,?,?)`, t.RunID, t.Host, t.Method, t.Path, t.StatusCode, t.Request, t.Response, t.FindingID, SqlTime(t.CreatedAt))
 	if err != nil {
 		return err
 	}
-	t.ID, _ = res.LastInsertId()
+	t.ID = id
 	return nil
 }
 
@@ -658,8 +656,8 @@ func (s *Store) CreateTrafficRule(pattern, action string) error {
 	default:
 		action = "block"
 	}
-	_, err := s.db.Exec(`INSERT INTO traffic_rules (pattern, action, enabled, created_at) VALUES (?,?,1,?)`,
-		pattern, action, SqlNow())
+	_, err := s.db.Exec(`INSERT INTO traffic_rules (pattern, action, enabled, created_at) VALUES (?,?,?,?)`,
+		pattern, action, true, SqlNow())
 	return err
 }
 
@@ -693,17 +691,16 @@ type MCPServer struct {
 
 func (s *Store) CreateMCP(m MCPServer) (int64, error) {
 	args, _ := json.Marshal(m.Args)
-	res, err := s.db.Exec(`INSERT INTO mcp_servers (name, command, args, enabled, created_at)
+	id, err := s.db.insertReturningID(`INSERT INTO mcp_servers (name, command, args, enabled, created_at)
 		VALUES (?,?,?,?,?)
 		ON CONFLICT(name) DO UPDATE SET command=excluded.command, args=excluded.args, enabled=excluded.enabled`,
 		m.Name, m.Command, string(args), m.Enabled, SqlNow())
 	if err != nil {
 		return 0, err
 	}
-	if id, err := res.LastInsertId(); err == nil && id > 0 {
+	if id > 0 {
 		return id, nil
 	}
-	var id int64
 	_ = s.db.QueryRow(`SELECT id FROM mcp_servers WHERE name=?`, m.Name).Scan(&id)
 	return id, nil
 }
@@ -743,12 +740,11 @@ type PendingApproval struct {
 }
 
 func (s *Store) InsertPendingApproval(method, host, path, dump string) (int64, error) {
-	res, err := s.db.Exec(`INSERT INTO pending_approvals (method, host, path, dump, created_at) VALUES (?,?,?,?,?)`,
+	id, err := s.db.insertReturningID(`INSERT INTO pending_approvals (method, host, path, dump, created_at) VALUES (?,?,?,?,?)`,
 		method, host, path, dump, SqlNow())
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
 	return id, nil
 }
 
@@ -836,8 +832,8 @@ func (s *Store) CreateAgentRule(toolPat, inputPat, action string) error {
 	default:
 		action = "ask"
 	}
-	_, err := s.db.Exec(`INSERT INTO agent_rules (tool_pattern, input_pattern, action, enabled, created_at) VALUES (?,?,?,1,?)`,
-		toolPat, inputPat, action, SqlNow())
+	_, err := s.db.Exec(`INSERT INTO agent_rules (tool_pattern, input_pattern, action, enabled, created_at) VALUES (?,?,?,?,?)`,
+		toolPat, inputPat, action, true, SqlNow())
 	return err
 }
 

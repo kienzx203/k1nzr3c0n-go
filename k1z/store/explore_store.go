@@ -267,12 +267,11 @@ type FindingRetest struct {
 
 func (s *Store) CreateExploration(goal, desc string) (*Exploration, error) {
 	now := NowUTC()
-	res, err := s.db.Exec(`INSERT INTO explorations (description, goal, status, created_at, updated_at)
+	id, err := s.db.insertReturningID(`INSERT INTO explorations (description, goal, status, created_at, updated_at)
 		VALUES (?,?,?,?,?)`, desc, goal, "open", SqlTime(now), SqlTime(now))
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	return &Exploration{ID: id, Description: desc, Goal: goal, Status: "open", CreatedAt: now, UpdatedAt: now}, nil
 }
 
@@ -306,7 +305,7 @@ func (s *Store) CreateNode(n *ExplorationNode) error {
 	}
 	now := NowUTC()
 	n.CreatedAt, n.UpdatedAt = now, now
-	res, err := s.db.Exec(`INSERT INTO exploration_nodes
+	id, err := s.db.insertReturningID(`INSERT INTO exploration_nodes
 		(exploration_id, kind, payload, priority, state, origin, owner, blocked_reason, delete_reason, created_at, updated_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 		n.ExplorationID, n.Kind, n.Payload, n.Priority, n.State, n.Origin, n.Owner,
@@ -314,7 +313,7 @@ func (s *Store) CreateNode(n *ExplorationNode) error {
 	if err != nil {
 		return err
 	}
-	n.ID, _ = res.LastInsertId()
+	n.ID = id
 	return nil
 }
 
@@ -434,7 +433,7 @@ func (s *Store) AddEdge(explorationID, src, dst int64, rel string) error {
 	if src == dst {
 		return errors.New("edge cannot be self-referential")
 	}
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO exploration_edges (exploration_id, src_id, dst_id, rel, created_at)
+	_, err := s.db.insertIgnore(`INSERT OR IGNORE INTO exploration_edges (exploration_id, src_id, dst_id, rel, created_at)
 		VALUES (?,?,?,?,?)`, explorationID, src, dst, rel, SqlNow())
 	return err
 }
@@ -461,7 +460,7 @@ func (s *Store) ListEdges(explorationID int64) ([]ExplorationEdge, error) {
 // ── anchors (connect exploration ↔ asset graph) ──────────────────────────────
 
 func (s *Store) AddAnchor(nodeID, assetID int64) error {
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO exploration_anchors (node_id, asset_id) VALUES (?,?)`, nodeID, assetID)
+	_, err := s.db.insertIgnore(`INSERT OR IGNORE INTO exploration_anchors (node_id, asset_id) VALUES (?,?)`, nodeID, assetID)
 	return err
 }
 
@@ -510,7 +509,7 @@ func (s *Store) AppendActivity(a *Activity) error {
 		a.Metadata = "{}"
 	}
 	a.CreatedAt = NowUTC()
-	res, err := s.db.Exec(`INSERT INTO activity
+	id, err := s.db.insertReturningID(`INSERT INTO activity
 		(exploration_id, node_id, worker, kind, tool, tool_use_id, is_error, summary, detail, metadata,
 		 input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -520,7 +519,7 @@ func (s *Store) AppendActivity(a *Activity) error {
 	if err != nil {
 		return err
 	}
-	a.ID, _ = res.LastInsertId()
+	a.ID = id
 	return nil
 }
 
@@ -610,16 +609,15 @@ const taskCols = `id, name, description, goal, exploration_id, status, paused, q
 
 func scanTask(row interface{ Scan(...any) error }) (*Task, error) {
 	var t Task
-	var queued, llm, active, company sql.NullInt64
+	var llm, active, company sql.NullInt64
 	var qmode, pref sql.NullString
 	var qat, pin, frun, dl, arch, del, comp, c, u any
 	if err := row.Scan(&t.ID, &t.Name, &t.Description, &t.Goal, &t.ExplorationID, &t.Status,
-		&t.Paused, &queued, &qat, &qmode, &llm, &active, &company, &pref, &t.TimeoutSeconds,
+		&t.Paused, &t.Queued, &qat, &qmode, &llm, &active, &company, &pref, &t.TimeoutSeconds,
 		&t.PlanHeartbeatSeconds, &t.CoverageEnabled, &t.MaxWorkers, &pin, &frun, &dl, &arch, &del,
 		&comp, &c, &u); err != nil {
 		return nil, err
 	}
-	t.Queued = queued.Int64 != 0
 	t.LLMProfileID, t.ActiveLLMProfileID, t.CompanyID = llm.Int64, active.Int64, company.Int64
 	t.QueueMode, t.ParentRef = qmode.String, pref.String
 	t.QueuedAt, t.PinnedAt, t.FirstRunAt = parseDBTime(qat), parseDBTime(pin), parseDBTime(frun)
@@ -649,7 +647,7 @@ func (s *Store) CreateTask(t *Task) error {
 	if t.Status == "" {
 		t.Status = "created"
 	}
-	res, err := s.db.Exec(`INSERT INTO tasks
+	id, err := s.db.insertReturningID(`INSERT INTO tasks
 		(name, description, goal, exploration_id, status, paused, queued, queue_mode, llm_profile_id,
 		 active_llm_profile_id, company_id, parent_ref, timeout_seconds, plan_heartbeat_seconds,
 		 coverage_enabled, max_workers, created_at, updated_at)
@@ -660,7 +658,7 @@ func (s *Store) CreateTask(t *Task) error {
 	if err != nil {
 		return err
 	}
-	t.ID, _ = res.LastInsertId()
+	t.ID = id
 	return nil
 }
 
@@ -741,7 +739,7 @@ func (s *Store) CreateRetest(r *FindingRetest) error {
 	if r.Status == "" {
 		r.Status = "running"
 	}
-	res, err := s.db.Exec(`INSERT INTO finding_retests
+	id, err := s.db.insertReturningID(`INSERT INTO finding_retests
 		(finding_id, task_id, status, conclusion, fix_version, conditions, notes, evidence, session_ref, created_at, updated_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 		r.FindingID, nullZero(r.TaskID), r.Status, r.Conclusion, r.FixVersion, r.Conditions,
@@ -749,7 +747,7 @@ func (s *Store) CreateRetest(r *FindingRetest) error {
 	if err != nil {
 		return err
 	}
-	r.ID, _ = res.LastInsertId()
+	r.ID = id
 	return nil
 }
 

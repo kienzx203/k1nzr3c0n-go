@@ -40,6 +40,23 @@ func TestTranslateMigrationAddColumnIfNotExists(t *testing.T) {
 	}
 }
 
+func TestPgInsertIgnore(t *testing.T) {
+	// DDL seed form, with trailing semicolon: ON CONFLICT goes before the ;
+	got := pgInsertIgnore("INSERT OR IGNORE INTO notify_settings (id) VALUES (1);")
+	if got != "INSERT INTO notify_settings (id) VALUES (1) ON CONFLICT DO NOTHING;" {
+		t.Errorf("ddl form = %q", got)
+	}
+	// runtime form, no semicolon: ON CONFLICT appended at end
+	got = pgInsertIgnore("INSERT OR IGNORE INTO anchors (a, b) VALUES (?,?)")
+	if got != "INSERT INTO anchors (a, b) VALUES (?,?) ON CONFLICT DO NOTHING" {
+		t.Errorf("runtime form = %q", got)
+	}
+	// inside a full schema translate, the blob form is converted too
+	if out := translateSchema("INSERT OR IGNORE INTO t (id) VALUES (1);"); !strings.Contains(out, "ON CONFLICT DO NOTHING") {
+		t.Errorf("translateSchema did not convert INSERT OR IGNORE: %q", out)
+	}
+}
+
 func TestRebindPostgres(t *testing.T) {
 	d := dialectPostgres
 	if got := d.rebind("SELECT * FROM t WHERE a=? AND b=?"); got != "SELECT * FROM t WHERE a=$1 AND b=$2" {

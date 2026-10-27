@@ -45,9 +45,24 @@ func translateSchema(ddl string) string {
 			ln = strings.ReplaceAll(ln, "DEFAULT 0", "DEFAULT FALSE")
 			ln = strings.ReplaceAll(ln, "DEFAULT 1", "DEFAULT TRUE")
 		}
+		if strings.Contains(ln, "INSERT OR IGNORE") {
+			ln = pgInsertIgnore(ln)
+		}
 		lines[i] = ln
 	}
 	return strings.Join(lines, "\n")
+}
+
+// pgInsertIgnore converts a single SQLite `INSERT OR IGNORE INTO …` statement to
+// the PostgreSQL `INSERT INTO … ON CONFLICT DO NOTHING` form. A bare ON CONFLICT
+// (no target) ignores a conflict on any unique/primary-key constraint, which
+// matches INSERT OR IGNORE's semantics. The clause goes before a trailing `;`.
+func pgInsertIgnore(stmt string) string {
+	stmt = strings.Replace(stmt, "INSERT OR IGNORE", "INSERT", 1)
+	if i := strings.LastIndex(stmt, ";"); i >= 0 {
+		return stmt[:i] + " ON CONFLICT DO NOTHING" + stmt[i:]
+	}
+	return stmt + " ON CONFLICT DO NOTHING"
 }
 
 // translateMigration rewrites a single idempotent ALTER statement for PostgreSQL:

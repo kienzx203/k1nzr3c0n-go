@@ -97,6 +97,16 @@ func (x *xdb) QueryRow(query string, args ...any) *sql.Row {
 	return x.DB.QueryRow(x.dia.rebind(query), args...)
 }
 
+// insertIgnore runs an `INSERT OR IGNORE …` the caller wrote in SQLite form. On
+// SQLite it runs verbatim; on PostgreSQL it is rewritten to `INSERT … ON CONFLICT
+// DO NOTHING`. The statement must be a plain INSERT with no trailing clause.
+func (x *xdb) insertIgnore(query string, args ...any) (sql.Result, error) {
+	if x.dia == dialectPostgres {
+		return x.DB.Exec(x.dia.rebind(pgInsertIgnore(query)), args...)
+	}
+	return x.DB.Exec(query, args...)
+}
+
 // insertReturningID runs an INSERT and returns the new auto-increment id in a
 // dialect-correct way: LastInsertId() on SQLite, `RETURNING id` on PostgreSQL
 // (where the pgx driver cannot report LastInsertId). The caller passes the INSERT

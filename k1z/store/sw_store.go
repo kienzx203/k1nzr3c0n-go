@@ -77,7 +77,7 @@ func (s *Store) SeedAgentConfigs() {
 		{"pentest", "Penetration testing", "assistant", "Independent penetration-testing agent: handles reconnaissance, attack-surface discovery, exploitation, verification, and wrap-up with its own planning, execution, and adversarial validation.", 24},
 	}
 	for _, d := range defaults {
-		_, _ = s.db.Exec(`INSERT OR IGNORE INTO agent_configs (role, name, kind, description, max_steps, enabled, created_at, updated_at)
+		_, _ = s.db.insertIgnore(`INSERT OR IGNORE INTO agent_configs (role, name, kind, description, max_steps, enabled, created_at, updated_at)
 			VALUES (?,?,?,?,?,?,?,?)`, d.role, d.name, d.kind, d.desc, d.steps, true, SqlNow(), SqlNow())
 		// keep built-in name/description fresh without clobbering user edits to prompt/llm
 		_, _ = s.db.Exec(`UPDATE agent_configs SET name=?, kind=?, description=? WHERE role=? AND (description='' OR description IS NULL)`,
@@ -87,7 +87,7 @@ func (s *Store) SeedAgentConfigs() {
 
 // ListChatAgents returns the selectable chat assistant agents.
 func (s *Store) ListChatAgents() ([]AgentConfig, error) {
-	rows, err := s.db.Query(`SELECT ` + agentCfgCols + `, description, kind FROM agent_configs WHERE kind='assistant' AND enabled=1 ORDER BY role`)
+	rows, err := s.db.Query(`SELECT `+agentCfgCols+`, description, kind FROM agent_configs WHERE kind='assistant' AND enabled = ? ORDER BY role`, true)
 	if err != nil {
 		return nil, err
 	}
@@ -174,12 +174,8 @@ type SideQuestion struct {
 }
 
 func (s *Store) CreateSideQuestion(explID, nodeID int64, worker, question string) (int64, error) {
-	res, err := s.db.Exec(`INSERT INTO side_questions (exploration_id, node_id, worker, question, status, created_at)
+	return s.db.insertReturningID(`INSERT INTO side_questions (exploration_id, node_id, worker, question, status, created_at)
 		VALUES (?,?,?,?,?,?)`, explID, nullZero(nodeID), worker, question, "pending", SqlNow())
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
 }
 
 func (s *Store) AnswerSideQuestion(id int64, answer string) error {
