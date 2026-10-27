@@ -938,6 +938,32 @@ steps:
     printf 'columbus subs: %s\n' "$(wc -l < {workspace}/p_columbus.txt)"
   outputs:
     file: '{workspace}/p_columbus.txt'
+- id: p_fofa
+  name: passive — FOFA API direct (full host set; bypasses subfinder's fofa limits/silent errors)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 4m
+  run: |
+    touch {workspace}/p_fofa.txt
+    # FOFA_KEY is set from /keys UI; may be "email:key" (subfinder format) or just the key.
+    # FOFA's /api/v1/search/all accepts key-only, so strip any "email:" prefix.
+    FK="${FOFA_KEY:-}"
+    FKEY="${FK##*:}"
+    test -n "$FKEY" || { printf '[fofa] no FOFA_KEY — skipping\n'; exit 0; }
+    Q=$(printf 'domain="{target}"' | base64 -w0)
+    curl -s --max-time 120 "https://fofa.info/api/v1/search/all?key=${FKEY}&qbase64=${Q}&size=10000&fields=host" 2>/dev/null \
+      | jq -r '.results[]? | if type=="array" then .[0] else . end' 2>/dev/null \
+      | sed 's|https\?://||; s|/.*||; s|:[0-9]*$||; s/^\*\.//' \
+      | tr '[:upper:]' '[:lower:]' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_fofa.txt || true
+    touch {workspace}/p_fofa.txt
+    printf 'FOFA (direct API) subs: %s\n' "$(wc -l < {workspace}/p_fofa.txt)"
+  outputs:
+    file: '{workspace}/p_fofa.txt'
 - id: merge_passive
   name: merge all passive sources → deduplicate + scope-filter
   depends_on:
@@ -976,6 +1002,7 @@ steps:
   - p_crtsh_psql
   - p_github_subs
   - p_columbus
+  - p_fofa
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -1016,6 +1043,7 @@ steps:
         {workspace}/p_crtsh_psql.txt \
         {workspace}/p_github_subs.txt \
         {workspace}/p_columbus.txt \
+        {workspace}/p_fofa.txt \
         2>/dev/null || true
       test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
