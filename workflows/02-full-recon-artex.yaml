@@ -1204,7 +1204,7 @@ steps:
   fanout_concurrency: 1
   fanout_timeout_default: 20m
   fanout:
-  - id: dnsgen_resolve
+  - id: dnsgen_gen
     shell: true
     skip_if_exists: true
     timeout: 15m
@@ -1220,7 +1220,7 @@ steps:
     outputs:
       file: '{workspace}/perm_dnsgen.txt'
     optional: true
-  - id: alterx_resolve
+  - id: alterx_gen
     shell: true
     skip_if_exists: true
     timeout: 15m
@@ -1235,7 +1235,7 @@ steps:
     outputs:
       file: '{workspace}/perm_alterx.txt'
     optional: true
-  - id: gotator_resolve
+  - id: gotator_gen
     shell: true
     skip_if_exists: true
     timeout: 20m
