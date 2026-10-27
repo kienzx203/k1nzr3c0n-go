@@ -964,6 +964,28 @@ steps:
     printf 'FOFA (direct API) subs: %s\n' "$(wc -l < {workspace}/p_fofa.txt)"
   outputs:
     file: '{workspace}/p_fofa.txt'
+- id: p_fullhunt
+  name: passive — FullHunt API direct (env FULLHUNT_API_KEY; dropped from subfinder build)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_fullhunt.txt
+    FH="${FULLHUNT_API_KEY:-}"
+    test -n "$FH" || { printf '[fullhunt] no FULLHUNT_API_KEY — skipping\n'; exit 0; }
+    curl -s --max-time 60 -H "X-API-KEY: $FH" \
+      "https://fullhunt.io/api/v1/domain/{target}/subdomains" 2>/dev/null \
+      | jq -r '(.hosts // .subdomains // [])[]? // empty' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_fullhunt.txt || true
+    touch {workspace}/p_fullhunt.txt
+    printf 'FullHunt subs: %s\n' "$(wc -l < {workspace}/p_fullhunt.txt)"
+  outputs:
+    file: '{workspace}/p_fullhunt.txt'
 - id: merge_passive
   name: merge all passive sources → deduplicate + scope-filter
   depends_on:
@@ -1003,6 +1025,7 @@ steps:
   - p_github_subs
   - p_columbus
   - p_fofa
+  - p_fullhunt
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -1044,6 +1067,7 @@ steps:
         {workspace}/p_github_subs.txt \
         {workspace}/p_columbus.txt \
         {workspace}/p_fofa.txt \
+        {workspace}/p_fullhunt.txt \
         2>/dev/null || true
       test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
