@@ -917,6 +917,27 @@ steps:
     printf 'github-subdomains subs: %s\n' "$(wc -l < {workspace}/p_github_subs.txt)"
   outputs:
     file: '{workspace}/p_github_subs.txt'
+- id: p_columbus
+  name: passive — columbus.elmasy.com (CT-based, keyless, fast, unique dataset)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    # columbus returns subdomain PREFIXES (array of labels) — append the root.
+    curl -s --max-time 60 --retry 2 -H 'accept: text/plain' \
+      "https://columbus.elmasy.com/api/lookup/{target}" 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' \
+      | sed 's/\.$//' \
+      | awk 'NF{ if ($0 ~ /{target}$/) print $0; else print $0".{target}" }' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_columbus.txt || true
+    touch {workspace}/p_columbus.txt
+    printf 'columbus subs: %s\n' "$(wc -l < {workspace}/p_columbus.txt)"
+  outputs:
+    file: '{workspace}/p_columbus.txt'
 - id: merge_passive
   name: merge all passive sources → deduplicate + scope-filter
   depends_on:
@@ -954,6 +975,7 @@ steps:
   - p_subdomaincenter
   - p_crtsh_psql
   - p_github_subs
+  - p_columbus
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -993,6 +1015,7 @@ steps:
         {workspace}/p_subdomaincenter.txt \
         {workspace}/p_crtsh_psql.txt \
         {workspace}/p_github_subs.txt \
+        {workspace}/p_columbus.txt \
         2>/dev/null || true
       test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
