@@ -13,7 +13,7 @@ vars:
   run_tlsx: 'true'
   run_portscan: 'true'
   run_asn_portscan: 'true'
-  run_deep_portscan: 'true'
+  run_deep_portscan: 'false'   # ARTEX lean template: skip rustscan full-range + nmap (4h tail) — agent does deep scan itself if needed
   run_screenshot: 'true'
   # SCOPE-SENSITIVE (default OFF): also scan SecurityTrails pivot domains —
   # OTHER orgs' root domains sharing NS/MX with the target. Enable ONLY when
