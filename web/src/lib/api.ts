@@ -262,7 +262,7 @@ export const api = {
       company_ids: input.companyIds ?? [],
       timeout_seconds: input.timeoutSeconds ?? 0,
       seed_first_intent: input.seedFirstIntent ?? false,
-      recon_first: input.reconFirst ?? false,
+      recon_first: input.reconFirst ?? true,
       recon_target: input.reconTarget,
       recon_workflow: input.reconWorkflow,
       plan_heartbeat_seconds: input.planHeartbeatSeconds ?? 0, // 0 is normalized by the backend to 600 seconds (10 minutes).

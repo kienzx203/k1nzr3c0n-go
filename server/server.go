@@ -1536,8 +1536,12 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[task] created task #%s «%s» goal: %s", t.ID, req.Description, req.Goal)
 	// Shared post-creation flow (seed + seed intent + background goal decomposition + engine.Run), reused by spawn_task.
 	// launchTask is async internally and does not block the UI — goal decomposition proceeds visibly in the background.
-	if req.ReconFirst != nil && *req.ReconFirst {
-		s.launchTaskReconFirst(t, req) // async; falls back to launchTask if recon can't run
+	// Recon-first is the DEFAULT: run the full recon workflow to completion and
+	// seed its brief before the agent starts, so a task always begins with
+	// complete recon. Opt out by sending recon_first:false explicitly. It falls
+	// back to the standard launch if recon can't run (no target, out of scope…).
+	if req.ReconFirst == nil || *req.ReconFirst {
+		s.launchTaskReconFirst(t, req)
 	} else {
 		s.launchTask(t, req.Description+" "+req.Goal, req.SeedFirstIntent != nil && *req.SeedFirstIntent)
 	}

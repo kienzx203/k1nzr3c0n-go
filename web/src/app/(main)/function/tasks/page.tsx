@@ -3138,7 +3138,7 @@ function CreateTaskSheet({
   const [timeoutMin, setTimeoutMin] = React.useState(""); // Task timeout in minutes; blank/0 means unlimited.
   const [heartbeatMin, setHeartbeatMin] = React.useState("10"); // Planner heartbeat in minutes; default/minimum 10, matching the backend.
   const [seedFirstIntent, setSeedFirstIntent] = React.useState(false); // Seed intent lets Workers start before initial planning; off by default for standard plan-then-execute flow.
-  const [reconFirst, setReconFirst] = React.useState(false); // Recon-first: run a recon workflow before pentest (opt-in).
+  const [reconFirst, setReconFirst] = React.useState(true); // Recon-first: run a recon workflow before pentest (default ON; untick to opt out).
   const [reconTarget, setReconTarget] = React.useState(""); // Optional explicit recon target; empty = derive domain from goal/description.
   const [reconWorkflow, setReconWorkflow] = React.useState("all"); // Which recon workflow(s) to run first: "all" = every workflow.
   const [coverageEnabled, setCoverageEnabled] = React.useState(true); // Coverage defaults on. Off disables calculation/display, scope accumulation, and scope tools; company links remain.
