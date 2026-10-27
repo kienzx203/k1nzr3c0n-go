@@ -347,35 +347,43 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) init() error {
-	if _, err := s.db.Exec(schema); err != nil {
+	// On PostgreSQL the k1z tables live in their own schema (set as search_path
+	// on every connection), so they never collide with the ARTEX half's tables
+	// in the same database. Create it before any table.
+	if s.db.dia == dialectPostgres {
+		if _, err := s.db.Exec("CREATE SCHEMA IF NOT EXISTS " + pgSchemaName); err != nil {
+			return fmt.Errorf("create schema %q: %w", pgSchemaName, err)
+		}
+	}
+	if _, err := s.db.Exec(s.ddl(schema)); err != nil {
 		return fmt.Errorf("create schema: %w", err)
 	}
 	for _, q := range migrations {
-		_, _ = s.db.Exec(q) // ignore "duplicate column" errors
+		_, _ = s.db.Exec(s.migration(q)) // ignore "duplicate column" errors
 	}
-	if _, err := s.db.Exec(agentSchema); err != nil {
+	if _, err := s.db.Exec(s.ddl(agentSchema)); err != nil {
 		return fmt.Errorf("agent schema: %w", err)
 	}
-	if _, err := s.db.Exec(exploreSchema); err != nil {
+	if _, err := s.db.Exec(s.ddl(exploreSchema)); err != nil {
 		return fmt.Errorf("exploration schema: %w", err)
 	}
-	if _, err := s.db.Exec(swSchema); err != nil {
+	if _, err := s.db.Exec(s.ddl(swSchema)); err != nil {
 		return fmt.Errorf("scopeweaver schema: %w", err)
 	}
-	if _, err := s.db.Exec(sw2Schema); err != nil {
+	if _, err := s.db.Exec(s.ddl(sw2Schema)); err != nil {
 		return fmt.Errorf("scopeweaver2 schema: %w", err)
 	}
-	if _, err := s.db.Exec(skillSchema); err != nil {
+	if _, err := s.db.Exec(s.ddl(skillSchema)); err != nil {
 		return fmt.Errorf("skill schema: %w", err)
 	}
-	if _, err := s.db.Exec(customToolSchema); err != nil {
+	if _, err := s.db.Exec(s.ddl(customToolSchema)); err != nil {
 		return fmt.Errorf("custom tool schema: %w", err)
 	}
 	// post-table migrations (tasks already exists by now)
 	for _, q := range []string{
 		"ALTER TABLE tasks ADD COLUMN category_id INTEGER",
 	} {
-		_, _ = s.db.Exec(q)
+		_, _ = s.db.Exec(s.migration(q))
 	}
 	return nil
 }

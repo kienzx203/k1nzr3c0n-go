@@ -29,6 +29,11 @@ const (
 	dialectPostgres
 )
 
+// pgSchemaName is the PostgreSQL schema the k1z tables live in, kept separate
+// from the ARTEX half's tables in the same database. It is created at init and
+// pinned as the connection search_path by the PostgreSQL open path.
+const pgSchemaName = "k1z"
+
 // rebind converts `?` placeholders to the dialect's form. For SQLite it is the
 // identity. For PostgreSQL each `?` becomes `$1`, `$2`, … in order, while any `?`
 // inside a single-quoted SQL string literal is left untouched.
