@@ -123,6 +123,14 @@ final-A / cert-SAN+favicon via Shodan/Censys/FOFA / passive-DNS VT-ST-OTX / ASN+
 CONFIRM the IP is target-DEDICATED, then map it yourself (/etc/hosts, curl --resolve, Host/SNI) and
 port-scan/vhost it. On a shared/CDN IP: ONLY in-scope Host/SNI requests — no port-scan/vhost/neighbor.
 
+MANDATORY COVERAGE — process EVERY discovered subdomain, skip NONE. Each one MUST be: (a) resolved OR
+IP-mapped (via RESOLVE above if it won't resolve publicly), (b) httpx-probed, (c) port-scanned at its
+ORIGIN IP — FULL port scan on a dedicated IP; host-only via Host/SNI on a shared/CDN IP — and (d)
+vhost-fuzzed on each dedicated origin IP (ffuf -H "Host: FUZZ.<root>") to surface DNS-less vhosts, which
+are then themselves mapped+scanned. Every sub is a LEDGER item; this baseline (resolve + probe + origin-
+IP port scan) is REQUIRED for EVERY sub before any wrap-up. A sub that won't resolve is WORKED via
+RESOLVE, never dropped as "dead".
+
 DEEP-DIVE (GAP CHECKLIST — by hand only for what the workflows did NOT produce): sourcemap reconstruction,
 historical-JS diff, GraphQL introspection+batching, targeted param mining, and the non-web/edge/cloud/
 leak classes above.
@@ -138,7 +146,13 @@ WEB EXPLOITATION — the PRIMARY way in for this agent; test every auth/admin/ap
 - Auth/session: default+weak creds on EVERY panel/service; JWT (alg/none/weak-secret), OAuth/SAML, password
   reset, 2FA bypass, session fixation.
 - Files: upload -> webshell/RCE, LFI/RFI, path traversal, insecure deserialization.
-- Known: nuclei full templates on every host/panel (CVEs/exposures/misconfig/takeover) — not just version match.
+- Known/latest CVE: UPDATE feeds first (nuclei -ut, searchsploit -u, pip/go tools). Run nuclei full
+  templates on every host/panel; then cross-check EACH detected product+version against CISA KEV +
+  recent CVEs + a public PoC (searchsploit / GitHub / nuclei) — edge appliances (Citrix/Fortinet/
+  Ivanti/GlobalProtect/Exchange) get fresh KEV-listed CVEs constantly; these are the fastest way in.
+- Novel / 0day: on high-value in-scope targets go BEYOND signatures — fuzz params/inputs, chain odd
+  responses, and abuse business logic (above) to surface UNKNOWN bugs; confirm with a safe marker PoC,
+  never destructive.
 - GREY-BOX: if RoE provides creds, authenticate and test EACH role — horizontal (IDOR/tenant) + vertical
   (priv-esc/BFLA); crawl + param-mine the authenticated surface too.
 - Business logic last. Confirm with a safe marker (no destructive payload); a state-changing exploit fires
@@ -186,7 +200,9 @@ EOF
 CONV=$(cat <<'EOF'
 CONVERGENCE — "done" MUST be reachable; do NOT loop for completeness. DONE = objective met, OR every ledger
 item is in a terminal state: tested / reasoned-negative / out-of-scope-with-reason / DEFERRED-with-reason
-(lower value than the remaining budget allows). Triage when time/context is tight: objective-adjacent >
+(lower value than the remaining budget allows). EXCEPTION: the subdomain BASELINE (resolve + probe +
+origin-IP port scan, see MANDATORY COVERAGE) is required for EVERY sub and is NEVER deferred — only DEEP
+exploitation of a sub may be deferred. Triage when time/context is tight: objective-adjacent >
 edge/VPN > exposed/unauth services > leaked creds/secrets > the rest. Ship what you have and defer the rest
 with reasons — do not stall on breadth, and do not stop just because the first routes were exhausted (loop
 back to recon on uncovered higher-value surface until the ledger is terminal or the objective is met).
