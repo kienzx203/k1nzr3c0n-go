@@ -158,6 +158,33 @@ func reconTools() []actool.CoreTool {
 				_ = json.Unmarshal(in, &p)
 				return "/api/v1/runs/" + url.PathEscape(p.RunID)
 			}),
+		reconReadTool("run_log",
+			"Read a run's LIVE log lines (real-time step output) while it runs. Use this to follow a workflow you launched non-blocking, concurrently with your other recon. Pass run_id; to TAIL only new lines, pass the previous response's `total` as `offset`. Returns {total, offset, limit, items:[line,...]}. Pair with run_status; read recon_findings/recon_assets for structured results.",
+			rtObj(map[string]any{
+				"run_id": rtStr("the run id returned by run_workflow"),
+				"offset": rtInt("line offset to start from; to tail only new lines, pass the previous response's total (default 0)"),
+				"limit":  rtInt("max lines to return (default 500, max 2000)"),
+			}, "run_id"),
+			func(in json.RawMessage) string {
+				var p struct {
+					RunID  string `json:"run_id"`
+					Offset int    `json:"offset"`
+					Limit  int    `json:"limit"`
+				}
+				_ = json.Unmarshal(in, &p)
+				q := url.Values{}
+				if p.Offset > 0 {
+					q.Set("offset", fmt.Sprint(p.Offset))
+				}
+				if p.Limit > 0 {
+					q.Set("limit", fmt.Sprint(p.Limit))
+				}
+				u := "/api/v1/runs/" + url.PathEscape(p.RunID) + "/logs"
+				if e := q.Encode(); e != "" {
+					u += "?" + e
+				}
+				return u
+			}),
 		reconReadTool("list_workflows",
 			"List the recon workflows available to run_workflow, each with a description. Call this FIRST to pick the workflow(s) that fit the current situation — then run_workflow the ones you need (you can run several). Pick by purpose: broad surface mapping, JS/secrets, parameter discovery, etc.",
 			rtObj(map[string]any{}),
@@ -306,12 +333,12 @@ func mergeMaxVars(ctx context.Context, workflow string, vars []string) []string 
 func reconRunWorkflow() actool.CoreTool {
 	return actool.Build(actool.Spec{
 		Name:        "run_workflow",
-		Description: "Launch a Workflow Runner recon workflow against a REGISTERED target (a deny-wins scope must already exist for it). It RUNS THE WORKFLOW TO COMPLETION and only then returns the full recon brief — recon runs SEQUENTIALLY, never concurrently with your reasoning, so you always act on complete data (never assume empty interim results mean 'no findings'). This can block for a long time on a full-recon run; that is expected and correct — wait for it. Then read details with recon_findings/recon_assets. CHOOSE the workflow via list_workflows. Check recon_findings first — only run recon you don't already have.",
+		Description: "Launch a Workflow Runner recon workflow against a REGISTERED target (a deny-wins scope must already exist for it). By DEFAULT it is NON-BLOCKING: it returns a run_id immediately and the workflow runs CONCURRENTLY while you keep reconning — follow it in REAL TIME with run_log(run_id) (tail the step output) and run_status(run_id), and read recon_findings/recon_assets as results land. The full brief is ALSO pushed back into the task when the run finishes, so nothing is missed — but do not wrap up while a run is still unread. Pass wait=true to block until it finishes and get the brief inline instead. CHOOSE the workflow via list_workflows. Check recon_findings first — only run recon you don't already have.",
 		Schema: rtObj(map[string]any{
 			"target":   rtStr("registered target domain, e.g. example.com"),
 			"workflow": rtStr("workflow file name, e.g. 01-full-recon-pipeline.yaml"),
 			"vars":     map[string]any{"type": "object", "description": "optional variable overrides (key -> value)"},
-			"wait":     map[string]any{"type": "boolean", "description": "accepted for compatibility but IGNORED — run_workflow always waits for the run to finish before returning, so the task never continues on partial recon."},
+			"wait":     map[string]any{"type": "boolean", "description": "default false (non-blocking): return the run_id immediately and run CONCURRENTLY — follow with run_log/run_status while you keep reconning. true: block until the run finishes and return its recon brief inline."},
 			"full":     map[string]any{"type": "boolean", "description": "default true: enable ALL of the workflow's options for maximum coverage (except the pivot scan and neighbor /24 PTR sweep, which stay off for scope safety). false: use the workflow's own defaults."},
 		}, "target", "workflow"),
 		ReadOnly:   func(json.RawMessage) bool { return false },
@@ -365,12 +392,18 @@ func reconRunWorkflow() actool.CoreTool {
 				return actool.Errorf("run_workflow: the server did not return a run id"), nil
 			}
 
-			// Always wait for the run to reach a terminal state before handing
-			// control back, so the task acts on the COMPLETE recon brief — recon
-			// runs sequentially, never concurrently with the task's own work. The
-			// wait param is accepted for compatibility but no longer launches a
-			// fire-and-forget run. taskID is used only for the rare-overrun
-			// push-back safety net below.
+			// DEFAULT is non-blocking: launch and return the run_id immediately so
+			// the task runs CONCURRENTLY with the workflow — the agent follows it in
+			// real time with run_log/run_status and keeps reconning. The completed
+			// brief is ALSO pushed back into this task on any terminal outcome, so
+			// nothing is missed. Pass wait=true to block until the run finishes.
+			if p.Wait == nil || !*p.Wait {
+				registerPushBack(runID, taskID)
+				return actool.Text(fmt.Sprintf("Launched run %s for workflow %s against %s — running CONCURRENTLY (non-blocking). Follow it LIVE: run_log(run_id=%s) tails the step output (pass the previous response's total as offset to get only new lines), run_status(run_id=%s) shows progress. Keep doing your other recon meanwhile and read recon_findings/recon_assets as results land. The FULL brief is also pushed back into this task when the run finishes — nothing is lost — but do NOT wrap up while this run is still unread.", runID, p.Workflow, p.Target, runID, runID)), nil
+			}
+
+			// wait=true: block until the run reaches a terminal state, then return
+			// the brief inline. taskID feeds the rare-overrun push-back safety net.
 			_, perr := reconPollRun(ctx, runID, runWorkflowWaitCap)
 			switch {
 			case perr == nil:
