@@ -93,13 +93,13 @@ else
 fi
 
 if [ "$RESEED" = "1" ] && [ -n "${ARTEX_PASSWORD:-}" ]; then
-  step "Re-seed task template (delete old 'Offensive Security' + recreate)"
+  step "Re-seed task template (delete old 'Offensive Security'/'Red Team' + recreate)"
   TOKEN=$(curl -sS -X POST "$BASE_URL/api/auth/login" -H 'Content-Type: application/json' \
     -d "{\"username\":\"ARTEX\",\"password\":\"${ARTEX_PASSWORD}\"}" \
     | python3 -c 'import json,sys;print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)
   if [ -n "$TOKEN" ]; then
     for tid in $(curl -sS "$BASE_URL/api/task-templates" -H "Authorization: Bearer $TOKEN" \
-        | python3 -c "import json,sys;print('\n'.join(str(t['id']) for t in json.load(sys.stdin).get('templates',[]) if t['name']=='Offensive Security'))" 2>/dev/null); do
+        | python3 -c "import json,sys;print('\n'.join(str(t['id']) for t in json.load(sys.stdin).get('templates',[]) if t['name'] in ('Offensive Security','Red Team')))" 2>/dev/null); do
       curl -sS -o /dev/null -X DELETE "$BASE_URL/api/task-templates/$tid" -H "Authorization: Bearer $TOKEN" && echo "deleted template $tid"
     done
     BASE_URL="$BASE_URL" ARTEX_TOKEN="$TOKEN" bash scripts/add-task-templates.sh || true
