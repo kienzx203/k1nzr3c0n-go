@@ -188,7 +188,7 @@ type ScopeAudit struct {
 // ── store ────────────────────────────────────────────────────────────────────
 
 type Store struct {
-	db *sql.DB
+	db *xdb
 	mu sync.Mutex // serializes writes (SQLite-friendly)
 }
 
@@ -338,7 +338,7 @@ func Open(path string) (*Store, error) {
 	db.SetMaxOpenConns(8)
 	db.SetMaxIdleConns(8)
 	db.SetConnMaxIdleTime(5 * time.Minute)
-	s := &Store{db: db}
+	s := &Store{db: &xdb{DB: db, dia: dialectSQLite}}
 	if err := s.init(); err != nil {
 		db.Close()
 		return nil, err
@@ -590,7 +590,7 @@ func (s *Store) InsertLogs(runID string, msgs []string) error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`INSERT INTO run_logs (run_id, message, ts) VALUES (?,?,?)`)
+	stmt, err := tx.Prepare(s.db.dia.rebind(`INSERT INTO run_logs (run_id, message, ts) VALUES (?,?,?)`))
 	if err != nil {
 		tx.Rollback()
 		return err
