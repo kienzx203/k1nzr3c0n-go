@@ -26,9 +26,14 @@ import (
 // its /api/v1/* + /ws/* routes plus a shutdown func. On error the ScopeWeaver
 // server still runs; the workflow-runner features are simply unavailable.
 func BuildHandler(ctx context.Context) (http.Handler, func(), error) {
-	st, err := store.Open(config.DBPath())
+	st, err := store.OpenAuto(config.DBPath())
 	if err != nil {
 		return nil, func() {}, fmt.Errorf("k1z open db: %w", err)
+	}
+	if store.PostgresDSN() != "" {
+		fmt.Println("[k1z] store backend: PostgreSQL (schema k1z, via K1Z_PG_DSN)")
+	} else {
+		fmt.Printf("[k1z] store backend: SQLite (%s)\n", config.DBPath())
 	}
 	b := bus.New()
 	r := runner.New(st, b)
