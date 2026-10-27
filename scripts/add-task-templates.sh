@@ -108,6 +108,30 @@ stay stealth-sensitive — prefer passive + minimal crawl):
 EOF
 )
 
+# ── reaching hosts that do not resolve publicly (origin / CDN / split-horizon) ──
+RESOLVE_ORIGIN=$(cat <<'EOF'
+RESOLVE & ORIGIN — hosts that do NOT resolve on public DNS (CDN edges, origin-behind-CDN,
+split-horizon, internal names). Discovery hands you NAMES, not live hosts — YOU resolve and reach
+them yourself; a name that "doesn't resolve" is surface to work, NOT a dead end.
+- RESOLVE first, every way: dnsx/puredns over public + DoH resolvers; then the TARGET'S OWN
+  AUTHORITATIVE NS — dig NS <root>, then dig @<auth-ns> A <host> (split-horizon/internal records
+  often answer ONLY at the authoritative NS, not public resolvers); plus any resolver IP leaked in
+  recon (JS/config/DNS records).
+- STILL unresolved -> FIND THE IP: CNAME-chain's final A record; TLS cert SAN/CN -> Shodan/Censys/
+  FOFA ssl.cert + favicon-hash lookup (same cert/favicon = same origin IP); passive-DNS history
+  (VirusTotal/SecurityTrails/OTX) for old A records; the org's ASN/CIDR ranges (recon_assets /
+  asn_ipv4_cidrs) -> mapcidr expand + PTR/revdns sweep; shared-hosting neighbors on a known origin IP.
+- MAP name -> IP YOURSELF so tools reach it: add to /etc/hosts, or curl --resolve host:port:IP, or
+  send Host:/SNI header to the IP. Confirm the host actually serves on that IP before continuing.
+- PORT-SCAN the IP (not the CDN edge): naabu/nmap the discovered ORIGIN IP — OPSEC: throttle,
+  top-ports first, -sV/-sC only on interesting ports; full-TCP only if the objective needs it.
+- VHOST on the IP: ffuf -H "Host: FUZZ.<root>" against the origin IP to surface virtualhosts that
+  have NO DNS record; also extract SANs from the IP's cert (openssl s_client) for more vhosts.
+- Record each resolved IP / origin / vhost as an asset (insert_assets) and add it to the ledger.
+  NEVER scan an IP until it is confirmed in-scope (deny-wins); a shared-hosting IP may host others.
+EOF
+)
+
 # ── workflow-runner automation: the recon <-> exploit loop ──
 WORKFLOW_LOOP=$(cat <<'EOF'
 ━━ RECON ORCHESTRATION — ONE surface, synchronized, NO gaps (do this BEFORE the kill chain) ━━
@@ -198,7 +222,7 @@ EOF
 )
 
 NL=$'\n\n'
-DESC="${HEADER}${NL}${ENDPOINT_RECON}${NL}${WORKFLOW_LOOP}${NL}${REDTEAM}${NL}${FOOTER}"
+DESC="${HEADER}${NL}${ENDPOINT_RECON}${NL}${RESOLVE_ORIGIN}${NL}${WORKFLOW_LOOP}${NL}${REDTEAM}${NL}${FOOTER}"
 
 GOAL="Run an authorized RED TEAM adversary-emulation engagement (MITRE ATT&CK): map the real attack path, reach the stated objective / crown jewels, and test detection & response — staying stealthy, strictly in scope, non-destructive (prove access/impact without exfiltrating or altering data)."
 
