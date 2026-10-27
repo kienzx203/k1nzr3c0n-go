@@ -11,6 +11,7 @@ func TestTranslateSchemaPostgres(t *testing.T) {
 	continue_on_error BOOLEAN NOT NULL DEFAULT 0,
 	resume BOOLEAN NOT NULL DEFAULT 1,
 	retries INTEGER NOT NULL DEFAULT 0,
+	temperature REAL DEFAULT 0.2,
 	id1 INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT CHECK (id1 = 1)
 );`
 	out := translateSchema(in)
@@ -21,10 +22,13 @@ func TestTranslateSchemaPostgres(t *testing.T) {
 		"DATETIME":                           false, // all -> TEXT
 		"created_at TEXT":                    true,  // datetime column became text
 		"to_char((now() AT TIME ZONE 'utc')": true,  // CURRENT_TIMESTAMP default
-		"continue_on_error BOOLEAN NOT NULL DEFAULT FALSE": true, // bool default 0 -> FALSE
-		"resume BOOLEAN NOT NULL DEFAULT TRUE":             true, // bool default 1 -> TRUE
-		"retries INTEGER NOT NULL DEFAULT 0":               true, // integer default 0 untouched
-		"CHECK (id1 = 1)":                                  true, // trailing check preserved
+		"continue_on_error BOOLEAN NOT NULL DEFAULT FALSE": true,  // bool default 0 -> FALSE
+		"resume BOOLEAN NOT NULL DEFAULT TRUE":             true,  // bool default 1 -> TRUE
+		"retries BIGINT NOT NULL DEFAULT 0":                true,  // INTEGER -> BIGINT (int64)
+		"INTEGER":                                          false, // no INTEGER token left
+		"temperature DOUBLE PRECISION DEFAULT 0.2":         true,  // REAL -> DOUBLE PRECISION (float64)
+		"REAL":            false, // no REAL token left
+		"CHECK (id1 = 1)": true,  // trailing check preserved
 	}
 	for sub, want := range cases {
 		if got := strings.Contains(out, sub); got != want {

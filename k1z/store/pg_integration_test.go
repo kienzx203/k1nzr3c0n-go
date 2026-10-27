@@ -120,6 +120,10 @@ func TestPostgresEndToEnd(t *testing.T) {
 	if p1.ID == 0 {
 		t.Error("CreateLLMProfile insert: id not populated")
 	}
+	// REAL->DOUBLE PRECISION: float64 must round-trip exactly (no float32 loss)
+	if got, _ := s.GetLLMProfile(p1.ID); got == nil || got.Temperature != 0.1 {
+		t.Errorf("Temperature round-trip (DOUBLE PRECISION): got %v want 0.1", got)
+	}
 	p2 := &LLMProfile{Name: "prof", BaseURL: "u2", Model: "m2", Temperature: 0.9}
 	if err := s.CreateLLMProfile(p2); err != nil {
 		t.Fatalf("CreateLLMProfile upsert: %v", err)
