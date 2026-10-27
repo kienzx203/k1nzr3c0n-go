@@ -12,6 +12,10 @@ Environment=HOME=/root
 Environment=K1NZR3C0N_BASE=/opt/k1nzr3c0n
 Environment=K1NZR3C0N_ADDR=:8000
 Environment=K1NZR3C0N_WORKERS=2
+# PostgreSQL — REQUIRED if you run on Postgres (ARTEX won't serve without its DSN).
+# DO NOT drop these when updating the unit. Password '@' must be URL-encoded as %40.
+# Environment=ARTEX_PG_DSN=postgres://artex:PASSWORD@127.0.0.1:5432/artex?sslmode=disable
+# Environment=K1Z_PG_DSN=postgres://artex:PASSWORD@127.0.0.1:5432/artex?sslmode=disable
 # Optional:
 # Environment=K1NZR3C0N_API_TOKEN=change-me
 # Environment=K1NZR3C0N_WEBHOOK_URL=https://discord.com/api/webhooks/...
