@@ -541,8 +541,8 @@ const WORKFLOW_META = {
     steps: 47, tags: ['passive', 'active', 'tlsx', 'crawl', 'js', 'vuln', 'full'],
   },
   '02-full-recon-artex.yaml': {
-    desc: 'Full recon, NO vuln scan — 91 steps: passive+active subdomain → ASN/IP → TLS SAN mining → puredns+dnsx resolve → port scan → HTTP → CDN check → crawl → JS analysis → takeover → cloud storage. Stops before nuclei/afrog — for recon-first (the ARTEX agent runs vuln testing itself).',
-    steps: 91, tags: ['passive', 'active', 'tlsx', 'crawl', 'js', 'recon'],
+    desc: 'Discovery-only — 45 steps: collect ALL subdomain NAMES (passive 30+ sources + permutation + SecurityTrails intel + reverse-DNS + TLS cert SAN + ASN/CIDR). NO resolve / httpx / port / screenshot / crawl / vuln — outputs subdomains.txt for the ARTEX agent to resolve + IP-map + probe itself.',
+    steps: 45, tags: ['passive', 'subdomain', 'permutation', 'tlsx', 'asn', 'discovery'],
   },
   '03-js-secrets-recon.yaml': {
     desc: 'JS & secrets recon — 19 steps: probe → katana/hakrawler/gau/waymore/waybackurls crawl → collect JS → LinkFinder/jsapiscan/SecretFinder/TruffleHog/Gitleaks/jsubfinder → nuclei file/keys + http/exposures → gf patterns → dirsearch/ffuf/feroxbuster/gobuster brute-force → report',
