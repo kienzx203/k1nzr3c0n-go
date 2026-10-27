@@ -2751,9 +2751,9 @@ function VarsPanel({ vars, onChange }) {
   // Groups cover vars from both workflow YAMLs.
   // Keys absent from the currently-loaded workflow are silently filtered out.
   const VAR_GROUPS = {
-    // 01-full-recon-pipeline: run_passive, run_permutation, run_tlsx
-    // 02-js-secrets-recon:    run_archive, run_linkfinder, run_jsubfinder, run_secretfinder, run_static_secrets, run_nuclei_js, run_gf, run_dirbrute
-    // 03-param-discovery:     run_gau, run_paramspider, run_katana, run_arjun, run_x8, run_ffuf_params, run_nuclei_params
+    // 01-full-recon-pipeline / 02-full-recon-artex: run_passive, run_permutation, run_tlsx
+    // 03-js-secrets-recon:    run_archive, run_linkfinder, run_jsubfinder, run_secretfinder, run_static_secrets, run_nuclei_js, run_gf, run_dirbrute
+    // 04-param-discovery:     run_gau, run_paramspider, run_katana, run_arjun, run_x8, run_ffuf_params, run_nuclei_params
     // k1nzr3con:              run_discovery, run_deep_scan, run_vhost, run_params, run_dirbrute
     'Phase Toggles': [
       'run_passive','run_waymore','run_asn',

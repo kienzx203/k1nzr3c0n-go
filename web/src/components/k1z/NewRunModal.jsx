@@ -15,8 +15,9 @@ const VAR_AUTO_INJECT = {
 const WORKFLOW_KEY_DEPS = {
   'k1nzr3con.yaml':              { subfinder: true,  autoVars: ['chaos_key'] },
   '01-full-recon-pipeline.yaml': { subfinder: true,  autoVars: ['chaos_key'] },
-  '02-js-secrets-recon.yaml':    { subfinder: false, autoVars: [] },
-  '03-param-discovery.yaml':     { subfinder: false, autoVars: [] },
+  '02-full-recon-artex.yaml':    { subfinder: true,  autoVars: ['chaos_key'] },
+  '03-js-secrets-recon.yaml':    { subfinder: false, autoVars: [] },
+  '04-param-discovery.yaml':     { subfinder: false, autoVars: [] },
 }
 
 const SUBFINDER_TOTAL = 21

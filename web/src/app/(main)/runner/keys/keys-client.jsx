@@ -73,17 +73,22 @@ const TEMPLATE_DEPS = [
     note: null,
   },
   {
+    name: '02-full-recon-artex.yaml',
+    keysInjected: true,
+    note: null,
+  },
+  {
     name: 'workflow-all.yaml',
     keysInjected: true,
     note: null,
   },
   {
-    name: '02-js-secrets-recon.yaml',
+    name: '03-js-secrets-recon.yaml',
     keysInjected: false,
     note: 'env vars injected — no key-specific steps (gau/waymore pick up URLSCAN_API_KEY automatically)',
   },
   {
-    name: '03-param-discovery.yaml',
+    name: '04-param-discovery.yaml',
     keysInjected: false,
     note: 'env vars injected — use Auth section for session/token headers when creating run',
   },

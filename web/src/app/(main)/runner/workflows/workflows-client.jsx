@@ -540,11 +540,15 @@ const WORKFLOW_META = {
     desc: 'Enterprise recon — 47 steps, 14 phases: passive+active subdomain → ASN/IP → TLS SAN mining → puredns+dnsx resolve → port scan → HTTP → CDN check → crawl → JS analysis → takeover → cloud storage → nuclei/afrog vuln scan',
     steps: 47, tags: ['passive', 'active', 'tlsx', 'crawl', 'js', 'vuln', 'full'],
   },
-  '02-js-secrets-recon.yaml': {
+  '02-full-recon-artex.yaml': {
+    desc: 'Full recon, NO vuln scan — 91 steps: passive+active subdomain → ASN/IP → TLS SAN mining → puredns+dnsx resolve → port scan → HTTP → CDN check → crawl → JS analysis → takeover → cloud storage. Stops before nuclei/afrog — for recon-first (the ARTEX agent runs vuln testing itself).',
+    steps: 91, tags: ['passive', 'active', 'tlsx', 'crawl', 'js', 'recon'],
+  },
+  '03-js-secrets-recon.yaml': {
     desc: 'JS & secrets recon — 19 steps: probe → katana/hakrawler/gau/waymore/waybackurls crawl → collect JS → LinkFinder/jsapiscan/SecretFinder/TruffleHog/Gitleaks/jsubfinder → nuclei file/keys + http/exposures → gf patterns → dirsearch/ffuf/feroxbuster/gobuster brute-force → report',
     steps: 19, tags: ['js', 'secrets', 'crawl', 'nuclei', 'gf', 'trufflehog', 'gitleaks', 'ffuf'],
   },
-  '03-param-discovery.yaml': {
+  '04-param-discovery.yaml': {
     desc: 'Authenticated parameter discovery — 8 steps: probe with auth headers → fallparams/gau/katana crawl → extract existing params → arjun/x8/ffuf brute-force → merge → report. Supports Cookie, Authorization, custom headers',
     steps: 8, tags: ['params', 'auth', 'arjun', 'x8', 'ffuf', 'session'],
   },
