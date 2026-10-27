@@ -73,7 +73,7 @@ func (s *Server) OnReconRunFinished(runID string) {
 }
 
 const (
-	defaultReconWorkflow = "01-full-recon-pipeline.yaml"
+	defaultReconWorkflow = "02-full-recon-artex.yaml" // discovery-only: hands names to the agent, which resolves+probes (matches recon-first model); has all direct-API sources (fofa/leakix/subdomain.center/...) that 01 lacks
 	reconFirstMaxWait    = 90 * time.Minute // total cap across all recon workflows; then fall back
 	reconPollEvery       = 15 * time.Second
 )

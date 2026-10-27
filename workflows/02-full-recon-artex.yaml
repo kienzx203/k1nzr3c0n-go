@@ -995,6 +995,28 @@ steps:
     printf 'FullHunt subs: %s\n' "$(wc -l < {workspace}/p_fullhunt.txt)"
   outputs:
     file: '{workspace}/p_fullhunt.txt'
+- id: p_leakix
+  name: passive — LeakIX subdomains API direct (env LEAKIX_API_KEY; unique scanner dataset, not CT-redundant)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_leakix.txt
+    LK="${LEAKIX_API_KEY:-}"
+    test -n "$LK" || { printf '[leakix] no LEAKIX_API_KEY — skipping\n'; exit 0; }
+    curl -s --max-time 60 -H "api-key: $LK" -H "Accept: application/json" \
+      "https://leakix.net/api/subdomains/{target}" 2>/dev/null \
+      | jq -r '.[]?.subdomain // empty' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_leakix.txt || true
+    touch {workspace}/p_leakix.txt
+    printf 'LeakIX subs: %s\n' "$(wc -l < {workspace}/p_leakix.txt)"
+  outputs:
+    file: '{workspace}/p_leakix.txt'
 - id: merge_passive
   name: merge all passive sources → deduplicate + scope-filter
   depends_on:
@@ -1035,6 +1057,7 @@ steps:
   - p_columbus
   - p_fofa
   - p_fullhunt
+  - p_leakix
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -1077,6 +1100,7 @@ steps:
         {workspace}/p_columbus.txt \
         {workspace}/p_fofa.txt \
         {workspace}/p_fullhunt.txt \
+        {workspace}/p_leakix.txt \
         2>/dev/null || true
       test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
