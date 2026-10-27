@@ -543,7 +543,7 @@ steps:
       RESP=$(curl -s -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
       --retry 3 --retry-delay 10 \
       "https://otx.alienvault.com/api/v1/indicators/domain/{target}/passive_dns?page=${PAGE}&limit=100" --max-time 30 2>/dev/null)
-      COUNT=$(echo "$RESP" | jq '.count // 0' 2>/dev/null || echo 0)
+      COUNT=$(echo "$RESP" | jq -r '.count // 0' 2>/dev/null | head -1 | tr -cd '0-9')
       COUNT=${COUNT:-0}
       echo "$RESP" | jq -r '.passive_dns[]?.hostname // empty' 2>/dev/null \
         | grep -E "(^|\.)({target}|[a-z0-9._-]+\.{target})$" >> {workspace}/p_alienvault.txt || true
@@ -1636,9 +1636,10 @@ steps:
       -p 443,8443,4443 \
       -timeout 5 \
       -o {workspace}/tlsx_raw.txt 2>/dev/null || true
+    TLSX_CNT=$(wc -l < "$TLSX_INPUT" 2>/dev/null || echo 0)
     rm -f {workspace}/.tlsx_candidates
     touch {workspace}/tlsx_raw.txt
-    printf 'tlsx SAN mining input: %s hosts\n' "$(wc -l < "$TLSX_INPUT" 2>/dev/null || echo 0)"
+    printf 'tlsx SAN mining input: %s hosts | raw SAN lines: %s\n' "$TLSX_CNT" "$(wc -l < {workspace}/tlsx_raw.txt 2>/dev/null || echo 0)"
   outputs:
     file: '{workspace}/tlsx_raw.txt'
 - id: tlsx_san_extract
