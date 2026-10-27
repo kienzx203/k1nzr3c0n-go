@@ -1102,7 +1102,7 @@ steps:
   outputs:
     file: '{workspace}/reverse_dns_subs.txt'
 - id: permutation_dns
-  name: DNS permutation — dnsgen + alterx + gotator → resolve with dnsx/shuffledns (sequential)
+  name: subdomain permutation — dnsgen + alterx + gotator → GENERATE candidates only (NO resolve; agent resolves)
   depends_on:
   - reverse_dns_asn
   run_on_failed_deps: true
@@ -1121,11 +1121,10 @@ steps:
       if test -s {workspace}/passive_merged.txt; then
         head -{vars.perm_input_limit} {workspace}/passive_merged.txt | dnsgen - 2>/dev/null \
           | head -{vars.perm_output_limit} \
-          | shuffledns -d {target} -r {workspace}/resolvers.txt -t {vars.perm_threads} -mode resolve -silent 2>/dev/null \
           | sort -u > {workspace}/perm_dnsgen.txt || true
       fi
       touch {workspace}/perm_dnsgen.txt
-      printf 'dnsgen permutations resolved: %s\n' "$(wc -l < {workspace}/perm_dnsgen.txt)"
+      printf 'dnsgen permutations generated (no resolve): %s\n' "$(wc -l < {workspace}/perm_dnsgen.txt)"
     outputs:
       file: '{workspace}/perm_dnsgen.txt'
     optional: true
@@ -1137,11 +1136,10 @@ steps:
       if test -s {workspace}/passive_merged.txt; then
         head -{vars.perm_input_limit} {workspace}/passive_merged.txt \
           | alterx -silent -limit {vars.perm_output_limit} 2>/dev/null \
-          | dnsx -silent -r {vars.dns_resolvers} -t {vars.perm_threads} -retry {vars.dnsx_retry} 2>/dev/null \
           | sort -u > {workspace}/perm_alterx.txt || true
       fi
       touch {workspace}/perm_alterx.txt
-      printf 'alterx permutations resolved: %s\n' "$(wc -l < {workspace}/perm_alterx.txt)"
+      printf 'alterx permutations generated (no resolve): %s\n' "$(wc -l < {workspace}/perm_alterx.txt)"
     outputs:
       file: '{workspace}/perm_alterx.txt'
     optional: true
@@ -1160,12 +1158,10 @@ steps:
           -mindup -t 200 -silent 2>/dev/null \
           | grep -E "\.{target}$" \
           | head -{vars.perm_output_limit} \
-          | shuffledns -d {target} -r {workspace}/resolvers.txt \
-              -t {vars.perm_threads} -mode resolve -silent 2>/dev/null \
           | sort -u > {workspace}/perm_gotator.txt || true
       fi
       touch {workspace}/perm_gotator.txt
-      printf 'gotator permutations resolved: %s\n' "$(wc -l < {workspace}/perm_gotator.txt)"
+      printf 'gotator permutations generated (no resolve): %s\n' "$(wc -l < {workspace}/perm_gotator.txt)"
     outputs:
       file: '{workspace}/perm_gotator.txt'
     optional: true
