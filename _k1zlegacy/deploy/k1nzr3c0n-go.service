@@ -21,7 +21,11 @@ Environment=K1NZR3C0N_WORKERS=2
 # Environment=K1NZR3C0N_WEBHOOK_URL=https://discord.com/api/webhooks/...
 # Environment=GITHUB_TOKEN=ghp_...
 # Environment=K1NZR3C0N_PROXY_ADDR=127.0.0.1:8083  # recording proxy listen
-ExecStart=/opt/k1nzr3c0n/k1nzr3c0n serve
+# The combined ARTEX binary takes its listen addr from the -addr FLAG (default
+# :8787), NOT from K1NZR3C0N_ADDR. The flag MUST come before 'serve' (flag.Parse
+# stops at the first positional). Without it the server binds :8787 and the
+# deploy's :8000 seeding fails with connection-refused.
+ExecStart=/opt/k1nzr3c0n/k1nzr3c0n -addr :8000 serve
 WorkingDirectory=/opt/k1nzr3c0n
 Restart=on-failure
 RestartSec=3
