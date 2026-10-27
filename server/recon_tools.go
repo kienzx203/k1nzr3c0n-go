@@ -159,17 +159,19 @@ func reconTools() []actool.CoreTool {
 				return "/api/v1/runs/" + url.PathEscape(p.RunID)
 			}),
 		reconReadTool("run_log",
-			"Read a run's LIVE log lines (real-time step output) while it runs. Use this to follow a workflow you launched non-blocking, concurrently with your other recon. Pass run_id; to TAIL only new lines, pass the previous response's `total` as `offset`. Returns {total, offset, limit, items:[line,...]}. Pair with run_status; read recon_findings/recon_assets for structured results.",
+			"Follow a run's LIVE log while it runs, concurrently with your other recon. By DEFAULT returns ONLY the progress skeleton (step start/done, per-step one-line stats, warnings) — cheap to tail; the thousands of raw per-tool records (httpx/tlsx JSON) are withheld unless raw=true. To TAIL only new lines, pass the previous response's `total` as `offset`. Returns {total, offset, limit, items:[line,...]} (total/offset count ALL lines, so advance offset by your limit each poll). For the cheapest progress check use run_status; use raw=true only to inspect one step's detailed output. Structured results: recon_findings/recon_assets.",
 			rtObj(map[string]any{
 				"run_id": rtStr("the run id returned by run_workflow"),
 				"offset": rtInt("line offset to start from; to tail only new lines, pass the previous response's total (default 0)"),
-				"limit":  rtInt("max lines to return (default 500, max 2000)"),
+				"limit":  rtInt("max lines to scan this poll (default 500, max 2000)"),
+				"raw":    map[string]any{"type": "boolean", "description": "default false: progress/stat/warning lines only (cheap). true: include the full raw per-tool output (httpx/tlsx/naabu records) — only when inspecting one step, and keep the limit small."},
 			}, "run_id"),
 			func(in json.RawMessage) string {
 				var p struct {
 					RunID  string `json:"run_id"`
 					Offset int    `json:"offset"`
 					Limit  int    `json:"limit"`
+					Raw    bool   `json:"raw"`
 				}
 				_ = json.Unmarshal(in, &p)
 				q := url.Values{}
@@ -178,6 +180,9 @@ func reconTools() []actool.CoreTool {
 				}
 				if p.Limit > 0 {
 					q.Set("limit", fmt.Sprint(p.Limit))
+				}
+				if !p.Raw {
+					q.Set("progress", "1") // default: withhold raw per-tool records
 				}
 				u := "/api/v1/runs/" + url.PathEscape(p.RunID) + "/logs"
 				if e := q.Encode(); e != "" {
@@ -399,7 +404,7 @@ func reconRunWorkflow() actool.CoreTool {
 			// nothing is missed. Pass wait=true to block until the run finishes.
 			if p.Wait == nil || !*p.Wait {
 				registerPushBack(runID, taskID)
-				return actool.Text(fmt.Sprintf("Launched run %s for workflow %s against %s — running CONCURRENTLY (non-blocking). Follow it LIVE: run_log(run_id=%s) tails the step output (pass the previous response's total as offset to get only new lines), run_status(run_id=%s) shows progress. Keep doing your other recon meanwhile and read recon_findings/recon_assets as results land. The FULL brief is also pushed back into this task when the run finishes — nothing is lost — but do NOT wrap up while this run is still unread.", runID, p.Workflow, p.Target, runID, runID)), nil
+				return actool.Text(fmt.Sprintf("Launched run %s for workflow %s against %s — running CONCURRENTLY (non-blocking). Now DO your other recon/analysis and check back periodically (don't busy-poll). Cheapest progress: run_status(run_id=%s). Follow step-by-step with run_log(run_id=%s) (progress-only by default; pass the previous total as offset to tail new lines; raw=true only to inspect one step). Read recon_findings/recon_assets as results land. The FULL brief is also pushed back into this task when the run finishes — nothing is lost — so do NOT wrap up while this run is still unread.", runID, p.Workflow, p.Target, runID, runID)), nil
 			}
 
 			// wait=true: block until the run reaches a terminal state, then return

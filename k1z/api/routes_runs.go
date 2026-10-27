@@ -192,9 +192,43 @@ func (s *Server) handleRunLogs(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []string{}
 	}
+	// progress=1: drop the raw per-tool output (httpx JSONL, tlsx SAN dumps …)
+	// and keep only the step-progress skeleton + short stat/warning lines, so an
+	// agent can TAIL a run cheaply without reading thousands of mechanical lines.
+	// total/offset stay in RAW units so offset-based tailing is unaffected.
+	if truthy(q.Get("progress")) {
+		items = progressLogLines(items)
+	}
 	writeJSON(w, 200, map[string]any{
 		"total": total, "offset": offset, "limit": limit, "items": items,
 	})
+}
+
+// progressLogLines keeps the follow-friendly lines: structural "[+] …"/"[!] …"
+// progress and warnings, plus short single-line stats a step prints (e.g.
+// "[httpx] httpx live hosts: 176"); it drops long or JSON-looking raw records
+// (per-host httpx/tlsx/naabu output) that would flood an agent's context.
+func progressLogLines(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, ln := range in {
+		s := strings.TrimSpace(ln)
+		if strings.HasPrefix(s, "[+]") || strings.HasPrefix(s, "[!]") {
+			out = append(out, ln)
+			continue
+		}
+		if len(s) <= 200 && !strings.Contains(s, "{\"") && !strings.Contains(s, "\": \"") {
+			out = append(out, ln)
+		}
+	}
+	return out
+}
+
+func truthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 func (s *Server) handleRunCancel(w http.ResponseWriter, r *http.Request) {
