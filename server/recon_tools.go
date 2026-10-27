@@ -184,7 +184,7 @@ func targetExists(ctx context.Context, name string) bool {
 
 // reconRunWorkflow (integration C): let the worker launch a recon workflow against
 // a REGISTERED target. Write tool; scope-guarded to registered targets only.
-const runWorkflowWaitCap = 60 * time.Minute // block until the run finishes (covers full-recon); only hand back a run_id to poll if it's slower than this
+const runWorkflowWaitCap = 3 * time.Hour // block until the run finishes so the task reads the COMPLETE brief before continuing; push-back only covers a pathological overrun
 
 // reconRaw is a raw HTTP call to the local k1z API returning (body, status, err),
 // used where the tool needs to parse the response (run id) rather than surface it.
@@ -305,18 +305,20 @@ func mergeMaxVars(ctx context.Context, workflow string, vars []string) []string 
 
 func reconRunWorkflow() actool.CoreTool {
 	return actool.Build(actool.Spec{
-		Name: "run_workflow",
-		Description: "Launch a Workflow Runner recon workflow against a REGISTERED target (a deny-wins scope must already exist for it). By DEFAULT it WAITS for the run to finish and returns the recon brief, so you never miss the output — do not assume empty results mean 'no findings'. If it is still running after ~20 min it hands back a run_id to keep polling with run_status; then read results with recon_findings/recon_assets. CHOOSE the workflow via list_workflows; to launch SEVERAL workflows in parallel, pass wait=false on each and poll run_status. Check recon_findings first — only run recon you don't already have.",
+		Name:        "run_workflow",
+		Description: "Launch a Workflow Runner recon workflow against a REGISTERED target (a deny-wins scope must already exist for it). It RUNS THE WORKFLOW TO COMPLETION and only then returns the full recon brief — recon runs SEQUENTIALLY, never concurrently with your reasoning, so you always act on complete data (never assume empty interim results mean 'no findings'). This can block for a long time on a full-recon run; that is expected and correct — wait for it. Then read details with recon_findings/recon_assets. CHOOSE the workflow via list_workflows. Check recon_findings first — only run recon you don't already have.",
 		Schema: rtObj(map[string]any{
 			"target":   rtStr("registered target domain, e.g. example.com"),
 			"workflow": rtStr("workflow file name, e.g. 01-full-recon-pipeline.yaml"),
 			"vars":     map[string]any{"type": "object", "description": "optional variable overrides (key -> value)"},
-			"wait":     map[string]any{"type": "boolean", "description": "default true: block until the run finishes and return its recon brief. false: return the run_id immediately (then poll run_status yourself) — use this to launch several workflows in parallel."},
+			"wait":     map[string]any{"type": "boolean", "description": "accepted for compatibility but IGNORED — run_workflow always waits for the run to finish before returning, so the task never continues on partial recon."},
 			"full":     map[string]any{"type": "boolean", "description": "default true: enable ALL of the workflow's options for maximum coverage (except the pivot scan and neighbor /24 PTR sweep, which stay off for scope safety). false: use the workflow's own defaults."},
 		}, "target", "workflow"),
-		ReadOnly:    func(json.RawMessage) bool { return false },
-		Concurrent:  func(json.RawMessage) bool { return false },
-		Permissions: func(context.Context, json.RawMessage, permission.Context) permission.Decision { return permission.Allowed() },
+		ReadOnly:   func(json.RawMessage) bool { return false },
+		Concurrent: func(json.RawMessage) bool { return false },
+		Permissions: func(context.Context, json.RawMessage, permission.Context) permission.Decision {
+			return permission.Allowed()
+		},
 		Run: func(ctx context.Context, in json.RawMessage, _ *actool.ToolContext) (actool.Result, error) {
 			var p struct {
 				Target   string            `json:"target"`
@@ -359,11 +361,16 @@ func reconRunWorkflow() actool.CoreTool {
 				taskID = strconv.FormatInt(ri.TaskID, 10)
 			}
 
-			if (p.Wait != nil && !*p.Wait) || runID == "" {
-				registerPushBack(runID, taskID) // async launch — seed results back when it completes
-				return actool.Text(fmt.Sprintf("Launched run %s for workflow %s against %s (non-blocking). Poll run_status with run_id=%s until status=completed, THEN read recon_findings/recon_assets. Empty results while it is still running do NOT mean 'no findings' (if you move on, its brief will be pushed back into this task on completion).", runID, p.Workflow, p.Target, runID)), nil
+			if runID == "" {
+				return actool.Errorf("run_workflow: the server did not return a run id"), nil
 			}
 
+			// Always wait for the run to reach a terminal state before handing
+			// control back, so the task acts on the COMPLETE recon brief — recon
+			// runs sequentially, never concurrently with the task's own work. The
+			// wait param is accepted for compatibility but no longer launches a
+			// fire-and-forget run. taskID is used only for the rare-overrun
+			// push-back safety net below.
 			_, perr := reconPollRun(ctx, runID, runWorkflowWaitCap)
 			switch {
 			case perr == nil:
