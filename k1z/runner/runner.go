@@ -757,11 +757,14 @@ func writeProviderYAML(path string, cfg map[string][]string) {
 }
 
 func homeDir() string {
-	h, err := os.UserHomeDir()
-	if err != nil {
-		return "."
+	// subfinder/uncover and the workflow's setup/uncover steps read ~/.config
+	// (hardcoded /root when run as root). Fall back to /root — NOT "." — so the
+	// provider configs we write land where those tools actually read them, even
+	// if $HOME is unset. (boot.go also sets $HOME process-wide as the primary fix.)
+	if h, err := os.UserHomeDir(); err == nil && h != "" {
+		return h
 	}
-	return h
+	return "/root"
 }
 
 func sortStrings(s []string) {

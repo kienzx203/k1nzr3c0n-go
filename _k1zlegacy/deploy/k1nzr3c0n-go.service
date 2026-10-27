@@ -5,6 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# HOME must be set so subfinder/uncover + the runner's provider-config writer
+# agree on ~/.config (else DB API keys never reach the tools: "subfinder: 1
+# provider / uncover: 0"). The binary also sets this at boot as a fallback.
+Environment=HOME=/root
 Environment=K1NZR3C0N_BASE=/opt/k1nzr3c0n
 Environment=K1NZR3C0N_ADDR=:8000
 Environment=K1NZR3C0N_WORKERS=2

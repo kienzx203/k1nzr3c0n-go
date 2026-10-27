@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"os/user"
 	"strings"
 
 	"github.com/Autumn-27/artex/k1z/agent"
@@ -26,6 +28,19 @@ import (
 // its /api/v1/* + /ws/* routes plus a shutdown func. On error the ScopeWeaver
 // server still runs; the workflow-runner features are simply unavailable.
 func BuildHandler(ctx context.Context) (http.Handler, func(), error) {
+	// Ensure $HOME is set process-wide. injectAPIKeys writes subfinder/uncover
+	// provider-config.yaml under os.UserHomeDir(), while those tools (and the
+	// workflow's setup/uncover steps) read ~/.config (hardcoded /root for root).
+	// Under systemd without HOME= the two diverge, so the DB keys never reach the
+	// tools (symptom: "subfinder: 1 provider", "uncover: 0"). Setting HOME here
+	// propagates to os.UserHomeDir() AND to every subprocess via os.Environ().
+	if os.Getenv("HOME") == "" {
+		home := "/root"
+		if u, uerr := user.Current(); uerr == nil && u.HomeDir != "" {
+			home = u.HomeDir
+		}
+		_ = os.Setenv("HOME", home)
+	}
 	st, err := store.OpenAuto(config.DBPath())
 	if err != nil {
 		return nil, func() {}, fmt.Errorf("k1z open db: %w", err)
