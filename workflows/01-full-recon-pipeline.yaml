@@ -1495,7 +1495,7 @@ steps:
 - id: ptr_scan_dns
   name: '[PTR] reverse DNS on resolved IPs — find hosts hidden from CT/passive sources'
   depends_on:
-  - ip_group_analyze
+  - ip_group_httpx
   run_on_failed_deps: true
   when: '{vars.run_ptr_scan}'
   shell: true
@@ -1503,8 +1503,12 @@ steps:
   skip_if_exists: true
   timeout: 20m
   run: |
+    # Runs AFTER httpx: ip_group_httpx writes subdomains_resolved_resp.txt
+    # (host [IPs]) from httpx's own A-records, so PTR has real host+IP data in
+    # BOTH wildcard and no-wildcard mode (no-wildcard skips the DNS resolve
+    # phase, so this is the first point resolved IPs exist).
     touch {workspace}/ptr_subs.txt {workspace}/ptr_resolved.txt
-    test -s {workspace}/subdomains_resolved.txt || exit 0
+    test -s {workspace}/subdomains_resolved_resp.txt || exit 0
     # Extract IP addresses from the resp file pass-2/gapfill already wrote
     # ("host [IP1, IP2]") — zero extra DNS queries.
     grep -oP '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b' {workspace}/subdomains_resolved_resp.txt 2>/dev/null \
@@ -1537,7 +1541,7 @@ steps:
     # Find NEW subdomains not already in resolved list
     comm -23 \
       <(sort {workspace}/ptr_subs_raw.txt 2>/dev/null) \
-      <(sort {workspace}/subdomains_resolved.txt 2>/dev/null) \
+      <(sort -u {workspace}/subdomains_resolved.txt {workspace}/subdomains_all_resolved.txt 2>/dev/null) \
       > {workspace}/ptr_subs.txt 2>/dev/null || touch {workspace}/ptr_subs.txt
     # Resolve PTR-discovered new subdomains to confirm they're live
     if test -s {workspace}/ptr_subs.txt; then
@@ -1564,11 +1568,19 @@ steps:
   timeout: 20m
   run: |
     touch {workspace}/dns_records_subs.txt
-    test -s {workspace}/subdomains_resolved.txt || exit 0
-    printf '[dns_records] querying SRV/MX/NS/TXT on %s hosts ...\n' "$(wc -l < {workspace}/subdomains_resolved.txt)"
+    # Input: resolved/live hosts. In no-wildcard mode subdomains_resolved.txt is
+    # empty (resolve phase skipped) → derive the live host list from the
+    # httpx-populated resp file (runs after ip_group_httpx now).
+    DRE_INPUT={workspace}/subdomains_resolved.txt
+    if ! test -s "$DRE_INPUT"; then
+      awk '{print $1}' {workspace}/subdomains_resolved_resp.txt 2>/dev/null | sort -u > {workspace}/.dre_input
+      DRE_INPUT={workspace}/.dre_input
+    fi
+    test -s "$DRE_INPUT" || { rm -f {workspace}/.dre_input; exit 0; }
+    printf '[dns_records] querying SRV/MX/NS/TXT on %s hosts ...\n' "$(wc -l < "$DRE_INPUT")"
     # Query all useful DNS record types — DoH: 4 record types × every resolved
     # host over raw UDP is a conntrack flood; TCP/443 keeps the NAT alive.
-    dnsx -l {workspace}/subdomains_resolved.txt \
+    dnsx -l "$DRE_INPUT" \
       -mx -ns -srv -txt \
       -resp -silent \
       -r {vars.doh_resolvers} -t {vars.doh_threads} \
@@ -1577,11 +1589,13 @@ steps:
     grep -oP '[a-zA-Z0-9._-]+\.$(echo {target} | sed "s/\./\\\\./g")' \
       {workspace}/dns_records_raw.txt 2>/dev/null \
       | sort -u > {workspace}/dns_records_subs_raw.txt || true
-    # Find NEW ones not already in resolved list
+    # Find NEW ones not already known (the scanned set exists by now; fall back
+    # to this step's own input when it doesn't).
     comm -23 \
       <(sort {workspace}/dns_records_subs_raw.txt 2>/dev/null) \
-      <(sort {workspace}/subdomains_resolved.txt 2>/dev/null) \
+      <(sort -u {workspace}/subdomains_all_resolved.txt "$DRE_INPUT" 2>/dev/null) \
       > {workspace}/dns_records_new.txt 2>/dev/null || touch {workspace}/dns_records_new.txt
+    rm -f {workspace}/.dre_input
     # Resolve new hosts
     if test -s {workspace}/dns_records_new.txt; then
       dnsx -l {workspace}/dns_records_new.txt \
@@ -1596,7 +1610,7 @@ steps:
 - id: resolve_stats
   name: resolution stats — count passive vs active vs puredns vs dnsx resolved
   depends_on:
-  - dns_record_enum
+  - resolve_gapfill
   run_on_failed_deps: true
   timeout: 3m
   shell: true
@@ -2195,10 +2209,12 @@ steps:
     in_scope: '{workspace}/ip_pivot_in_scope.txt'
     neighbors: '{workspace}/ip_pivot_neighbors.txt'
 - id: pivot_new_hosts_merge
-  name: merge all pivot-discovered hosts (favicon + vhost + ip_pivot + redirect-mine) → resolve new ones
+  name: merge all pivot-discovered hosts (favicon + vhost + ip_pivot + redirect + PTR + DNS-records) → resolve new ones
   depends_on:
   - ip_pivot_filter
   - http_redirect_subs
+  - ptr_scan_dns
+  - dns_record_enum
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -2208,6 +2224,10 @@ steps:
       cat {workspace}/vhost_new_hosts.txt  2>/dev/null || true
       cat {workspace}/ip_pivot_in_scope.txt 2>/dev/null || true
       cat {workspace}/http_redirect_resolved.txt 2>/dev/null || true
+      # PTR + DNS-record enrichment now run after httpx; their new hosts join
+      # the pivot probe (they missed merge_all_resolved / the main httpx pass).
+      cat {workspace}/ptr_subs.txt 2>/dev/null || true
+      cat {workspace}/dns_records_subs.txt 2>/dev/null || true
     ) | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
       | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/pivot_new_candidates.txt
