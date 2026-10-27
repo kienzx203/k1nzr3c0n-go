@@ -80,12 +80,26 @@ systemctl start "$SERVICE"
 sleep 2
 systemctl is-active "$SERVICE" >/dev/null && echo "✓ $SERVICE active" || die "$SERVICE failed to start — check: journalctl -u $SERVICE -n 50"
 
+# Wait until the HTTP server actually ACCEPTS requests before seeding. systemd
+# 'active' only means the process forked, not that it is listening — startup can
+# take 10-30s with PostgreSQL + migrations. The old 5s wait raced, so seeding
+# failed with "HTTP 000000" / "connection refused".
+wait_http_ready() {
+  local i
+  for i in $(seq 1 60); do
+    curl -fsS -o /dev/null "$BASE_URL/api/v1/keys/stats" 2>/dev/null && { echo "  service ready ($BASE_URL)"; return 0; }
+    systemctl is-active "$SERVICE" >/dev/null 2>&1 || { echo "  ERROR: $SERVICE is not active — journalctl -u $SERVICE -n 60"; return 1; }
+    sleep 1
+  done
+  echo "  WARNING: $BASE_URL not responding after 60s — check: journalctl -u $SERVICE -n 60"
+  return 1
+}
+wait_http_ready || true
+
 step "Seed recon API keys (scripts/api-keys.env → /api/v1/keys)"
 if [ "${SKIP_KEYS:-0}" = "1" ]; then
   echo "  SKIP_KEYS=1 — skipping API key seeding"
 elif [ -f scripts/api-keys.env ]; then
-  # the k1z keys API is open (no token needed); wait briefly for it to accept requests
-  for _ in 1 2 3 4 5; do curl -fsS -o /dev/null "$BASE_URL/api/v1/keys/stats" 2>/dev/null && break; sleep 1; done
   BASE_URL="$BASE_URL" bash scripts/add-api-keys.sh || echo "  (api-keys step failed — non-fatal)"
 else
   echo "  no scripts/api-keys.env — skipping."
@@ -94,6 +108,7 @@ fi
 
 if [ "$RESEED" = "1" ] && [ -n "${ARTEX_PASSWORD:-}" ]; then
   step "Re-seed task template (delete old 'Offensive Security'/'Red Team' + recreate)"
+  wait_http_ready || true
   TOKEN=$(curl -sS -X POST "$BASE_URL/api/auth/login" -H 'Content-Type: application/json' \
     -d "{\"username\":\"ARTEX\",\"password\":\"${ARTEX_PASSWORD}\"}" \
     | python3 -c 'import json,sys;print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)
