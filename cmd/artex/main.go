@@ -19,9 +19,9 @@ import (
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/k1z"
+	k1zrunner "github.com/Autumn-27/artex/k1z/runner"
 	"github.com/Autumn-27/artex/selfupdate"
 	"github.com/Autumn-27/artex/server"
-	k1zrunner "github.com/Autumn-27/artex/k1z/runner"
 )
 
 // version is the build version, injected at release time via
@@ -63,7 +63,7 @@ func run() int {
 	// hand the build version to the server package so GET /api/health can report it
 	// to the frontend top bar.
 	server.BuildVersion = version
-	server.SetReconAPIBase(*addr)  // recon tools call the mounted k1z API over localhost
+	server.SetReconAPIBase(*addr) // recon tools call the mounted k1z API over localhost
 
 	printBanner(*addr)
 
@@ -126,8 +126,9 @@ func run() int {
 		}
 	}
 	// push-back: a recon run launched by run_workflow but not consumed inline seeds its
-	// brief back into the originating task on completion (never silently skipped).
-	k1zrunner.RunCompletedHook = srv.OnReconRunCompleted
+	// brief back into the originating task when it finishes — on ANY terminal outcome
+	// (completed, failed, cancelled), so partial results are never silently skipped.
+	k1zrunner.RunFinishedHook = srv.OnReconRunFinished
 
 	k1zHandler, k1zShutdown, k1zErr := k1z.BuildHandler(ctx)
 	if k1zErr != nil {

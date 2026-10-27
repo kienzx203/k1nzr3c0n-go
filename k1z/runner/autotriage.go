@@ -20,11 +20,14 @@ import (
 // signature is string-only so this package never imports ARTEX/Postgres.
 var AutoTriageHook func(target, goal, brief string)
 
-// RunCompletedHook, when set, is called with a run's id right after it completes
-// successfully. ARTEX uses it to push a finished run's recon brief back into the
-// task that launched it (via run_workflow), so a run that finished after the agent
-// moved on is never silently skipped. String-only to avoid importing ARTEX.
-var RunCompletedHook func(runID string)
+// RunFinishedHook, when set, is called with a run's id right after it reaches ANY
+// terminal state — completed, failed, or cancelled/timed-out — since ParseWorkspace
+// ingests partial results in every one of those cases. ARTEX uses it to push the
+// run's recon brief back into the task that launched it (via run_workflow), so a
+// run whose results landed after the agent moved on — even a run that errored out
+// with partial findings — is never silently skipped. The push-back itself no-ops
+// when the brief is empty. String-only to avoid importing ARTEX.
+var RunFinishedHook func(runID string)
 
 var (
 	triageMu   sync.Mutex

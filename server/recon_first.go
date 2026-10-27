@@ -28,7 +28,7 @@ import (
 
 // pendingPushBack maps a recon run id -> task id for runs an agent launched via
 // run_workflow but may NOT consume inline (wait=false, or a run slower than the
-// blocking cap). When such a run completes, OnReconRunCompleted seeds its brief back
+// blocking cap). When such a run finishes, OnReconRunFinished seeds its brief back
 // into the originating task, so a slow run is never silently skipped.
 var pendingPushBack sync.Map // runID string -> taskID string
 
@@ -38,11 +38,13 @@ func registerPushBack(runID, taskID string) {
 	}
 }
 
-// OnReconRunCompleted is wired to the k1z runner's RunCompletedHook. If the finished
-// run was registered for push-back, fetch its recon brief and seed it back into the
-// task that launched it (reviving a terminal task), so results that landed after the
-// agent moved on are acted on instead of lost.
-func (s *Server) OnReconRunCompleted(runID string) {
+// OnReconRunFinished is wired to the k1z runner's RunFinishedHook, which fires on
+// every terminal outcome (completed, failed, cancelled). If the finished run was
+// registered for push-back, fetch its recon brief and seed it back into the task
+// that launched it (reviving a terminal task), so results that landed after the
+// agent moved on — even partial results from a failed run — are acted on instead
+// of lost. No-ops when the run wasn't registered or produced no brief.
+func (s *Server) OnReconRunFinished(runID string) {
 	defer func() { _ = recover() }()
 	v, ok := pendingPushBack.LoadAndDelete(runID)
 	if !ok {

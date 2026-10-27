@@ -597,6 +597,7 @@ func (r *Runner) ExecuteRun(runID string) {
 		r.flipSteps(runID, "running", "cancelled")
 		r.publishDone(runID, "cancelled", elapsed, nil)
 		_ = parsers.ParseWorkspace(r.St, run, r.Bus) // partial results still parsed
+		fireRunFinished(run.ID)
 	case statusErr == nil:
 		zero := 0
 		_ = r.finishRun(runID, "completed", nil, &zero)
@@ -605,9 +606,7 @@ func (r *Runner) ExecuteRun(runID string) {
 		_ = parsers.ParseWorkspace(r.St, run, r.Bus)
 		go notify.RunFinished(r.St, run, "completed")
 		go r.maybeAutoTriage(run)
-		if RunCompletedHook != nil {
-			go RunCompletedHook(run.ID) // push the brief back to the task that launched it (if registered)
-		}
+		fireRunFinished(run.ID) // push the brief back to the task that launched it (if registered)
 	default:
 		msg := statusErr.Error()
 		if we, ok := statusErr.(*workflow.WorkflowError); ok {
@@ -619,6 +618,16 @@ func (r *Runner) ExecuteRun(runID string) {
 		r.publishDone(runID, "failed", elapsed, &rc)
 		_ = parsers.ParseWorkspace(r.St, run, r.Bus)
 		go notify.RunFinished(r.St, run, "failed")
+		fireRunFinished(run.ID) // partial findings from a failed run must still reach the task
+	}
+}
+
+// fireRunFinished invokes the push-back hook (if wired) off the hot path. Called
+// from every terminal branch — completed, cancelled, failed — so a run whose
+// results arrived after the agent moved on is pushed back regardless of outcome.
+func fireRunFinished(runID string) {
+	if RunFinishedHook != nil {
+		go RunFinishedHook(runID)
 	}
 }
 
