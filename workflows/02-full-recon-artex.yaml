@@ -1,5 +1,5 @@
 name: 02-full-recon-artex
-description: 'ARTEX DISCOVERY-ONLY: collect ALL subdomain NAMES (passive 30+ sources + permutation + SecurityTrails intel + reverse-DNS + TLS cert SAN + ASN/CIDR). NO DNS resolve, NO httpx, NO port scan, NO screenshot, NO crawl/JS, NO vuln — outputs subdomains.txt for the ARTEX agent to resolve + probe + exploit itself.'
+description: 'ARTEX DISCOVERY-ONLY: collect ALL subdomain NAMES (passive 33 sources incl crt.sh-psql + subdomain.center + github-subdomains, permutation, SecurityTrails intel, reverse-DNS, TLS cert SAN, ASN/CIDR). NO DNS resolve, NO httpx, NO port scan, NO screenshot, NO crawl/JS, NO vuln — outputs subdomains.txt for the ARTEX agent to resolve + probe + exploit itself.'
 # Cap on concurrent steps within a parallel level. The passive phase runs ~30
 # independent sources in one level; 8 at a time keeps RAM/CPU bounded on the
 # scan VM. These sources are API/CT queries (TCP), NOT DNS floods — safe for
@@ -854,6 +854,69 @@ steps:
     printf '[axfr] zone transfer subdomains leaked: %s\n' "$AXFR_COUNT"
   outputs:
     file: '{workspace}/axfr_subs.txt'
+- id: p_subdomaincenter
+  name: passive — subdomain.center (unique dataset, no API key)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    curl -s --max-time 60 --retry 2 "https://api.subdomain.center/?domain={target}" 2>/dev/null \
+      | jq -r '.[]?' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_subdomaincenter.txt || true
+    touch {workspace}/p_subdomaincenter.txt
+    printf 'subdomain.center subs: %s\n' "$(wc -l < {workspace}/p_subdomaincenter.txt)"
+  outputs:
+    file: '{workspace}/p_subdomaincenter.txt'
+- id: p_crtsh_psql
+  name: passive — crt.sh via PostgreSQL (full CT set; deeper than the HTTP API)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 5m
+  run: |
+    touch {workspace}/p_crtsh_psql.txt
+    command -v psql >/dev/null 2>&1 || { printf 'psql not installed — skipping crt.sh-psql\n'; exit 0; }
+    # crt.sh public Postgres returns the FULL identity set the HTTP API truncates.
+    # Server-side statement_timeout caps a slow scan; the step is optional anyway.
+    PGCONNECT_TIMEOUT=20 psql -t -A -h crt.sh -p 5432 -U guest -d certwatch \
+      -c "SET statement_timeout='120s'; SELECT ci.NAME_VALUE FROM certificate_and_identities ci WHERE ci.NAME_VALUE ILIKE '%.{target}';" \
+      2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_crtsh_psql.txt || true
+    touch {workspace}/p_crtsh_psql.txt
+    printf 'crt.sh (psql) subs: %s\n' "$(wc -l < {workspace}/p_crtsh_psql.txt)"
+  outputs:
+    file: '{workspace}/p_crtsh_psql.txt'
+- id: p_github_subs
+  name: passive — github-subdomains (deep code dork; needs GITHUB_TOKEN)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 10m
+  run: |
+    touch {workspace}/p_github_subs.txt
+    command -v github-subdomains >/dev/null 2>&1 || { printf 'github-subdomains not installed — skipping\n'; exit 0; }
+    TOK="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+    test -n "$TOK" || { printf 'no GITHUB_TOKEN/GH_TOKEN — skipping github-subdomains\n'; exit 0; }
+    github-subdomains -d {target} -t "$TOK" -o {workspace}/.gh_subs 2>/dev/null || true
+    cat {workspace}/.gh_subs 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_github_subs.txt || true
+    rm -f {workspace}/.gh_subs
+    touch {workspace}/p_github_subs.txt
+    printf 'github-subdomains subs: %s\n' "$(wc -l < {workspace}/p_github_subs.txt)"
+  outputs:
+    file: '{workspace}/p_github_subs.txt'
 - id: merge_passive
   name: merge all passive sources → deduplicate + scope-filter
   depends_on:
@@ -888,6 +951,9 @@ steps:
   - p_threatcrowd
   - p_amass_active
   - axfr_check
+  - p_subdomaincenter
+  - p_crtsh_psql
+  - p_github_subs
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -924,6 +990,9 @@ steps:
         {workspace}/p_threatcrowd.txt \
         {workspace}/p_amass_active.txt \
         {workspace}/axfr_subs.txt \
+        {workspace}/p_subdomaincenter.txt \
+        {workspace}/p_crtsh_psql.txt \
+        {workspace}/p_github_subs.txt \
         2>/dev/null || true
       test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
