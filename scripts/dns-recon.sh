@@ -306,14 +306,13 @@ resolve_all() {
 # ── reverse DNS ───────────────────────────────────────────────────────────────
 ptr() {
   hdr "Reverse DNS (PTR)"
-  : > "$OUT/ptr.txt"
   sort -u "$OUT/.ips" > "$OUT/ips.txt"
-  # PTR for each discovered IP
-  while read -r ip; do
-    [ -z "$ip" ] && continue
-    local p; p=$(dig +short -x "$ip" @"$RESOLVER" 2>/dev/null | sed 's/\.$//')
-    [ -n "$p" ] && { printf '%s\t%s\n' "$ip" "$p" >> "$OUT/ptr.txt"; echo "$p" | add_subs; }
-  done < "$OUT/ips.txt"
+  export RESOLVER
+  xargs -P "$THREADS" -I{} bash -c '
+    ip="{}"; p=$(dig +short -x "$ip" @"$RESOLVER" 2>/dev/null | sed "s/\.$//" | head -1)
+    [ -n "$p" ] && printf "%s\t%s\n" "$ip" "$p"
+  ' < "$OUT/ips.txt" 2>/dev/null | sort -u > "$OUT/ptr.txt"
+  awk '{print $2}' "$OUT/ptr.txt" | add_subs
   local n; n=$(wc -l < "$OUT/ptr.txt")
   ok "$n PTR records"
   [ "$n" -gt 0 ] && sed 's/^/  /' "$OUT/ptr.txt" | head -40

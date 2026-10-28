@@ -1260,19 +1260,19 @@ steps:
   shell: true
   optional: true
   skip_if_exists: true
-  timeout: 12m
+  timeout: 25m
   run: |
     touch {workspace}/p_dns_zone.txt
     SCRIPT={scripts_dir}/scripts/dns-recon.sh
     [ -f "$SCRIPT" ] || SCRIPT=/opt/k1nzr3c0n-src/scripts/dns-recon.sh
     [ -f "$SCRIPT" ] || { printf '[dns-recon] script not found — skipping\n'; exit 0; }
     OUT={workspace}/dnsrecon
-    # NSEC zone-walk + AXFR + internal-IP classification — the DNS-disclosure layer
-    # the pipeline otherwise lacks. Skip brute (pipeline has puredns) and --svc
-    # (active HTTP). Passive/read-only DNS.
-    bash "$SCRIPT" {target} -o "$OUT" --only enum,axfr,nsec,resolve -t {vars.dnsx_threads} --quiet 2>/dev/null || true
+    # FULL recon (don't drop anything): all modules + --svc service harvest
+    # (cert SAN + Docker-Registry /v2 realm). NOTE: brute/perm/--svc send active
+    # DNS/HTTP/TLS to the target; the step is optional so failures never break the run.
+    bash "$SCRIPT" {target} -o "$OUT" --svc -t {vars.dnsx_threads} --quiet 2>/dev/null || true
     [ -f "$OUT/subdomains.txt" ] && cp "$OUT/subdomains.txt" {workspace}/p_dns_zone.txt
-    for f in zone_nsec internal_hosts internal_ips internal_subnets; do
+    for f in zone_nsec internal_hosts internal_ips internal_subnets ptr resolved svc_new_hosts; do
       [ -f "$OUT/$f.txt" ] && cp "$OUT/$f.txt" {workspace}/dns_$f.txt
     done
     touch {workspace}/p_dns_zone.txt
