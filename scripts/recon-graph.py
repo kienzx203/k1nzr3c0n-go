@@ -258,16 +258,17 @@ def main():
     print(f"  -> {out}.html   {out}.json")
 
 # node palette: group -> (fill, border)
+# light-theme palette (fill, border) — saturated for contrast on a white canvas
 PALETTE = {
- 'domain':('#f0f6fc','#1f6feb'), 'sub':('#58a6ff','#1f6feb'),
- 'sub_dead':('#3d4650','#30363d'), 'vhost':('#f0883e','#9e4a06'),
- 'sub_int':('#f85149','#8e1519'), 'ip_pub':('#3fb950','#1a7f37'),
- 'ip_int':('#da3633','#6e0b0b'), 'ip_origin':('#2ea043','#116329'),
- 'asn':('#a371f7','#6639ba'), 'subnet':('#d29922','#9e6a03'),
- 'provider':('#39c5cf','#1b7f86'),
- 'vuln_critical':('#ff4d4f','#a61d24'), 'vuln_high':('#ff7a45','#ad4e00'),
- 'vuln_medium':('#ffc53d','#ad8b00'), 'vuln_low':('#73d13d','#3f6600'),
- 'vuln_info':('#8b949e','#484f58'), 'vuln_unknown':('#8b949e','#484f58'),
+ 'domain':('#0969da','#0a3069'), 'sub':('#54aeff','#0969da'),
+ 'sub_dead':('#afb8c1','#8c959f'), 'vhost':('#fb8500','#bc4c00'),
+ 'sub_int':('#cf222e','#a40e26'), 'ip_pub':('#1f883d','#116329'),
+ 'ip_int':('#e5484d','#a40e26'), 'ip_origin':('#2da44e','#116329'),
+ 'asn':('#8250df','#6639ba'), 'subnet':('#bf8700','#9a6700'),
+ 'provider':('#1b7c83','#0e5a5f'),
+ 'vuln_critical':('#cf222e','#82071e'), 'vuln_high':('#bc4c00','#8a3800'),
+ 'vuln_medium':('#bf8700','#9a6700'), 'vuln_low':('#1f883d','#116329'),
+ 'vuln_info':('#6e7781','#57606a'), 'vuln_unknown':('#6e7781','#57606a'),
 }
 SEVW = {'critical': 8, 'high': 5, 'medium': 3, 'low': 1}
 
@@ -309,10 +310,19 @@ def cy_elements(g, budget=800):
                          key=score, reverse=True)[:budget]
         keep |= set(n['id'] for n in notable)
         shown = len(notable)
-    extra = {}
+    node_by_id = {n['id']: n for n in g['nodes']}
+    extra, hidden = {}, {}
     for e in g['edges']:
-        if e['label'] == 'A' and e['from'] not in keep and e['to'] in keep:
+        if e['label'] == 'A' and e['from'] not in keep and e['to'] in keep and e['to'].startswith('ip:'):
             extra[e['to']] = extra.get(e['to'], 0) + 1
+            lst = hidden.setdefault(e['to'], [])          # for lazy reveal on click
+            if len(lst) < 400:
+                hn = node_by_id.get(e['from'])
+                if hn:
+                    hp = PALETTE.get(hn['group'], ('#afb8c1', '#8c959f'))
+                    lst.append({'id': hn['id'], 'label': hn['label'], 'group': hn['group'],
+                                'col': hp[0], 'bd': hp[1], 'sz': 11, 'title': hn.get('title', ''),
+                                'kind': hn['group'].split('_')[0]})
 
     els = []
     for n in g['nodes']:
@@ -340,12 +350,13 @@ def cy_elements(g, budget=800):
         sev = e['label'] if e['label'] in SEVW else ''
         els.append({'data': {'id': e['from'] + '>' + e['to'] + '>' + e['label'],
                              'source': e['from'], 'target': e['to'], 'label': e['label'], 'sev': sev}})
-    return els, (len(allhosts), shown, pruned)
+    return els, (len(allhosts), shown, pruned), hidden
 
 def html(g):
-    els, meta = cy_elements(g)
+    els, meta, hidden = cy_elements(g)
     data = json.dumps(els)
     pal = json.dumps(PALETTE)
+    hid = json.dumps(hidden)
     st = g['stats']; sv = st.get('sev', {}); tgt = g.get('target') or 'recon'
     n_hosts, n_shown, pruned = meta
     stat = (f"{st['subdomains']} subs · {st['alive']} alive · {st['ips']} IPs · "
@@ -353,7 +364,7 @@ def html(g):
             f"{st['providers']} cdn · {st['findings']} vulns")
     if pruned:
         stat += f" · <b style='color:#f0883e'>top {n_shown} of {n_hosts} hosts shown</b>"
-    return (_TPL.replace('/*DATA*/0', data).replace('/*PAL*/0', pal)
+    return (_TPL.replace('/*DATA*/0', data).replace('/*PAL*/0', pal).replace('/*HID*/0', hid)
             .replace('__TARGET__', tgt).replace('__STAT__', stat).replace('__N__', str(len(els))))
 
 _TPL = r"""<!doctype html><html><head><meta charset="utf-8"><title>Attack surface — __TARGET__</title>
@@ -364,32 +375,33 @@ _TPL = r"""<!doctype html><html><head><meta charset="utf-8"><title>Attack surfac
 <script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
 <script src="https://unpkg.com/cytoscape-expand-collapse@4.1.1/cytoscape-expand-collapse.js"></script>
 <style>
- :root{--bg:#0d1117;--fg:#c9d1d9;--mut:#8b949e;--bd:#30363d;--card:#161b22;--acc:#58a6ff}
+ :root{--bg:#ffffff;--fg:#1f2328;--mut:#656d76;--bd:#d0d7de;--card:#f6f8fa;--acc:#0969da;--row:#eef2f6}
  *{box-sizing:border-box} html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);
    font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
  #bar{position:fixed;inset:0 0 auto 0;z-index:6;display:flex;gap:9px;align-items:center;flex-wrap:wrap;
    padding:7px 12px;background:var(--card);border-bottom:1px solid var(--bd)}
- #bar b{color:#f0f6fc} .stat{color:var(--mut);font-size:12px}
- input,button,select{background:#0d1117;border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:4px 8px;font-size:12px}
+ #bar b{color:#1f2328} .stat{color:var(--mut);font-size:12px}
+ input,button,select{background:#fff;border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:4px 8px;font-size:12px}
+ button:hover{background:#f3f4f6}
  button{cursor:pointer} button:hover{border-color:var(--acc)} button.on{background:#1f6feb33;border-color:var(--acc);color:#fff}
  #chips{display:flex;gap:5px;flex-wrap:wrap} .chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;
    color:var(--mut);cursor:pointer;user-select:none;padding:2px 7px;border:1px solid var(--bd);border-radius:20px}
  .chip.off{opacity:.35;text-decoration:line-through} .chip i{width:9px;height:9px;border-radius:50%}
  #main{position:fixed;inset:46px 0 0 0;display:flex}
- #cy{flex:1;min-width:0;height:100%}
+ #cy{flex:1;min-width:0;height:100%;background:#fbfcfd;background-image:radial-gradient(#e7ecf1 1px,transparent 1px);background-size:22px 22px}
  #side{width:340px;flex-shrink:0;border-left:1px solid var(--bd);background:var(--card);display:flex;flex-direction:column}
  #sidetabs{display:flex;border-bottom:1px solid var(--bd)}
  #sidetabs button{flex:1;border:0;border-radius:0;background:transparent;padding:7px;color:var(--mut)}
- #sidetabs button.on{color:#f0f6fc;box-shadow:inset 0 -2px 0 var(--acc)}
+ #sidetabs button.on{color:#1f2328;box-shadow:inset 0 -2px 0 var(--acc)}
  #tablewrap{flex:1;overflow:auto} #detailwrap{flex:1;overflow:auto;padding:12px 14px;white-space:pre-wrap;
    font-family:ui-monospace,monospace;font-size:11px;display:none}
  table{width:100%;border-collapse:collapse;font-size:11px}
  th{position:sticky;top:0;background:var(--card);text-align:left;padding:6px 8px;color:var(--mut);cursor:pointer;
    border-bottom:1px solid var(--bd);white-space:nowrap;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
- th:hover{color:var(--fg)} td{padding:4px 8px;border-bottom:1px solid #21262d;font-family:ui-monospace,monospace}
+ th:hover{color:var(--fg)} td{padding:4px 8px;border-bottom:1px solid #eaeef2;font-family:ui-monospace,monospace}
  tr{cursor:pointer} tr:hover{background:#1f6feb14} tr.sel{background:#1f6feb2e}
  td .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
- .risk{color:#ff7a45;font-weight:700} #detailwrap h3{margin:0 0 6px;color:#f0f6fc;font:600 13px system-ui}
+ .risk{color:#ff7a45;font-weight:700} #detailwrap h3{margin:0 0 6px;color:#1f2328;font:600 13px system-ui}
  #hint{position:fixed;bottom:8px;left:12px;color:#484f58;font-size:11px;z-index:5}
 </style></head><body>
 <div id="bar">
@@ -411,11 +423,11 @@ _TPL = r"""<!doctype html><html><head><meta charset="utf-8"><title>Attack surfac
    <div id="detailwrap"></div>
  </div>
 </div>
-<div id="hint">click node = focus + attack-path · dbl subnet = expand/collapse · click row = jump</div>
+<div id="hint">click = focus + attack-path · dbl-click subnet = expand · dbl-click IP(+N) = reveal hosts · click row = jump</div>
 <script>
 try{cytoscape.use(window.cytoscapeFcose);}catch(e){}
 try{cytoscape.use(window.cytoscapeExpandCollapse);}catch(e){}
-const ELES=/*DATA*/0, PAL=/*PAL*/0, N=__N__;
+const ELES=/*DATA*/0, PAL=/*PAL*/0, HIDDEN=/*HID*/0, N=__N__;
 const LBL={domain:'domain',sub:'subdomain',sub_dead:'no-http',vhost:'interesting',sub_int:'internal host',
   ip_pub:'IP',ip_int:'internal IP',ip_origin:'origin IP',asn:'ASN',subnet:'subnet',provider:'CDN/CNAME',
   vuln_critical:'critical',vuln_high:'high',vuln_medium:'medium',vuln_low:'low',vuln_info:'info'};
@@ -424,18 +436,18 @@ const cy=cytoscape({
  textureOnViewport:true, hideEdgesOnViewport:true, pixelRatio:1, motionBlur:false, maxZoom:4, minZoom:0.04,
  style:[
   {selector:'node',style:{'background-color':'data(col)','border-color':'data(bd)','border-width':2,
-    'width':'data(sz)','height':'data(sz)','label':'data(label)','color':'#c9d1d9','font-size':9,
+    'width':'data(sz)','height':'data(sz)','label':'data(label)','color':'#24292f','font-size':9,'font-weight':500,
     'text-valign':'bottom','text-margin-y':2,'text-wrap':'ellipsis','text-max-width':90,
     'min-zoomed-font-size':11,'overlay-opacity':0}},
   {selector:'node[kind="vuln"]',style:{'shape':'triangle','color':'#fff','font-size':8}},
-  {selector:'node[group="domain"]',style:{'shape':'round-diamond','font-size':13,'color':'#f0f6fc','text-valign':'center'}},
+  {selector:'node[group="domain"]',style:{'shape':'round-diamond','font-size':13,'color':'#ffffff','text-valign':'center'}},
   {selector:'node[group="asn"]',style:{'shape':'hexagon'}},
   {selector:':parent',style:{'background-opacity':0.07,'background-color':'#d29922','border-color':'#9e6a03',
     'border-style':'dashed','border-width':1.5,'shape':'round-rectangle','label':'data(label)','color':'#d29922',
     'font-size':10,'text-valign':'top','text-margin-y':-3,'padding':'14px','min-zoomed-font-size':6}},
   {selector:'node.cy-expand-collapse-collapsed-node',style:{'background-opacity':0.22,'border-style':'solid',
-    'shape':'round-rectangle','width':'label','height':28,'padding':'8px','font-size':11,'color':'#f0d08a'}},
-  {selector:'edge',style:{'width':0.7,'line-color':'#283039','target-arrow-color':'#283039',
+    'shape':'round-rectangle','width':'label','height':28,'padding':'8px','font-size':11,'color':'#7a5a00'}},
+  {selector:'edge',style:{'width':0.8,'line-color':'#c2cad3','target-arrow-color':'#c2cad3',
     'target-arrow-shape':'triangle','arrow-scale':0.5,'curve-style':'bezier','opacity':0.7}},
   {selector:'edge[sev]',style:{'line-color':'#6e40c9','target-arrow-color':'#6e40c9'}},
   {selector:'edge[label="CNAME"]',style:{'line-style':'dashed','line-color':'#39c5cf'}},
@@ -528,6 +540,17 @@ function focusNode(n,fit){
  sideTab('detail');
  if(fit)cy.animate({fit:{eles:n.closedNeighborhood(),padding:120},},{duration:300});
 }
+// progressive disclosure: dbl-click an IP with a "+N" badge → lazy-load its hidden hosts
+function revealHidden(ip){
+ const h=HIDDEN[ip.id()]; if(!h||!h.length||ip.data('revealed'))return;
+ ip.data('revealed',1); const add=[];
+ h.forEach(d=>{ if(cy.$id(d.id).nonempty())return;
+   add.push({data:Object.assign({},d,{internal:(d.group||'').indexOf('int')>-1?1:0,dead:d.group==='sub_dead'?1:0,risk:0})});
+   add.push({data:{id:'rev>'+d.id+'>'+ip.id(),source:d.id,target:ip.id(),label:'A'}}); });
+ if(add.length){cy.add(add); ip.data('label',(ip.data('label')||'').split('  +')[0]);
+   cy.layout({name:'fcose',animate:false,randomize:false,fit:false,nodeSeparation:60,numIter:600}).run();}
+}
+cy.on('dbltap','node[kind="ip"]',ev=>revealHidden(ev.target));
 cy.on('tap','node',ev=>{if(!ev.target.hasClass('cy-expand-collapse-collapsed-node'))focusNode(ev.target,false);});
 cy.on('tap',ev=>{if(ev.target===cy){cy.elements().removeClass('dim hl path pathnode');}});
 </script></body></html>"""
