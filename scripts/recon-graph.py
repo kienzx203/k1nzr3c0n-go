@@ -362,11 +362,12 @@ const LBL={domain:'domain',sub:'subdomain',sub_dead:'no-http',vhost:'interesting
 const SEVCOL={critical:'#ff4d4f',high:'#ff7a45',medium:'#ffc53d',low:'#73d13d'};
 const cy=cytoscape({
  container:document.getElementById('cy'), elements:ELES, wheelSensitivity:0.25,
+ textureOnViewport:true, hideEdgesOnViewport:true, pixelRatio:1, motionBlur:false, maxZoom:4, minZoom:0.04,
  style:[
   {selector:'node',style:{'background-color':'data(col)','border-color':'data(bd)','border-width':2,
     'width':'data(sz)','height':'data(sz)','label':'data(label)','color':'#c9d1d9','font-size':9,
     'text-valign':'bottom','text-margin-y':2,'text-wrap':'ellipsis','text-max-width':90,
-    'min-zoomed-font-size':7,'overlay-opacity':0}},
+    'min-zoomed-font-size':12,'overlay-opacity':0}},
   {selector:'node[kind="vuln"]',style:{'shape':'triangle','color':'#fff','font-size':8}},
   {selector:'node[group="domain"]',style:{'shape':'round-diamond','font-size':13,'color':'#f0f6fc','text-valign':'center'}},
   {selector:'node[group="asn"]',style:{'shape':'hexagon'}},
@@ -431,29 +432,34 @@ document.getElementById('cluster').onclick=e=>{
  });
 };
 // ── search ──
-document.getElementById('q').addEventListener('input',e=>{
- const q=e.target.value.toLowerCase().trim();
- if(!q){cy.nodes().removeClass('dim hl');return;}
- cy.batch(()=>{
-  cy.elements().addClass('dim');
+let qT; const qEl=document.getElementById('q');
+qEl.addEventListener('input',()=>{
+ clearTimeout(qT);
+ qT=setTimeout(()=>{                       // debounce so typing stays smooth on big graphs
+  const q=qEl.value.toLowerCase().trim();
+  if(!q){cy.batch(()=>cy.elements().removeClass('dim hl'));qEl.removeAttribute('title');return;}
   const hit=cy.nodes().filter(n=>(n.data('label')||'').toLowerCase().includes(q)||n.id().toLowerCase().includes(q));
-  hit.removeClass('dim').addClass('hl'); hit.connectedEdges().removeClass('dim');
-  if(hit.length&&hit.length<=4) cy.animate({fit:{eles:hit,padding:80}},{duration:300});
- });
+  cy.batch(()=>{                            // dim all, keep matches + their context lit
+   cy.elements().addClass('dim');
+   hit.closedNeighborhood().removeClass('dim'); hit.addClass('hl');
+  });
+  qEl.title=hit.length+' match';
+  if(hit.length&&hit.length<=8) cy.animate({fit:{eles:hit,padding:90}},{duration:250});
+ },150);
 });
 // ── focus + attack-path on tap ──
 const P=document.getElementById('panel');
 function root(){return cy.nodes('[group="domain"]')[0]||cy.nodes('[group="ip_origin"]')[0]||cy.nodes('[group="ip_pub"]')[0];}
 cy.on('tap','node',ev=>{
- const n=ev.target; cy.elements().removeClass('dim hl path pathnode');
- const nb=n.closedNeighborhood(); cy.elements().addClass('dim'); nb.removeClass('dim'); n.addClass('hl');
- // attack-path: shortest path from root → this node
- const r=root();
- if(r&&r.id()!==n.id()){
-  const dij=cy.elements().dijkstra({root:r,directed:false});
-  const p=dij.pathTo(n);
-  if(p&&p.length){p.removeClass('dim').addClass('path'); p.nodes().addClass('pathnode');}
- }
+ const n=ev.target; const r=root();
+ cy.batch(()=>{                             // one style pass → no interaction lag on big graphs
+  cy.elements().removeClass('dim hl path pathnode').addClass('dim');
+  n.closedNeighborhood().removeClass('dim'); n.addClass('hl');
+  if(r&&r.id()!==n.id()){                   // attack-path: shortest path from exposed root → node
+   const p=cy.elements().dijkstra({root:r,directed:false}).pathTo(n);
+   if(p&&p.length){p.removeClass('dim').addClass('path'); p.nodes().addClass('pathnode');}
+  }
+ });
  // detail panel
  const links=n.connectedEdges().map(e=>{const o=e.source().id()===n.id()?e.target():e.source();return (e.data('label')||'')+' → '+o.data('label');});
  P.innerHTML='<span class="x" onclick="this.parentElement.style.display=\'none\'">✕</span>'+
