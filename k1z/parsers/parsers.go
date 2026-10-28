@@ -40,11 +40,20 @@ func ParseWorkspace(st *store.Store, run *store.Run, b *bus.Bus) error {
 		return nil
 	}
 	scanNuclei(st, run, ws)
+	scanAfrog(st, run, ws)
 	scanHTTPX(st, run, ws)
 	scanNaabu(st, run, ws)
 	scanSubdomains(st, run, ws)
-	scanKatana(st, run, ws)
-	scanGAU(st, run, ws)
+	scanURLs(st, run, ws)
+	scanEndpoints(st, run, ws)
+	scanSecrets(st, run, ws)
+	scanParams(st, run, ws)
+	scanTakeover(st, run, ws)
+	scanBuckets(st, run, ws)
+	scanCDN(st, run, ws)
+	scanNetIntel(st, run, ws)
+	scanServices(st, run, ws)
+	scanIntel(st, run, ws)
 	ingestAssetGraph(st, run)
 	DetectNewAssets(st, run)
 	alertCritical(st, run, b)
@@ -55,7 +64,8 @@ func ParseWorkspace(st *store.Store, run *store.Run, b *bus.Bus) error {
 // (ScopeWeaver concept: findings enrich the graph the agent explores).
 func ingestAssetGraph(st *store.Store, run *store.Run) {
 	company, _ := st.UpsertCompany(run.Target, nil)
-	fl, _, _ := st.ListFindings(store.FindingFilter{RunID: run.ID, Limit: 1000})
+	fl, _, _ := st.ListFindings(store.FindingFilter{RunID: run.ID, Limit: 50000})
+	enriched := 0
 	for _, f := range fl {
 		a := store.Asset{CompanyID: &company.ID, Value: f.Host, Source: "run:" + run.ID}
 		switch f.Kind {
@@ -95,7 +105,11 @@ func ingestAssetGraph(st *store.Store, run *store.Run) {
 			continue
 		}
 		_ = st.UpsertAsset(&a)
-		st.EnrichAssetDNS(a)
+		// DNS-enrich only live sites, capped, to avoid a lookup storm at scale
+		if a.Type == "site" && enriched < 3000 {
+			enriched++
+			st.EnrichAssetDNS(a)
+		}
 	}
 }
 
@@ -182,60 +196,59 @@ func scanNuclei(st *store.Store, run *store.Run, ws string) {
 
 func scanHTTPX(st *store.Store, run *store.Run, ws string) {
 	shots := gowitnessShots(ws)
-	var f string
-	if f = firstExisting(ws, "httpx.jsonl", "httpx.json", "http_alive.jsonl"); f == "" {
-		f = firstExisting(ws, "alive.txt", "http_alive.txt", "httpx.txt")
+	files := globFiles(ws, "httpx.jsonl", "httpx.json", "http_alive.jsonl",
+		"httpx_probe.jsonl", "pivot_httpx_probe.jsonl", "st_pivot_httpx.jsonl")
+	if len(files) == 0 {
+		f := firstExisting(ws, "alive.txt", "http_alive.txt", "httpx.txt")
 		if f == "" {
 			return
 		}
-		// plain-text fallback: lines starting with http
-		sc, err := os.Open(f)
-		if err != nil {
-			return
-		}
-		defer sc.Close()
-		b := bufio.NewScanner(sc)
-		for b.Scan() {
-			line := strings.TrimSpace(b.Text())
+		eachLine(f, func(line string) {
+			line = strings.TrimSpace(line)
 			if strings.HasPrefix(line, "http") {
-				st.InsertFinding(&store.Finding{
-					RunID: run.ID, Kind: "http", Host: hostOfURL(line), URL: sp(line),
-				})
+				st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "http", Host: hostOfURL(line), URL: sp(line)})
 			}
-		}
+		})
 		return
 	}
-	eachJSONLine(f, func(m map[string]any) {
-		host := str(m["host"])
-		u := str(m["url"])
-		if host == "" {
-			host = hostOfURL(u)
-		}
-		ip := ""
-		if arr, ok := m["a"].([]any); ok && len(arr) > 0 {
-			ip = str(arr[0])
-		}
-		port := intFromAny(m["port"])
-		sc := intFromAny(m["status_code"])
-		if sc == 0 {
-			sc = intFromAny(m["status-code"])
-		}
-		tech := "[]"
-		if t := anyTech(m["technologies"]); t != "" {
-			tech = t
-		} else if t := anyTech(m["tech"]); t != "" {
-			tech = t
-		}
-		var shot *string
-		if s, ok := shots[screenshotKey(host, port)]; ok {
-			shot = sp("screenshots/" + s)
-		}
-		st.InsertFinding(&store.Finding{
-			RunID: run.ID, Kind: "http", Host: host, IP: strp(ip), Port: intPtr(port),
-			StatusCode: intPtr(sc), URL: strp(u), Title: strp(m["title"]), Tech: tech,
-			Screenshot: shot,
+	seen := map[string]bool{}
+	for _, f := range files {
+		eachJSONLine(f, func(m map[string]any) {
+			host := str(m["host"])
+			u := str(m["url"])
+			if host == "" {
+				host = hostOfURL(u)
+			}
+			port := intFromAny(m["port"])
+			key := host + "|" + strconv.Itoa(port) + "|" + u
+			if seen[key] {
+				return
+			}
+			seen[key] = true
+			ip := ""
+			if arr, ok := m["a"].([]any); ok && len(arr) > 0 {
+				ip = str(arr[0])
+			}
+			sc := intFromAny(m["status_code"])
+			if sc == 0 {
+				sc = intFromAny(m["status-code"])
+			}
+			tech := "[]"
+			if t := anyTech(m["technologies"]); t != "" {
+				tech = t
+			} else if t := anyTech(m["tech"]); t != "" {
+				tech = t
+			}
+			var shot *string
+			if s, ok := shots[screenshotKey(host, port)]; ok {
+				shot = sp("screenshots/" + s)
+			}
+			st.InsertFinding(&store.Finding{
+				RunID: run.ID, Kind: "http", Host: host, IP: strp(ip), Port: intPtr(port),
+				StatusCode: intPtr(sc), URL: strp(u), Title: strp(m["title"]), Tech: tech, Screenshot: shot,
+			})
 		})
-	})
+	}
 }
 
 func anyTech(v any) string {
@@ -305,26 +318,34 @@ func hostOfURL(u string) string {
 // ── naabu ────────────────────────────────────────────────────────────────────
 
 func scanNaabu(st *store.Store, run *store.Run, ws string) {
-	var f string
-	if f = firstExisting(ws, "naabu.jsonl", "naabu.json", "ports.jsonl"); f != "" {
-		eachJSONLine(f, func(m map[string]any) {
-			host := str(m["host"])
-			if host == "" {
-				host = str(m["ip"])
-			}
-			port := intFromAny(m["port"])
-			proto := str(m["protocol"])
-			if proto == "" {
-				proto = "tcp"
-			}
-			st.InsertFinding(&store.Finding{
-				RunID: run.ID, Kind: "port", Host: host, IP: strp(str(m["ip"])),
-				Port: intPtr(port), Protocol: sp(proto), Name: sp("Open port " + strconv.Itoa(port)),
+	files := globFiles(ws, "naabu.jsonl", "naabu.json", "ports.jsonl", "naabu_asn.jsonl", "st_pivot_naabu.jsonl")
+	if len(files) > 0 {
+		seen := map[string]bool{}
+		for _, f := range files {
+			eachJSONLine(f, func(m map[string]any) {
+				host := str(m["host"])
+				if host == "" {
+					host = str(m["ip"])
+				}
+				port := intFromAny(m["port"])
+				key := host + ":" + strconv.Itoa(port)
+				if port == 0 || seen[key] {
+					return
+				}
+				seen[key] = true
+				proto := str(m["protocol"])
+				if proto == "" {
+					proto = "tcp"
+				}
+				st.InsertFinding(&store.Finding{
+					RunID: run.ID, Kind: "port", Host: host, IP: strp(str(m["ip"])),
+					Port: intPtr(port), Protocol: sp(proto), Name: sp("Open port " + strconv.Itoa(port)),
+				})
 			})
-		})
+		}
 		return
 	}
-	if f = firstExisting(ws, "naabu.txt", "ports.txt"); f != "" {
+	if f := firstExisting(ws, "naabu.txt", "ports.txt"); f != "" {
 		eachLine(f, func(line string) {
 			host, portS, ok := strings.Cut(line, ":")
 			if !ok {
@@ -345,78 +366,32 @@ func scanNaabu(st *store.Store, run *store.Run, ws string) {
 // ── subdomains ───────────────────────────────────────────────────────────────
 
 func scanSubdomains(st *store.Store, run *store.Run, ws string) {
-	f := firstExisting(ws, "subdomains_resolved.txt", "subdomains.txt")
-	if f == "" {
-		return
-	}
-	eachLine(f, func(line string) {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			return
-		}
-		st.InsertFinding(&store.Finding{
-			RunID: run.ID, Kind: "subdomain", Host: line, Name: sp(line),
-		})
-	})
-}
-
-// ── katana / gau ─────────────────────────────────────────────────────────────
-
-func scanKatana(st *store.Store, run *store.Run, ws string) {
-	f := filepath.Join(ws, "katana.jsonl")
-	if _, err := os.Stat(f); err != nil {
+	files := globFiles(ws, "subdomains_resolved.txt", "subdomains_all_resolved.txt", "subdomains.txt",
+		"subdomains_all.txt", "passive_merged.txt", "tlsx_new_subs.txt", "js_subs.txt", "jsubfinder_subs.txt",
+		"st_intel_subs.txt", "reverse_dns_subs.txt", "ptr_subs.txt", "dns_records_subs.txt",
+		"vhost_new_hosts.txt", "favicon_in_scope.txt", "dns_svc_new_hosts.txt", "dns_zone_nsec.txt", "p_dns_zone.txt")
+	if len(files) == 0 {
 		return
 	}
 	seen := map[string]bool{}
-	eachJSONLine(f, func(m map[string]any) {
-		u := str(m["request.endpoint"])
-		if u == "" {
-			u = str(m["endpoint"])
-		}
-		if u == "" {
-			u = str(m["url"])
-		}
-		if u == "" || seen[u] {
-			return
-		}
-		seen[u] = true
-		title := ""
-		if req, ok := m["request"].(map[string]any); ok {
-			title = str(req["tag"])
-			if title == "" {
-				title = str(req["attribute"])
+	n := 0
+	for _, f := range files {
+		eachLine(f, func(line string) {
+			h := strings.ToLower(strings.Trim(strings.TrimSpace(line), "."))
+			if fld := strings.Fields(h); len(fld) > 0 {
+				h = fld[0]
 			}
-		}
-		st.InsertFinding(&store.Finding{
-			RunID: run.ID, Kind: "url", Host: hostOfURL(u), URL: sp(u), Title: strp(title),
+			if h == "" || !strings.Contains(h, ".") || seen[h] || n >= rowCap {
+				return
+			}
+			seen[h] = true
+			n++
+			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "subdomain", Host: h, Name: sp(h)})
 		})
-	})
+	}
 }
 
-func scanGAU(st *store.Store, run *store.Run, ws string) {
-	f := filepath.Join(ws, "gau.jsonl")
-	if _, err := os.Stat(f); err != nil {
-		return
-	}
-	seen := map[string]bool{}
-	eachJSONLine(f, func(m map[string]any) {
-		u := []string{}
-		for _, k := range []string{"url", "endpoint"} {
-			if v := str(m[k]); v != "" {
-				u = append(u, v)
-				break
-			}
-		}
-		if len(u) == 0 || seen[u[0]] {
-			return
-		}
-		seen[u[0]] = true
-		st.InsertFinding(&store.Finding{
-			RunID: run.ID, Kind: "url", Host: hostOfURL(u[0]), URL: sp(u[0]),
-			Name: strp(str(m["technique"])),
-		})
-	})
-}
+// (URLs/endpoints now handled comprehensively in scanners_ext.go: scanURLs)
 
 // ── new assets + alerts ──────────────────────────────────────────────────────
 
