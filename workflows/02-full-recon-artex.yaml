@@ -7,6 +7,7 @@ description: 'ARTEX DISCOVERY-ONLY: collect ALL subdomain NAMES (passive 33 sour
 max_parallel: 8
 vars:
   run_passive: 'true'
+  censys_max_pages: '20'   # Censys Platform pages (x100 results) — raise for huge targets, lower to save credits
   run_waymore: 'true'
   run_asn: 'true'
   run_permutation: 'true'
@@ -1035,7 +1036,7 @@ steps:
     test -n "$ORG" -a -n "$PAT" || { printf '[censys] no CENSYS org/PAT (store ORG_ID:PAT) — skipping\n'; exit 0; }
     : > {workspace}/.cen_raw
     TOK=""
-    for page in $(seq 1 20); do
+    for page in $(seq 1 {vars.censys_max_pages}); do
       BODY=$(printf '{"query":"%s","page_size":100%s}' "{target}" "${TOK:+,\"page_token\":\"$TOK\"}")
       R=$(curl -s --max-time 45 -X POST \
         "https://api.platform.censys.io/v3/global/search/query?organization_id=${ORG}" \
