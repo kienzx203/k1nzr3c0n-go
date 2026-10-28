@@ -168,7 +168,7 @@
   <div id="filters"></div>
   <div class="row"><span style="width:62px">min deg</span><input type="range" id="minDeg" min="0" max="15" value="0"><span class="cnt" id="minDegV">0</span></div>
   <div class="row"><span style="width:62px">min risk</span><input type="range" id="minRisk" min="0" max="10" value="0"><span class="cnt" id="minRiskV">0</span></div>
-  <div class="row"><label><input type="checkbox" id="hideDead"> hide dead subdomains</label></div>
+  <div class="row"><label><input type="checkbox" id="showDead"> dead subdomains</label></div>
   <h4>All nodes <span id="allN" class="cnt" style="font-weight:400"></span></h4>
   <input id="allq" placeholder="filter all nodes…  (click one to view it + its neighbours)" autocomplete="off" style="width:100%;box-sizing:border-box;margin-bottom:5px">
   <div id="allList" style="max-height:220px;overflow:auto"></div>
@@ -178,6 +178,7 @@
    <button data-v="exposed">🌐 internet-exposed</button>
    <button data-v="internal">🔒 internal leaks</button>
    <button data-v="findings">⚠ findings</button>
+   <button data-v="choke">✂ chokepoints</button>
   </div>
   <div class="row" style="margin-top:6px;gap:5px">
    <button id="saveView" style="flex:1">💾 save current view</button>
@@ -262,9 +263,9 @@ function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay')
 $('lay').onclick=()=>fa2Running()?stopLayout():startLayout(8000);
 
 // ── filters ─────────────────────────────────────────────────────────────
-const filter={minDeg:0,minRisk:0,hideDead:false,only:null}; FAMS.forEach(([f])=>filter[f]=true);
+const filter={minDeg:0,minRisk:0,showDead:false,only:null}; FAMS.forEach(([f])=>filter[f]=true);
 function passFilter(id,a){
- if(a.group==='sub_dead'&&filter.hideDead)return false;
+ if(a.group==='sub_dead'&&!filter.showDead)return false; // dead subs hidden until the box is ticked
  if(filter.only){ if(!filter.only.has(a.group))return false; }
  else if(!filter[famOf(a.group)])return false;
  if(g.degree(id)<filter.minDeg)return false;
@@ -281,13 +282,20 @@ function famCounts(){ const c={}; FAMS.forEach(([f])=>c[f]=0); g.forEachNode((id
  FAMS.forEach(([f])=>{const el=$('fc_'+f); if(el)el.textContent=c[f]||0;}); }
 $('minDeg').oninput=e=>{filter.minDeg=+e.target.value; $('minDegV').textContent=e.target.value; renderer&&renderer.refresh(); updateStat();};
 $('minRisk').oninput=e=>{filter.minRisk=+e.target.value; $('minRiskV').textContent=e.target.value; renderer&&renderer.refresh(); updateStat();};
-$('hideDead').onchange=e=>{filter.hideDead=e.target.checked; renderer&&renderer.refresh(); updateStat();};
+$('showDead').onchange=e=>{filter.showDead=e.target.checked; renderer&&renderer.refresh(); updateStat();};
 
-// ── analysis / metrics removed ────────────────────────────────────────────
-// Centrality colouring and the "top chokepoints" panel were dropped. Nodes
-// always use their plain type colours. colorBy is kept as a permanent no-op so
-// setColorBy('') (still called by the preset views) stays harmless.
-let colorBy=null;
+// ── chokepoints ───────────────────────────────────────────────────────────
+// The "top chokepoints" analysis panel was dropped, but the chokepoints SAVED
+// VIEW stays: it fetches cut-vertices from /metrics and paints them red (every
+// other node fades), so you can spot the nodes whose removal splits the graph.
+let metrics=null, colorBy=null;
+function applyMetric(id,d){ const m=metrics[id]; if(!m)return d;
+ if(colorBy==='chokepoints')return m.cut?Object.assign({},d,{color:'#cf222e',size:d.size*1.7,zIndex:3})
+   :Object.assign({},d,{color:'#cfd6dd',size:Math.max(2,d.size*0.7)});
+ return d; }
+function loadMetrics(cb){ if(metrics){cb&&cb();return;} $('stat').textContent='finding chokepoints…';
+ fetch(BASE+'/metrics').then(r=>r.json()).then(res=>{ metrics=res.nodes||{}; updateStat(); cb&&cb(); })
+  .catch(()=>{$('stat').textContent='chokepoint analysis failed';}); }
 
 // ── render + interaction ────────────────────────────────────────────────
 let renderer=null, focus=null, pathSet=null, pickMode=null, src=null, dst=null, hover=null, hoverNode=null;
@@ -354,6 +362,7 @@ function render(){
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
    if(!passFilter(n,a))return Object.assign({},d,{hidden:true});
    let o=nodeScale!==1?Object.assign({},d,{size:d.size*nodeScale}):d;
+   if(colorBy&&metrics){ o=applyMetric(n,o); }
    if(annos[n]&&annos[n].tag)o=Object.assign({},o,{label:'🏷 '+(o.label||a.label),zIndex:(o.zIndex||1)+1});
    if(pathSet){ return pathSet.has(n)?Object.assign({},o,{zIndex:3,size:o.size*1.15}):Object.assign({},o,{color:DIM,label:'',zIndex:0}); }
    if(focus){ return focus.has(n)?Object.assign({},o,{zIndex:2}):Object.assign({},o,{color:DIM,label:'',size:Math.max(2,o.size*0.6),zIndex:0}); }
@@ -455,15 +464,16 @@ const VKEY='g2views:'+TARGET;
 function loadCustomViews(){ try{ return JSON.parse(localStorage.getItem(VKEY)||'{}'); }catch(e){ return {}; } }
 function saveCustomViews(o){ try{ localStorage.setItem(VKEY,JSON.stringify(o)); }catch(e){} }
 function snapView(){ const s={}; Object.keys(filter).forEach(k=>{ s[k]= k==='only' ? (filter.only?Array.from(filter.only):null) : filter[k]; });
- s.mode=MODE; s.ts=Date.now();
+ s.mode=MODE; s.colorBy=colorBy||''; s.ts=Date.now();
  try{ if(renderer)s.cam=renderer.getCamera().getState(); }catch(e){}
  return s; }
 function applySnap(s){ if(!s)return;
  Object.keys(filter).forEach(k=>{ if(k==='only')filter.only=s.only?new Set(s.only):null; else if(k in s)filter[k]=s[k]; });
- $('minDeg').value=filter.minDeg||0; $('minDegV').textContent=filter.minDeg||0; $('minRisk').value=filter.minRisk||0; $('minRiskV').textContent=filter.minRisk||0; $('hideDead').checked=!!filter.hideDead;
- syncFilterUI(); setColorBy('');
+ $('minDeg').value=filter.minDeg||0; $('minDegV').textContent=filter.minDeg||0; $('minRisk').value=filter.minRisk||0; $('minRiskV').textContent=filter.minRisk||0; $('showDead').checked=!!filter.showDead;
+ syncFilterUI(); setColorBy(s.colorBy||'');
  const needLoad = s.mode && s.mode!==MODE;
  if(needLoad){ MODE=s.mode; $('mode').textContent=(MODE==='full')?'◰ full':'◱ overview'; load(); }
+ else if(colorBy){ loadMetrics(()=>renderer&&renderer.refresh()); updateStat(); }
  else { renderer&&renderer.refresh(); updateStat(); }
  if(s.cam){ setTimeout(()=>{ try{ renderer&&renderer.getCamera().animate(s.cam,{duration:400}); }catch(e){} }, needLoad?750:60); } }
 function renderCustomViews(){ const box=$('customViews'); if(!box)return; const o=loadCustomViews(); const names=Object.keys(o).sort();
@@ -509,11 +519,12 @@ function dl(blob,name){ const a=document.createElement('a'); a.download=name; a.
 let MODE='full';
 function visibleCount(){ let n=0; g.forEachNode((id,a)=>{if(passFilter(id,a))n++;}); return n; }
 function updateStat(){ $('stat').textContent=visibleCount()+' shown / '+g.order+' nodes · '+g.size+' edges · '+MODE; famCounts(); }
-function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE+'…'; $('spin').style.display='block'; focus=null; pathSet=null;
+function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE+'…'; $('spin').style.display='block'; focus=null; pathSet=null; metrics=null;
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
    g.clear(); if(renderer){renderer.kill();renderer=null;}
    add(sg); render(); startLayout(); updateStat(); loadAnnos(); buildAllList();
+   if(colorBy)loadMetrics(()=>renderer&&renderer.refresh());
    setTimeout(()=>{$('spin').style.display='none'; renderer&&renderer.getCamera().animatedReset();},450);
  }).catch(()=>{$('spin').style.display='none'; $('stat').textContent='load failed';}); }
 $('zin').onclick=()=>renderer&&renderer.getCamera().animatedZoom({duration:200});
@@ -563,17 +574,18 @@ document.addEventListener('keydown',e=>{ const tag=e.target.tagName;
 // ── saved views ──────────────────────────────────────────────────────────
 function syncFilterUI(){ document.querySelectorAll('#filters input[data-f]').forEach(cb=>cb.checked=!!filter[cb.dataset.f]); }
 const VIEWS={
- reset:()=>{ filter.only=null; FAMS.forEach(([f])=>filter[f]=true); filter.minDeg=0; filter.minRisk=0; filter.hideDead=false;
-   $('minDeg').value=0; $('minDegV').textContent='0'; $('minRisk').value=0; $('minRiskV').textContent='0'; $('hideDead').checked=false;
+ reset:()=>{ filter.only=null; FAMS.forEach(([f])=>filter[f]=true); filter.minDeg=0; filter.minRisk=0; filter.showDead=true;
+   $('minDeg').value=0; $('minDegV').textContent='0'; $('minRisk').value=0; $('minRiskV').textContent='0'; $('showDead').checked=true;
    syncFilterUI(); setColorBy('');
    if(MODE!=='full'){ MODE='full'; $('mode').textContent='◰ full'; load(); } // overview drops dead subs at the data layer — force full so nothing is hidden
    return 'all nodes (full)'; },
  exposed:()=>{ filter.only=new Set(['domain','asn','sub','vhost','ip_pub']); setColorBy(''); return 'internet-exposed surface'; },
  internal:()=>{ filter.only=new Set(['sub_int','ip_int','ip_origin']); setColorBy(''); return 'internal leaks (RFC1918 / origin)'; },
- findings:()=>{ filter.only=new Set(['vuln_critical','vuln_high','vuln_medium','vuln_low','vuln_info']); setColorBy(''); return 'findings'; }
+ findings:()=>{ filter.only=new Set(['vuln_critical','vuln_high','vuln_medium','vuln_low','vuln_info']); setColorBy(''); return 'findings'; },
+ choke:()=>{ filter.only=null; syncFilterUI(); setColorBy('chokepoints'); return 'chokepoints (red = graph splits if removed)'; }
 };
 $('views').querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ const msg=VIEWS[b.dataset.v](); $('viewMsg').textContent=msg||'';
- renderer&&renderer.refresh(); updateStat(); });
+ if(colorBy)loadMetrics(()=>renderer&&renderer.refresh()); else renderer&&renderer.refresh(); updateStat(); });
 
 // ── run diff ───────────────────────────────────────────────────────────────
 $('mode').onclick=()=>{ MODE=(MODE==='full')?'overview':'full'; $('mode').textContent=(MODE==='full')?'◰ full':'◱ overview'; load(); };
