@@ -18,7 +18,9 @@ func Diff(from, to *Graph) DiffResult {
 	for id, tn := range to.Nodes {
 		cp := *tn
 		if fn, ok := from.Nodes[id]; ok {
-			if fn.Risk != tn.Risk {
+			// a host can change without a risk delta (came alive, new ports,
+			// group sub_dead→sub, internal flip) — compare those too.
+			if fn.Risk != tn.Risk || fn.Group != tn.Group || fn.Alive != tn.Alive || fn.Internal != tn.Internal {
 				res.Status[id] = "changed"
 			} else {
 				res.Status[id] = "same"

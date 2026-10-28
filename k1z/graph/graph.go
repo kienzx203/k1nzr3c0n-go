@@ -883,10 +883,8 @@ func (g *Graph) link(a, b, label string) {
 func (g *Graph) Overview(hostCap int) SubGraph {
 	keep := map[string]bool{}
 	for id, n := range g.Nodes {
-		switch {
-		case n.Group == "domain" || n.Group == "asn" || n.Group == "subnet" ||
-			n.Group == "bucket" || n.Group == "provider" || strings.HasPrefix(n.Group, "vuln"):
-			keep[id] = true
+		if n.Group == "domain" || n.Group == "asn" || n.Group == "subnet" {
+			keep[id] = true // scope backbone always kept
 		}
 	}
 	// notable hosts by score
@@ -925,17 +923,73 @@ func (g *Graph) Overview(hostCap int) SubGraph {
 			keep[e.To] = true
 		}
 	}
+	// vuln / provider / bucket / cdn: keep ONLY if anchored to an already-kept
+	// node (no orphan floating nodes), and cap vuln so a finding-heavy target
+	// doesn't blow past the skeleton budget.
+	vulnCap, nv := hostCap*2, 0
+	for id, n := range g.Nodes {
+		if keep[id] {
+			continue
+		}
+		if !(strings.HasPrefix(n.Group, "vuln") || n.Group == "provider" || n.Group == "bucket" || n.Group == "cdn") {
+			continue
+		}
+		anchored := false
+		for nb := range g.adj[id] {
+			if keep[nb] {
+				anchored = true
+				break
+			}
+		}
+		if !anchored {
+			continue
+		}
+		if strings.HasPrefix(n.Group, "vuln") {
+			if nv >= vulnCap {
+				continue
+			}
+			nv++
+		}
+		keep[id] = true
+	}
 	return g.slice(keep, map[string]any{"total": len(g.Nodes), "shown": len(keep),
 		"hosts": len(hl), "hostCap": hostCap})
 }
 
-// Full returns the entire graph — every node and edge.
+// Full returns the entire graph — every node and edge — but caps very large
+// graphs (keeping the backbone + highest risk/degree nodes) so the WebGL
+// viewer can't be handed an unbounded payload that OOMs the browser.
 func (g *Graph) Full() SubGraph {
-	keep := make(map[string]bool, len(g.Nodes))
-	for id := range g.Nodes {
-		keep[id] = true
+	const maxNodes = 12000
+	if len(g.Nodes) <= maxNodes {
+		keep := make(map[string]bool, len(g.Nodes))
+		for id := range g.Nodes {
+			keep[id] = true
+		}
+		return g.slice(keep, map[string]any{"total": len(g.Nodes), "shown": len(g.Nodes), "edgeCount": len(g.Edges)})
 	}
-	return g.slice(keep, map[string]any{"total": len(g.Nodes), "shown": len(g.Nodes), "edgeCount": len(g.Edges)})
+	keep := map[string]bool{}
+	type sc struct {
+		id  string
+		val int
+	}
+	var all []sc
+	for id, n := range g.Nodes {
+		if n.Group == "domain" || n.Group == "asn" || n.Group == "subnet" {
+			keep[id] = true // backbone always
+			continue
+		}
+		all = append(all, sc{id, n.Risk*100 + len(g.adj[id])})
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].val > all[j].val })
+	for _, s := range all {
+		if len(keep) >= maxNodes {
+			break
+		}
+		keep[s.id] = true
+	}
+	return g.slice(keep, map[string]any{"total": len(g.Nodes), "shown": len(keep),
+		"edgeCount": len(g.Edges), "truncated": true})
 }
 
 // Neighbors returns a node and its immediate neighbours.
@@ -984,12 +1038,15 @@ func (g *Graph) Search(q string, limit int) []*Node {
 	for _, n := range g.Nodes {
 		if strings.Contains(strings.ToLower(n.Label), q) || strings.Contains(strings.ToLower(n.ID), q) {
 			out = append(out, n)
-			if len(out) >= limit {
-				break
-			}
 		}
 	}
+	// sort ALL matches by risk BEFORE truncating, so the top-risk matches are
+	// the ones returned (map iteration is random — truncating first was both
+	// nondeterministic and dropped the highest-risk hits).
 	sort.Slice(out, func(i, j int) bool { return out[i].Risk > out[j].Risk })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
 	return out
 }
 

@@ -64,6 +64,9 @@ func safeTargetDir(t string) string {
 	if b.Len() == 0 {
 		return "target"
 	}
+	if s := b.String(); s == "." || s == ".." || strings.Trim(s, ".") == "" {
+		return "target" // never a path-traversal segment
+	}
 	return b.String()
 }
 

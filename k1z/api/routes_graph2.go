@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +24,7 @@ import (
 
 type cachedGraph struct {
 	g       *graph.Graph
+	sig     string // run-set signature (ids+times) this graph was built from
 	builtAt time.Time
 }
 
@@ -42,30 +45,37 @@ func (s *Server) targetGraph(target string) (*graph.Graph, int, error) {
 		return nil, 500, err
 	}
 	var wss []string
-	var newest time.Time
+	var sigs []string
 	for _, run := range runs {
 		if run.Target != target || run.Workspace == "" || !dirExists(run.Workspace) {
 			continue
 		}
 		wss = append(wss, run.Workspace)
+		var newest time.Time
 		for _, t := range []time.Time{run.FinishedAt, run.StartedAt, run.CreatedAt} {
 			if t.After(newest) {
 				newest = t
 			}
 		}
+		sigs = append(sigs, run.ID+":"+strconv.FormatInt(newest.Unix(), 10))
 	}
 	if len(wss) == 0 {
 		return nil, 404, errNoRuns
 	}
+	// cache signature = the exact set of runs + their newest times, so the cache
+	// rebuilds when a run is ADDED, FINISHES, or is DELETED (a max-timestamp
+	// check alone never shrank the graph after a deletion).
+	sort.Strings(sigs)
+	sig := strings.Join(sigs, "|")
 	graph2Mu.Lock()
 	defer graph2Mu.Unlock()
-	if c, ok := graph2Cache[target]; ok && !newest.After(c.builtAt) {
+	if c, ok := graph2Cache[target]; ok && c.sig == sig {
 		return c.g, 200, nil
 	}
 	merged := filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(target))
 	mergeRunFiles(wss, merged)
 	g := graph.Build(merged, target)
-	graph2Cache[target] = &cachedGraph{g: g, builtAt: time.Now()}
+	graph2Cache[target] = &cachedGraph{g: g, sig: sig, builtAt: time.Now()}
 	return g, 200, nil
 }
 
