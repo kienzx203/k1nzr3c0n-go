@@ -29,7 +29,7 @@ var graphMergeFiles = []string{
 	"vhost_new_hosts.txt", "favicon_in_scope.txt", "pivot_new_resolved.txt", "http_redirect_resolved.txt",
 	"dns_svc_new_hosts.txt", "interesting.txt",
 	// resolve / ip
-	"resolved.txt", "dns_resolved.txt", "ptr_resolved.txt", "ptr.txt", "dns_ptr.txt",
+	"resolved.txt", "dns_resolved.txt", "ptr_resolved.txt", "dns_ptr.txt",
 	// http / ports / vulns (nuclei*.jsonl + afrog globbed)
 	"httpx.json", "httpx.jsonl", "httpx_probe.jsonl", "pivot_httpx_probe.jsonl", "st_pivot_httpx.jsonl",
 	"naabu.json", "naabu.jsonl", "naabu_asn.jsonl", "st_pivot_naabu.jsonl",
@@ -109,7 +109,9 @@ func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, gh)
 		return
 	}
+	graph2Mu.Lock()
 	mergeRunFiles(wss, merged)
+	graph2Mu.Unlock()
 	script := graphScript()
 	if !fileExists(script) {
 		writeDetail(w, 500, "recon-graph.py not found (deploy scripts/)")

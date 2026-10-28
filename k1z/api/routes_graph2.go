@@ -70,9 +70,10 @@ func (s *Server) targetGraph(target string) (*graph.Graph, int, error) {
 }
 
 // mergeRunFiles concatenates each graphMergeFiles entry across run workspaces
-// into `merged`, expanding glob patterns and preserving subdirs (gf/, ip_groups/).
+// into `merged`, expanding glob patterns and preserving subdirs (e.g. gf/).
 // Shared by the graph2 engine and the legacy python renderer so they don't
 // pollute the shared targetgraphs dir with literal "*"-named junk files.
+// Callers serialize on graph2Mu since both write into the same target dir.
 func mergeRunFiles(wss []string, merged string) {
 	os.MkdirAll(merged, 0o755)
 	agg := map[string][]byte{}

@@ -6,6 +6,7 @@ package graph
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -421,9 +422,18 @@ func Build(dir, target string) *Graph {
 		if e != nil || len(b) == 0 {
 			continue
 		}
+		// the target merge concatenates arrays across runs ([...][...]); decode as
+		// a stream of JSON values so multi-run afrog findings aren't lost.
 		var arr []map[string]any
-		if json.Unmarshal(b, &arr) != nil {
-			arr = nil
+		dec := json.NewDecoder(bytes.NewReader(b))
+		for {
+			var a []map[string]any
+			if err := dec.Decode(&a); err != nil {
+				break
+			}
+			arr = append(arr, a...)
+		}
+		if len(arr) == 0 { // JSONL fallback
 			for _, ln := range lines(f) {
 				var m map[string]any
 				if json.Unmarshal([]byte(ln), &m) == nil {

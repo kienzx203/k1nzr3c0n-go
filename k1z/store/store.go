@@ -727,7 +727,26 @@ func (s *Store) ListToolVersions() (map[string]ToolVersion, error) {
 
 // ── findings ─────────────────────────────────────────────────────────────────
 
+// capStr truncates to n bytes on a valid-UTF8 boundary (Postgres rejects both
+// over-length VARCHAR values and invalid UTF-8, so we must do both).
+func capStr(str string, n int) string {
+	if len(str) <= n {
+		return str
+	}
+	return strings.ToValidUTF8(str[:n], "")
+}
+
+func capStrPtr(p *string, n int) *string {
+	if p == nil || len(*p) <= n {
+		return p
+	}
+	t := capStr(*p, n)
+	return &t
+}
+
 func (s *Store) InsertFinding(f *Finding) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if f.CreatedAt.IsZero() {
 		f.CreatedAt = NowUTC()
 	}
@@ -740,6 +759,15 @@ func (s *Store) InsertFinding(f *Finding) error {
 	if f.Tags == "" {
 		f.Tags = "[]"
 	}
+	// clamp to column widths so an over-length recon URL/name doesn't error out
+	// (and silently drop the row) on the Postgres backend.
+	f.Host = capStr(f.Host, 512)
+	f.URL = capStrPtr(f.URL, 2048)
+	f.Name = capStrPtr(f.Name, 512)
+	f.Title = capStrPtr(f.Title, 512)
+	f.TemplateID = capStrPtr(f.TemplateID, 256)
+	f.IP = capStrPtr(f.IP, 64)
+	f.Screenshot = capStrPtr(f.Screenshot, 1024)
 	id, err := s.db.insertReturningID(`INSERT INTO findings (run_id, kind, severity, host, notes, tags, ip, port,
 		status_code, protocol, name, template_id, url, title, tech, evidence, description, status,
 		screenshot, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,

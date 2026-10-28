@@ -271,9 +271,33 @@ func scanEndpoints(st *store.Store, run *store.Run, ws string) {
 	for _, f := range globFiles(ws, "gobuster_dir.txt") {
 		eachLine(f, func(l string) { u, c := parseGobuster(l, run.Target); if u != "" { emit(u, c) } })
 	}
-	// crawl / JS / linkfinder endpoints (no status)
-	for _, f := range globFiles(ws, "linkfinder_endpoints.txt", "jsapiscan_results.txt",
-		"all_endpoints.txt", "nuclei_urls.txt") {
+	emitRaw := func(ep string) { // relative endpoint (api/x, ../x, foo.js)
+		ep = strings.TrimSpace(ep)
+		if ep == "" || seen[ep] || n >= rowCap || len(ep) > 400 {
+			return
+		}
+		if !strings.ContainsAny(ep, "/.") { // filter pure words / banners
+			return
+		}
+		seen[ep] = true
+		n++
+		st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "endpoint", Host: run.Target, Name: sp(trunc(ep, 200))})
+	}
+	// JS-derived endpoints keep relative refs too
+	for _, f := range globFiles(ws, "linkfinder_endpoints.txt", "jsapiscan_results.txt") {
+		eachLine(f, func(l string) {
+			l = strings.TrimSpace(l)
+			if u := firstURLTok(l); u != "" {
+				emit(u, 0)
+			} else if strings.HasPrefix(l, "/") {
+				emit("https://"+run.Target+l, 0)
+			} else {
+				emitRaw(l)
+			}
+		})
+	}
+	// merged endpoint lists (already absolute or root-relative paths)
+	for _, f := range globFiles(ws, "all_endpoints.txt", "nuclei_urls.txt") {
 		eachLine(f, func(l string) {
 			if u := firstURLTok(l); u != "" {
 				emit(u, 0)
@@ -323,6 +347,13 @@ func scanSecrets(st *store.Store, run *store.Run, ws string) {
 		eachLine(f, func(l string) {
 			l = strings.TrimSpace(stripANSI(l))
 			if l == "" || strings.HasPrefix(l, "#") || strings.Contains(l, "SecretFinder") || strings.Contains(l, "github.com/") {
+				return
+			}
+			if strings.Trim(l, "-=*_ ") == "" { // separator banner line
+				return
+			}
+			low := strings.ToLower(l)
+			if strings.HasPrefix(low, "url:") || strings.Contains(low, "] url:") { // header, not a secret
 				return
 			}
 			add(l, "", hostOfURL(firstURLTok(l)))
