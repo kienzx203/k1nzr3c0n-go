@@ -181,18 +181,29 @@ nsec() {
   local nsip; nsip=$(echo "$NS_IPS" | awk '{print $1}')
   [ -z "$nsip" ] && nsip="$RESOLVER"
   warn "DNSSEC with plain NSEC detected — walking zone via $nsip"
-  local cur="$D." i next n=0; : > "$OUT/zone_nsec.txt"
-  for ((i=0;i<30000;i++)); do
+  # No artificial result limit: the walk terminates naturally at the zone apex.
+  # NSEC_CAP (default 2,000,000) is only a failsafe against a broken/looping NS —
+  # effectively unlimited for any real zone. Cycle detection is O(1) (apex /
+  # first-name / stall guards) so it stays fast on huge zones (no per-step grep).
+  local cap="${NSEC_CAP:-2000000}"
+  local cur="$D." i next n=0 first="" reason="cap"; : > "$OUT/zone_nsec.txt"
+  for ((i=0; i<cap; i++)); do
     next=$(dig +dnssec +time=4 +tries=2 +noall +authority A "0.$cur" "@$nsip" 2>/dev/null \
       | awk -v c="$cur" '$4=="NSEC" && $1==c {print $5; exit}')
     [ -z "$next" ] && next=$(dig +dnssec +noall +authority A "0.$cur" "@$nsip" 2>/dev/null | awk '$4=="NSEC"{print $5; exit}')
-    [ -z "$next" ] && break
-    [ "$next" = "$D." ] && break
-    grep -qxF "${next%.}" "$OUT/zone_nsec.txt" && break
+    if [ -z "$next" ];       then reason="no NSEC (anomaly)"; break; fi
+    if [ "$next" = "$D." ];  then reason="reached apex — ZONE COMPLETE"; break; fi
+    if [ "$next" = "$cur" ]; then reason="stall (next==cur)"; break; fi
+    [ -z "$first" ] && first="$next"
+    if [ "$i" -gt 0 ] && [ "$next" = "$first" ]; then reason="full loop (wrapped)"; break; fi
     echo "${next%.}" >> "$OUT/zone_nsec.txt"; cur="$next"; n=$((n+1))
-    [ $((n % 100)) -eq 0 ] && note "...walked $n"
+    [ $((n % 500)) -eq 0 ] && note "...walked $n"
   done
-  bad "NSEC walk dumped $n zone records -> zone_nsec.txt"
+  if [ "$reason" = "cap" ]; then
+    warn "NSEC walk hit cap ($cap) at $n records — zone bigger, raise NSEC_CAP=<n>"
+  else
+    bad "NSEC walk: $n records -> zone_nsec.txt  ($reason)"
+  fi
   sed 's/\.$//' "$OUT/zone_nsec.txt" | add_subs
 }
 
