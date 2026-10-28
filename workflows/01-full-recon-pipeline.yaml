@@ -82,7 +82,7 @@ vars:
   run_amass_intel: 'false'       # amass intel removed in v5 — disabled (metabigor covers ASN)
   run_uncover_org: 'true'        # uncover org-name search on Shodan/FOFA/ZoomEye (needs org_name)
   run_favicon_pivot: 'false'     # mmh3 favicon hash → Shodan/FOFA same-favicon hosts
-  run_vhost_ip_fuzz: 'false'     # ffuf Host-header fuzz non-CDN IPs (touches target directly)
+  run_vhost_ip_fuzz: 'true'      # ffuf Host-header fuzz non-CDN IPs (touches target directly)
   run_ip_pivot: 'false'          # mapcidr PTR sweep neighboring /24 CIDR blocks
   vhost_wordlist: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/subdomains-top1million-20000.txt
   vhost_ip_fuzz_max_ips: '20'

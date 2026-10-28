@@ -16,6 +16,35 @@ import (
 	"github.com/Autumn-27/artex/k1z/config"
 )
 
+// graphFresh reports whether recon-graph.{json,html} already exist and are at
+// least as new as every other file in the workspace (so a rebuild is a no-op).
+func graphFresh(ws string) bool {
+	gj, err1 := os.Stat(filepath.Join(ws, "recon-graph.json"))
+	gh, err2 := os.Stat(filepath.Join(ws, "recon-graph.html"))
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	gt := gj.ModTime()
+	if gh.ModTime().Before(gt) {
+		gt = gh.ModTime()
+	}
+	fresh := true
+	filepath.WalkDir(ws, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !fresh {
+			return nil
+		}
+		name := d.Name()
+		if strings.HasPrefix(name, "recon-graph.") || name == "resume.json" {
+			return nil
+		}
+		if fi, e := d.Info(); e == nil && fi.ModTime().After(gt) {
+			fresh = false
+		}
+		return nil
+	})
+	return fresh
+}
+
 // handleGenGraph (re)builds the attack-surface graph for a run from its workspace
 // by invoking scripts/recon-graph.py, writing recon-graph.{html,json} into the
 // workspace. The FE then renders recon-graph.html via the file endpoint.
@@ -30,6 +59,12 @@ func (s *Server) handleGenGraph(w http.ResponseWriter, r *http.Request) {
 	}
 	if !fileExists(script) {
 		writeDetail(w, 500, "recon-graph.py not found (deploy scripts/)")
+		return
+	}
+	// cache: skip the rebuild if recon-graph.{json,html} already reflect the latest
+	// workspace state (nothing written since they were generated).
+	if graphFresh(ws) {
+		writeJSON(w, 200, map[string]any{"ok": true, "cached": true, "html": "recon-graph.html", "json": "recon-graph.json"})
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
