@@ -415,9 +415,14 @@ function render(){
  renderer.getCamera().on('updated',()=>{ const z=$('zlvl'); if(z)z.textContent=Math.round(100/renderer.getCamera().ratio)+'%'; drawMini(); });
  renderer.on('afterRender',()=>{drawMini();drawOverlay();});
  let drag=null;
- renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node; g.setNodeAttribute(drag,'highlighted',true); fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
+ let dragMove=false;
+ renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node; dragMove=g.degree(drag)<=150; // hub nodes move alone (avoid dragging the whole graph)
+   g.setNodeAttribute(drag,'highlighted',true); fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
  renderer.getMouseCaptor().on('mousemovebody',e=>{ if(!drag)return; const p=renderer.viewportToGraph(e);
-   g.setNodeAttribute(drag,'x',p.x); g.setNodeAttribute(drag,'y',p.y); e.preventSigmaDefault(); e.original.preventDefault(); e.original.stopPropagation(); });
+   const dx=p.x-g.getNodeAttribute(drag,'x'), dy=p.y-g.getNodeAttribute(drag,'y');
+   g.setNodeAttribute(drag,'x',p.x); g.setNodeAttribute(drag,'y',p.y);
+   if(dragMove)g.forEachNeighbor(drag,nb=>{ g.setNodeAttribute(nb,'x',g.getNodeAttribute(nb,'x')+dx); g.setNodeAttribute(nb,'y',g.getNodeAttribute(nb,'y')+dy); });
+   e.preventSigmaDefault(); e.original.preventDefault(); e.original.stopPropagation(); });
  renderer.getMouseCaptor().on('mouseup',()=>{ if(drag){g.removeNodeAttribute(drag,'highlighted'); if(fa2&&fa2._w)startLayout(4000);} drag=null; });
 }
 function focusTo(id){ const p=renderer.getNodeDisplayData(id); if(p)renderer.getCamera().animate({x:p.x,y:p.y,ratio:0.3},{duration:450}); }
