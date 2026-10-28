@@ -13,13 +13,18 @@ import (
 
 var reStatusTok = regexp.MustCompile(`(?i)status:\s*(\d{3})`)
 
-// parseDirsearch: "200   305B  http://host/path" → (url, status)
+// parseDirsearch extracts (url, status) from a dirsearch --format=plain line,
+// finding the HTTP status as a standalone 3-digit token (layout varies).
 func parseDirsearch(l string) (string, int) {
-	ff := strings.Fields(l)
-	if len(ff) == 0 {
-		return "", 0
+	code := 0
+	for _, t := range strings.Fields(l) {
+		if len(t) == 3 {
+			if c, e := strconv.Atoi(t); e == nil && c >= 100 && c < 600 {
+				code = c
+				break
+			}
+		}
 	}
-	code, _ := strconv.Atoi(ff[0])
 	return firstURLTok(l), code
 }
 
@@ -89,19 +94,6 @@ func parseJSONArray(path string, fn func(map[string]any)) {
 					}
 				}
 			}
-		}
-	}
-}
-
-func parseJSONObj(path string, fn func(string, any)) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	var obj map[string]any
-	if json.Unmarshal(b, &obj) == nil {
-		for k, v := range obj {
-			fn(k, v)
 		}
 	}
 }
@@ -304,17 +296,40 @@ func scanParams(st *store.Store, run *store.Run, ws string) {
 		n++
 		st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "param", Host: host, URL: strp(u), Name: sp(trunc(name, 120))})
 	}
-	for _, f := range globFiles(ws, "arjun.json", "x8_params.json") {
-		parseJSONObj(f, func(k string, v any) {
-			if arr, ok := v.([]any); ok {
+	// arjun: elements carry .params[] (template jq: .[] | .params[]?)
+	for _, f := range globFiles(ws, "arjun.json") {
+		forEachJSONElem(f, func(m map[string]any) {
+			u := str(m["url"])
+			if arr, ok := m["params"].([]any); ok {
 				for _, p := range arr {
-					add(hostOfURL(k), k, str(p))
+					add(hostOfURL(u), u, str(p))
 				}
 			}
 		})
 	}
+	// x8: array of objects with .name (template jq: .[] | .name)
+	for _, f := range globFiles(ws, "x8_params.json") {
+		forEachJSONElem(f, func(m map[string]any) {
+			add(hostOfURL(str(m["url"])), str(m["url"]), str(m["name"]))
+		})
+	}
+	// ffuf: param is at .results[].input.FUZZ (nested)
 	for _, f := range globFiles(ws, "ffuf_params.json") {
-		parseJSONArray(f, func(m map[string]any) { add(hostOfURL(str(m["url"])), str(m["url"]), str(m["input"])) })
+		parseJSONArray(f, func(m map[string]any) {
+			name := ""
+			if in, ok := m["input"].(map[string]any); ok {
+				name = str(in["FUZZ"])
+				if name == "" {
+					for _, v := range in {
+						if s := str(v); s != "" {
+							name = s
+							break
+						}
+					}
+				}
+			}
+			add(hostOfURL(str(m["url"])), str(m["url"]), name)
+		})
 	}
 	for _, f := range globFiles(ws, "all_params.txt", "found_params.txt") {
 		eachLine(f, func(l string) {
@@ -322,6 +337,32 @@ func scanParams(st *store.Store, run *store.Run, ws string) {
 				add(run.Target, "", l)
 			}
 		})
+	}
+}
+
+// forEachJSONElem calls fn for each element whether the file is a JSON array of
+// objects or an object whose values are objects (or param arrays, arjun-classic).
+func forEachJSONElem(path string, fn func(map[string]any)) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var arr []map[string]any
+	if json.Unmarshal(b, &arr) == nil && len(arr) > 0 {
+		for _, m := range arr {
+			fn(m)
+		}
+		return
+	}
+	var obj map[string]any
+	if json.Unmarshal(b, &obj) == nil {
+		for k, v := range obj {
+			if m, ok := v.(map[string]any); ok {
+				fn(m)
+			} else if a, ok := v.([]any); ok { // arjun classic {url:[params]}
+				fn(map[string]any{"url": k, "params": a})
+			}
+		}
 	}
 }
 
@@ -349,15 +390,24 @@ func scanTakeover(st *store.Store, run *store.Run, ws string) {
 func scanBuckets(st *store.Store, run *store.Run, ws string) {
 	for _, f := range globFiles(ws, "s3scanner.json", "s3scanner.jsonl") {
 		eachJSONLine(f, func(m map[string]any) {
-			name := str(m["name"])
-			if name == "" {
-				name = str(m["bucket"])
+			// s3scanner v2 nests under .bucket {name,region,provider,exists}
+			name, region, provider, exists := "", "", "", 1
+			if bk, ok := m["bucket"].(map[string]any); ok {
+				name, region, provider = str(bk["name"]), str(bk["region"]), str(bk["provider"])
+				if e, ok := bk["exists"]; ok {
+					exists = intFromAny(e)
+				}
+			} else {
+				name, region, provider = str(m["name"]), str(m["region"]), str(m["provider"])
+				if name == "" {
+					name = str(m["bucket"])
+				}
 			}
-			if name == "" {
+			if name == "" || exists == 0 { // 0 = does not exist
 				return
 			}
 			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "bucket", Host: run.Target,
-				Name: sp(name), Description: strp(strings.TrimSpace(str(m["region"]) + " " + str(m["provider"])))})
+				Name: sp(name), Description: strp(strings.TrimSpace(region + " " + provider))})
 		})
 	}
 }
@@ -366,6 +416,11 @@ func scanCDN(st *store.Store, run *store.Run, ws string) {
 	for _, f := range globFiles(ws, "cdncheck.jsonl", "cdncheck.json") {
 		eachJSONLine(f, func(m map[string]any) {
 			name := str(m["cdn_name"])
+			if name == "" {
+				if c, ok := m["cdn"].(map[string]any); ok { // some versions nest {cdn:{name}}
+					name = str(c["name"])
+				}
+			}
 			if name == "" || name == "false" || name == "true" {
 				return
 			}

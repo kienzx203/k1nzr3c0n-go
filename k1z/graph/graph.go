@@ -448,12 +448,17 @@ func Build(dir, target string) *Graph {
 	type bkt struct{ name, info string }
 	var buckets []bkt
 	jsonl(firstExisting(dir, "s3scanner.json", "s3scanner.jsonl"), func(m map[string]any) {
-		name := str(m["name"])
-		if name == "" {
-			name = str(m["bucket"])
+		name, region, provider := "", "", ""
+		if bk, ok := m["bucket"].(map[string]any); ok { // s3scanner v2 nests under .bucket
+			name, region, provider = str(bk["name"]), str(bk["region"]), str(bk["provider"])
+		} else {
+			name, region, provider = str(m["name"]), str(m["region"]), str(m["provider"])
+			if name == "" {
+				name = str(m["bucket"])
+			}
 		}
 		if name != "" {
-			buckets = append(buckets, bkt{name, strings.TrimSpace(str(m["region"]) + " " + str(m["provider"]))})
+			buckets = append(buckets, bkt{name, strings.TrimSpace(region + " " + provider)})
 		}
 	})
 	// high-cardinality surface (URLs/endpoints/params/secrets) → counts on the domain
