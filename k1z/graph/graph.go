@@ -824,6 +824,22 @@ func Build(dir, target string) *Graph {
 			g.link("dom:"+target, bid, "bucket")
 		}
 	}
+	// discovered parameters → nodes attached to the domain (bounded)
+	if target != "" {
+		pseen := map[string]bool{}
+		np := 0
+		for _, ln := range lines(firstExisting(dir, "all_params.txt", "found_params.txt")) {
+			p := strings.TrimSpace(ln)
+			if p == "" || pseen[p] || np >= 300 {
+				continue
+			}
+			pseen[p] = true
+			np++
+			pid := "param:" + p
+			g.add(&Node{ID: pid, Label: p, Group: "param", Title: "parameter: " + p})
+			g.link("dom:"+target, pid, "param")
+		}
+	}
 	// notable paths (admin/login/api/.git/… + gf candidates) → attached to host
 	for _, pn := range notable {
 		hid := "h:" + pn.host
