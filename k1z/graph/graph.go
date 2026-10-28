@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Node struct {
@@ -46,6 +47,9 @@ type Graph struct {
 	inc        map[string][]int               // node id -> edge indices
 	childrenOf map[string][]string            // subnet id -> member ip ids
 	Target     string
+
+	metricsOnce sync.Once
+	metricsVal  MetricsResult
 }
 
 var (

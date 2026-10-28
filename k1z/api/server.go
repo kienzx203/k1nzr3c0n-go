@@ -246,6 +246,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/view", s.handleGraph2View)
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/full", s.handleGraph2Full)
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/export", s.handleGraph2Export)
+	m.HandleFunc("GET /api/v1/targets/{name}/graph2/metrics", s.handleGraph2Metrics)
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/overview", s.handleGraph2Overview)
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/neighbors", s.handleGraph2Neighbors)
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/path", s.handleGraph2Path)
