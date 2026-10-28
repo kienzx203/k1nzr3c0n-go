@@ -130,6 +130,19 @@ func hostOfURL(u string) string {
 	return strings.ToLower(strings.SplitN(u, ":", 2)[0])
 }
 
+// shortURL returns the path+query portion of a URL (for compact path labels).
+func shortURL(u string) string {
+	s := regexp.MustCompile(`^[a-z]+://`).ReplaceAllString(u, "")
+	if i := strings.Index(s, "/"); i >= 0 {
+		p := s[i:]
+		if len(p) > 48 {
+			p = p[:48] + "…"
+		}
+		return p
+	}
+	return "/"
+}
+
 // ── build ─────────────────────────────────────────────────────────────────────
 
 // Build reads the recon output files in dir and assembles the graph.
@@ -432,8 +445,62 @@ func Build(dir, target string) *Graph {
 	})
 	// high-cardinality surface (URLs/endpoints/params/secrets) → counts on the domain
 	cnt := func(names ...string) int { return len(lines(firstExisting(dir, names...))) }
-	nURL := cnt("all_urls.txt", "live_urls.txt")
-	nEnd := cnt("all_endpoints.txt", "linkfinder_endpoints.txt")
+	// path recon (crawl/content-discovery/gf) bucketed PER HOST, plus a bounded
+	// set of notable paths surfaced as nodes attached to their host.
+	urlByHost := map[string]int{}
+	endByHost := map[string]int{}
+	reNotable := regexp.MustCompile(`(?i)/(admin|login|signin|sign-in|dashboard|api|graphql|swagger|openapi|actuator|\.git|\.env|wp-admin|wp-login|phpmyadmin|jenkins|grafana|kibana|console|debug|backup|upload|config|phpinfo|server-status|metrics|\.sql|\.bak|\.zip|internal|private|token|secret|password)`)
+	type pnode struct{ host, url, tag string }
+	var notable []pnode
+	notableSeen := map[string]bool{}
+	addNotable := func(u, tag, h string) {
+		if h == "" {
+			h = hostOfURL(u)
+		}
+		if h == "" || notableSeen[u] || len(notable) >= 300 {
+			return
+		}
+		if tag != "" || reNotable.MatchString(u) {
+			notableSeen[u] = true
+			notable = append(notable, pnode{h, u, tag})
+		}
+	}
+	nURL := 0
+	for _, ln := range lines(firstExisting(dir, "all_urls.txt", "live_urls.txt")) {
+		u := strings.TrimSpace(ln)
+		if !strings.HasPrefix(u, "http") {
+			continue
+		}
+		nURL++
+		if h := hostOfURL(u); h != "" {
+			urlByHost[h]++
+		}
+		addNotable(u, "", "")
+	}
+	nEnd := 0
+	for _, p := range []string{"all_endpoints.txt", "linkfinder_endpoints.txt"} {
+		for _, ln := range lines(firstExisting(dir, p)) {
+			u := strings.TrimSpace(ln)
+			if !strings.HasPrefix(u, "http") {
+				continue
+			}
+			nEnd++
+			if h := hostOfURL(u); h != "" {
+				endByHost[h]++
+			}
+			addNotable(u, "", "")
+		}
+	}
+	if ms, _ := filepath.Glob(filepath.Join(dir, "gf", "*.txt")); len(ms) > 0 {
+		for _, f := range ms {
+			cat := strings.TrimSuffix(filepath.Base(f), ".txt")
+			for _, ln := range lines(f) {
+				if u := strings.TrimSpace(ln); strings.HasPrefix(u, "http") {
+					addNotable(u, cat, "")
+				}
+			}
+		}
+	}
 	nParam := cnt("all_params.txt", "found_params.txt")
 	nSecret := cnt("jsubfinder_secrets.txt") + cnt("secretfinder_results.txt") +
 		cnt("trufflehog_results.jsonl") + cnt("swaggerspy_results.txt")
@@ -472,6 +539,9 @@ func Build(dir, target string) *Graph {
 			if hh["cdn"] != "" {
 				title += "\nCDN: " + hh["cdn"]
 			}
+		}
+		if urlByHost[h] > 0 || endByHost[h] > 0 {
+			title += fmt.Sprintf("\npaths: %d urls · %d endpoints", urlByHost[h], endByHost[h])
 		}
 		short := h
 		if target != "" && strings.HasSuffix(h, "."+target) {
@@ -568,6 +638,19 @@ func Build(dir, target string) *Graph {
 		if target != "" {
 			g.link("dom:"+target, bid, "bucket")
 		}
+	}
+	// notable paths (admin/login/api/.git/… + gf candidates) → attached to host
+	for _, pn := range notable {
+		hid := "h:" + pn.host
+		if _, ok := g.Nodes[hid]; !ok {
+			continue
+		}
+		t := pn.url
+		if pn.tag != "" {
+			t = "[" + pn.tag + "] " + pn.url
+		}
+		g.add(&Node{ID: "path:" + pn.url, Label: shortURL(pn.url), Group: "path", Title: t})
+		g.link(hid, "path:"+pn.url, "path")
 	}
 
 	// connected backbone: domain → subnet/ASN clusters, so the graph is one
