@@ -257,85 +257,217 @@ def main():
           f"{stats['providers']} providers, {stats['findings']} findings")
     print(f"  -> {out}.html   {out}.json")
 
-# node group -> (fill, border, size)
-GROUPS = {
- 'domain':  ('#f0f6fc','#1f6feb',28), 'sub':('#58a6ff','#1f6feb',12),
- 'sub_dead':('#3d4650','#30363d',8),  'vhost':('#f0883e','#9e4a06',14),
- 'sub_int': ('#f85149','#8e1519',14), 'ip_pub':('#3fb950','#1a7f37',14),
- 'ip_int':  ('#da3633','#6e0b0b',16), 'ip_origin':('#2ea043','#116329',18),
- 'asn':     ('#a371f7','#6639ba',20), 'subnet':('#d29922','#9e6a03',16),
- 'provider':('#39c5cf','#1b7f86',14),
- 'vuln_critical':('#ff4d4f','#a61d24',20),'vuln_high':('#ff7a45','#ad4e00',18),
- 'vuln_medium':('#ffc53d','#ad8b00',16),'vuln_low':('#73d13d','#3f6600',14),
- 'vuln_info':('#8b949e','#484f58',12),'vuln_unknown':('#8b949e','#484f58',12),
+# node palette: group -> (fill, border)
+PALETTE = {
+ 'domain':('#f0f6fc','#1f6feb'), 'sub':('#58a6ff','#1f6feb'),
+ 'sub_dead':('#3d4650','#30363d'), 'vhost':('#f0883e','#9e4a06'),
+ 'sub_int':('#f85149','#8e1519'), 'ip_pub':('#3fb950','#1a7f37'),
+ 'ip_int':('#da3633','#6e0b0b'), 'ip_origin':('#2ea043','#116329'),
+ 'asn':('#a371f7','#6639ba'), 'subnet':('#d29922','#9e6a03'),
+ 'provider':('#39c5cf','#1b7f86'),
+ 'vuln_critical':('#ff4d4f','#a61d24'), 'vuln_high':('#ff7a45','#ad4e00'),
+ 'vuln_medium':('#ffc53d','#ad8b00'), 'vuln_low':('#73d13d','#3f6600'),
+ 'vuln_info':('#8b949e','#484f58'), 'vuln_unknown':('#8b949e','#484f58'),
 }
-LEGEND = [('domain','domain'),('sub','subdomain'),('sub_dead','no-http'),('vhost','interesting'),
-          ('sub_int','internal host'),('ip_pub','IP'),('ip_int','internal IP'),('ip_origin','origin IP'),
-          ('asn','ASN'),('subnet','subnet'),('provider','CDN/CNAME'),('vuln_high','vuln')]
+SEVW = {'critical': 8, 'high': 5, 'medium': 3, 'low': 1}
+
+def cy_elements(g):
+    # IP -> parent subnet: compound containment (replaces the 'in' edge → clusters)
+    parent = {}
+    for e in g['edges']:
+        if e['label'] == 'in' and e['from'].startswith('ip:') and e['to'].startswith('net:'):
+            parent[e['from']] = e['to']
+    deg, risk = {}, {}
+    for e in g['edges']:
+        deg[e['from']] = deg.get(e['from'], 0) + 1
+        deg[e['to']] = deg.get(e['to'], 0) + 1
+        if e['label'] in SEVW:
+            risk[e['from']] = risk.get(e['from'], 0) + SEVW[e['label']]
+    els = []
+    for n in g['nodes']:
+        grp = n['group']; pal = PALETTE.get(grp, ('#8b949e', '#484f58'))
+        bump = (2 if grp.startswith('vuln') else 0) + (3 if grp in ('ip_int', 'sub_int') else 0) \
+             + (2 if grp in ('ip_origin', 'vhost') else 0)
+        sz = min(64, 13 + bump * 2 + min(deg.get(n['id'], 1), 20) + risk.get(n['id'], 0))
+        d = {'id': n['id'], 'label': n['label'], 'group': grp, 'title': n.get('title', ''),
+             'col': pal[0], 'bd': pal[1], 'sz': sz, 'risk': risk.get(n['id'], 0),
+             'internal': 1 if grp in ('ip_int', 'sub_int') else 0,
+             'dead': 1 if grp == 'sub_dead' else 0,
+             'cdn': 1 if grp == 'provider' else 0,
+             'kind': ('vuln' if grp.startswith('vuln') else grp.split('_')[0])}
+        if n['id'] in parent and parent[n['id']] != n['id']:
+            d['parent'] = parent[n['id']]
+        els.append({'data': d})
+    for e in g['edges']:
+        if e['label'] == 'in':
+            continue
+        sev = e['label'] if e['label'] in SEVW else ''
+        els.append({'data': {'id': e['from'] + '>' + e['to'] + '>' + e['label'],
+                             'source': e['from'], 'target': e['to'], 'label': e['label'], 'sev': sev}})
+    return els
 
 def html(g):
-    legend = ''.join(f'<label class="lg"><input type="checkbox" checked data-g="{k}"><i style="background:{GROUPS[k][0]}"></i>{lbl}</label>' for k,lbl in LEGEND)
-    groups_js = json.dumps({k:{'color':{'background':v[0],'border':v[1]},
-        'font':{'color':'#0d1117' if k in('domain','sub','ip_pub','ip_origin','subnet','vuln_medium','vuln_low') else '#fff','size':12},
-        'size':v[2]} for k,v in GROUPS.items()})
-    data = json.dumps({'nodes':g['nodes'],'edges':g['edges']})
-    st=g['stats']; tgt=g.get('target') or 'recon'; sv=st['sev']
-    sevbar=' · '.join(f"<b style='color:{GROUPS['vuln_'+s][0]}'>{sv.get(s,0)}</b> {s}" for s in ['critical','high','medium','low'] if sv.get(s,0))
-    return f"""<!doctype html><html><head><meta charset="utf-8"><title>Recon graph — {tgt}</title>
+    data = json.dumps(cy_elements(g))
+    pal = json.dumps(PALETTE)
+    st = g['stats']; sv = st.get('sev', {}); tgt = g.get('target') or 'recon'
+    stat = (f"{st['subdomains']} subs · {st['alive']} alive · {st['ips']} IPs · "
+            f"{st['internal_hosts']} internal · {st['asn']} ASN · {st['subnets']} nets · "
+            f"{st['providers']} cdn · {st['findings']} vulns")
+    return (_TPL.replace('/*DATA*/0', data).replace('/*PAL*/0', pal)
+            .replace('__TARGET__', tgt).replace('__STAT__', stat).replace('__N__', str(len(g['nodes']))))
+
+_TPL = r"""<!doctype html><html><head><meta charset="utf-8"><title>Attack surface — __TARGET__</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
 <style>
- :root{{--bg:#0d1117;--fg:#c9d1d9;--mut:#8b949e;--bd:#30363d;--card:#161b22}}
- *{{box-sizing:border-box}} html,body{{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.5 system-ui,Segoe UI,Roboto,sans-serif}}
- #bar{{position:fixed;top:0;left:0;right:0;z-index:6;display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 14px;background:var(--card);border-bottom:1px solid var(--bd)}}
- #bar b{{color:#f0f6fc}} .st{{color:var(--mut)}} .st b{{color:#58a6ff}}
- #q{{background:#0d1117;border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:5px 9px;width:190px}}
- .lg{{display:inline-flex;align-items:center;gap:4px;color:var(--mut);font-size:11px;cursor:pointer;user-select:none}}
- .lg i{{width:10px;height:10px;border-radius:50%;display:inline-block}} .lg input{{margin:0}}
- #net{{position:fixed;inset:50px 0 0 0}}
- #panel{{position:fixed;top:58px;right:10px;width:300px;max-height:80vh;overflow:auto;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;display:none;z-index:7;white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:11px}}
- #panel b{{color:#58a6ff}} #panel .x{{float:right;cursor:pointer;color:var(--mut)}}
+ :root{--bg:#0d1117;--fg:#c9d1d9;--mut:#8b949e;--bd:#30363d;--card:#161b22;--acc:#58a6ff}
+ *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+   font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif;overflow:hidden}
+ #bar{position:fixed;inset:0 0 auto 0;z-index:6;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+   padding:7px 12px;background:var(--card);border-bottom:1px solid var(--bd)}
+ #bar b{color:#f0f6fc} .stat{color:var(--mut);font-size:12px}
+ input,button,select{background:#0d1117;border:1px solid var(--bd);color:var(--fg);border-radius:6px;
+   padding:4px 8px;font-size:12px} button{cursor:pointer} button:hover{border-color:var(--acc)}
+ button.on{background:#1f6feb33;border-color:var(--acc);color:#fff}
+ #chips{display:flex;gap:5px;flex-wrap:wrap} .chip{display:inline-flex;align-items:center;gap:4px;
+   font-size:11px;color:var(--mut);cursor:pointer;user-select:none;padding:2px 7px;border:1px solid var(--bd);
+   border-radius:20px} .chip.off{opacity:.35;text-decoration:line-through} .chip i{width:9px;height:9px;border-radius:50%}
+ #cy{position:fixed;inset:46px 0 0 0}
+ #panel{position:fixed;top:54px;right:10px;width:310px;max-height:84vh;overflow:auto;background:var(--card);
+   border:1px solid var(--bd);border-radius:10px;padding:13px 15px;display:none;z-index:7;white-space:pre-wrap;
+   font-family:ui-monospace,monospace;font-size:11px;box-shadow:0 8px 30px #0008}
+ #panel h3{margin:0 0 6px;color:#f0f6fc;font:600 13px system-ui} #panel .x{float:right;cursor:pointer;color:var(--mut)}
+ #hint{position:fixed;bottom:10px;left:12px;color:#484f58;font-size:11px;z-index:5}
 </style></head><body>
 <div id="bar">
- <b>🕸 {tgt}</b>
- <span class="st"><b>{st['subdomains']}</b> subs (<b>{st['alive']}</b> alive) · <b>{st['ips']}</b> IPs · <b>{st['internal_hosts']}</b> internal · <b>{st['asn']}</b> ASN · <b>{st['subnets']}</b> nets · <b>{st['providers']}</b> cdn · <b>{st['findings']}</b> vulns{(' · '+sevbar) if sevbar else ''}</span>
- <input id="q" placeholder="search…">
- <span id="legend">{legend}</span>
+ <b>🎯 __TARGET__</b>
+ <span class="stat">__STAT__</span>
+ <input id="q" placeholder="search host / ip / asn…" style="width:180px">
+ <select id="layout" title="layout">
+   <option value="concentric">◎ tiers</option><option value="cose">✸ force</option>
+   <option value="breadthfirst">⊟ layered</option><option value="grid">▦ grid</option>
+ </select>
+ <button id="signal" class="on" title="hide no-http + CDN noise">signal only</button>
+ <button id="cluster" title="collapse subnets into one node">⊡ clusters</button>
+ <button id="fit">⤢ fit</button>
+ <span id="chips"></span>
 </div>
-<div id="net"></div><div id="panel"></div>
+<div id="cy"></div><div id="panel"></div>
+<div id="hint">click = focus + attack-path · dbl-click bg = reset · drag = pan · scroll = zoom</div>
 <script>
-const G={data}, GROUPS={groups_js};
-const nodes=new vis.DataSet(G.nodes), edges=new vis.DataSet(G.edges);
-const net=new vis.Network(document.getElementById('net'),{{nodes,edges}},{{
- groups:GROUPS, nodes:{{shape:'dot',borderWidth:2}},
- edges:{{color:{{color:'#283039',highlight:'#58a6ff',hover:'#484f58'}},width:0.5,font:{{color:'#6e7681',size:9,strokeWidth:0}},smooth:{{type:'continuous',roundness:0.4}},arrows:{{to:{{enabled:true,scaleFactor:0.35}}}}}},
- physics:{{solver:'forceAtlas2Based',stabilization:{{iterations:250}},forceAtlas2Based:{{gravitationalConstant:-42,springLength:95,avoidOverlap:0.5}}}},
- interaction:{{hover:true,tooltipDelay:120,navigationButtons:true,keyboard:true,multiselect:true}}
-}});
-// type filter via legend checkboxes
-const hidden=new Set();
-document.querySelectorAll('.lg input').forEach(cb=>cb.addEventListener('change',()=>{{
- cb.checked?hidden.delete(cb.dataset.g):hidden.add(cb.dataset.g);
- nodes.update(G.nodes.map(n=>({{id:n.id,hidden:hidden.has(n.group)}})));
-}}));
-// search
-document.getElementById('q').addEventListener('input',e=>{{
+const ELES=/*DATA*/0, PAL=/*PAL*/0, N=__N__;
+const LBL={domain:'domain',sub:'subdomain',sub_dead:'no-http',vhost:'interesting',sub_int:'internal host',
+  ip_pub:'IP',ip_int:'internal IP',ip_origin:'origin IP',asn:'ASN',subnet:'subnet',provider:'CDN/CNAME',
+  vuln_critical:'critical',vuln_high:'high',vuln_medium:'medium',vuln_low:'low',vuln_info:'info'};
+const SEVCOL={critical:'#ff4d4f',high:'#ff7a45',medium:'#ffc53d',low:'#73d13d'};
+const cy=cytoscape({
+ container:document.getElementById('cy'), elements:ELES, wheelSensitivity:0.25,
+ style:[
+  {selector:'node',style:{'background-color':'data(col)','border-color':'data(bd)','border-width':2,
+    'width':'data(sz)','height':'data(sz)','label':'data(label)','color':'#c9d1d9','font-size':9,
+    'text-valign':'bottom','text-margin-y':2,'text-wrap':'ellipsis','text-max-width':90,
+    'min-zoomed-font-size':7,'overlay-opacity':0}},
+  {selector:'node[kind="vuln"]',style:{'shape':'triangle','color':'#fff','font-size':8}},
+  {selector:'node[group="domain"]',style:{'shape':'round-diamond','font-size':13,'color':'#f0f6fc','text-valign':'center'}},
+  {selector:'node[group="asn"]',style:{'shape':'hexagon'}},
+  {selector:':parent',style:{'background-opacity':0.08,'background-color':'#d29922','border-color':'#9e6a03',
+    'border-style':'dashed','border-width':1.5,'shape':'round-rectangle','label':'data(label)','color':'#d29922',
+    'font-size':10,'text-valign':'top','text-margin-y':-2,'padding':'12px'}},
+  {selector:'edge',style:{'width':0.7,'line-color':'#283039','target-arrow-color':'#283039',
+    'target-arrow-shape':'triangle','arrow-scale':0.5,'curve-style':'bezier','opacity':0.7}},
+  {selector:'edge[sev]',style:{'line-color':'#6e40c9','target-arrow-color':'#6e40c9'}},
+  {selector:'edge[label="CNAME"]',style:{'line-style':'dashed','line-color':'#39c5cf'}},
+  {selector:'.dim',style:{'opacity':0.07}},
+  {selector:'.hl',style:{'opacity':1,'border-width':4}},
+  {selector:'.path',style:{'line-color':'#58a6ff','target-arrow-color':'#58a6ff','width':3,'opacity':1,'z-index':99}},
+  {selector:'.pathnode',style:{'border-color':'#58a6ff','border-width':4,'opacity':1}},
+  {selector:'.hidden',style:{'display':'none'}}
+ ],
+ layout:layoutCfg('concentric')
+});
+function layoutCfg(name){
+ if(name==='concentric') return {name:'concentric',concentric:n=>({domain:9,asn:7,subnet:6,ip_origin:5,ip_pub:5,
+   ip_int:5,vhost:4,sub:3,sub_int:3,sub_dead:2})[n.data('group')]||1,
+   levelWidth:()=>2,minNodeSpacing:28,animate:false,spacingFactor:1.1};
+ if(name==='cose') return {name:'cose',animate:false,nodeRepulsion:9000,idealEdgeLength:70,nestingFactor:0.9,gravity:0.3,numIter:800};
+ if(name==='breadthfirst') return {name:'breadthfirst',directed:true,spacingFactor:1.1,animate:false,
+   roots:cy?cy.nodes('[group="domain"]'):undefined};
+ return {name:'grid',animate:false};
+}
+// ── chips (per group present) ──
+const present=[...new Set(ELES.filter(e=>e.data.group).map(e=>e.data.group))];
+const order=Object.keys(LBL).filter(g=>present.includes(g));
+const off=new Set();
+document.getElementById('chips').innerHTML=order.map(g=>
+ `<span class="chip" data-g="${g}"><i style="background:${(PAL[g]||['#888'])[0]}"></i>${LBL[g]||g}</span>`).join('');
+document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+ const g=c.dataset.g; c.classList.toggle('off');
+ off.has(g)?off.delete(g):off.add(g); applyVis();
+});
+// ── signal filter (hide no-http + cdn by default) ──
+let signal=true;
+document.getElementById('signal').onclick=e=>{signal=!signal;e.target.classList.toggle('on',signal);applyVis();};
+function applyVis(){
+ cy.batch(()=>{
+  cy.nodes().forEach(n=>{
+   const g=n.data('group');
+   const hide = off.has(g) || (signal && (g==='sub_dead'||g==='provider'));
+   n.toggleClass('hidden',hide);
+  });
+ });
+}
+applyVis();
+// ── clusters collapse/expand ──
+let collapsed=false;
+document.getElementById('cluster').onclick=e=>{
+ collapsed=!collapsed; e.target.classList.toggle('on',collapsed);
+ cy.batch(()=>{
+  cy.nodes(':parent').forEach(p=>{
+   const kids=p.children();
+   kids.toggleClass('hidden',collapsed);
+   p.data('label', collapsed? (p.data('label').split('  ')[0]+'  ('+kids.length+')') : p.data('label').split('  (')[0]);
+   p.style('background-opacity', collapsed?0.25:0.08);
+  });
+ });
+};
+// ── search ──
+document.getElementById('q').addEventListener('input',e=>{
  const q=e.target.value.toLowerCase().trim();
- const hit=q?G.nodes.filter(n=>n.label.toLowerCase().includes(q)||n.id.toLowerCase().includes(q)):[];
- nodes.update(G.nodes.map(n=>({{id:n.id,opacity:(!q||hit.find(h=>h.id===n.id))?1:0.12}})));
- if(hit.length){{net.selectNodes(hit.map(h=>h.id));if(hit.length<=6)net.focus(hit[0].id,{{scale:1.1,animation:true}});}}
-}});
-// detail panel on click
+ if(!q){cy.nodes().removeClass('dim hl');return;}
+ cy.batch(()=>{
+  cy.elements().addClass('dim');
+  const hit=cy.nodes().filter(n=>(n.data('label')||'').toLowerCase().includes(q)||n.id().toLowerCase().includes(q));
+  hit.removeClass('dim').addClass('hl'); hit.connectedEdges().removeClass('dim');
+  if(hit.length&&hit.length<=4) cy.animate({fit:{eles:hit,padding:80}},{duration:300});
+ });
+});
+// ── focus + attack-path on tap ──
 const P=document.getElementById('panel');
-net.on('click',p=>{{
- if(!p.nodes.length){{P.style.display='none';return;}}
- const n=nodes.get(p.nodes[0]);
- const nb=net.getConnectedNodes(n.id).map(id=>nodes.get(id)).filter(Boolean);
- P.innerHTML='<span class="x" onclick="this.parentElement.style.display=\\'none\\'">✕</span><b>'+n.label+'</b>\\n'+
-   (n.title||'').replace(/\\\\n/g,'\\n')+'\\n\\n<b>'+nb.length+' links:</b>\\n'+nb.slice(0,40).map(x=>'• '+x.label).join('\\n');
+function root(){return cy.nodes('[group="domain"]')[0]||cy.nodes('[group="ip_origin"]')[0]||cy.nodes('[group="ip_pub"]')[0];}
+cy.on('tap','node',ev=>{
+ const n=ev.target; cy.elements().removeClass('dim hl path pathnode');
+ const nb=n.closedNeighborhood(); cy.elements().addClass('dim'); nb.removeClass('dim'); n.addClass('hl');
+ // attack-path: shortest path from root → this node
+ const r=root();
+ if(r&&r.id()!==n.id()){
+  const dij=cy.elements().dijkstra({root:r,directed:false});
+  const p=dij.pathTo(n);
+  if(p&&p.length){p.removeClass('dim').addClass('path'); p.nodes().addClass('pathnode');}
+ }
+ // detail panel
+ const links=n.connectedEdges().map(e=>{const o=e.source().id()===n.id()?e.target():e.source();return (e.data('label')||'')+' → '+o.data('label');});
+ P.innerHTML='<span class="x" onclick="this.parentElement.style.display=\'none\'">✕</span>'+
+   '<h3>'+n.data('label')+'</h3>'+(LBL[n.data('group')]||n.data('group'))+
+   (n.data('risk')?'  · risk '+n.data('risk'):'')+'\n\n'+(n.data('title')||'').replace(/\\n/g,'\n')+
+   '\n\n'+links.length+' links:\n'+links.slice(0,50).map(x=>'• '+x).join('\n');
  P.style.display='block';
-}});
-net.on('doubleClick',p=>{{if(p.nodes[0])net.focus(p.nodes[0],{{scale:1.5,animation:true}});}});
+});
+cy.on('tap',ev=>{if(ev.target===cy){cy.elements().removeClass('dim hl path pathnode');P.style.display='none';}});
+cy.on('dbltap',ev=>{if(ev.target===cy)cy.animate({fit:{padding:40}},{duration:300});});
+// ── controls ──
+document.getElementById('layout').onchange=e=>cy.layout(layoutCfg(e.target.value)).run();
+document.getElementById('fit').onclick=()=>cy.animate({fit:{padding:40}},{duration:300});
+cy.ready(()=>cy.fit(40));
 </script></body></html>"""
 
 if __name__ == '__main__':
