@@ -198,11 +198,6 @@
    <button data-v="choke">✂ chokepoints</button>
   </div>
   <div id="viewMsg" class="cnt" style="margin-top:4px"></div>
-  <h4>Compare runs (diff)</h4>
-  <div class="row"><span style="width:38px">from</span><select id="diffFrom" style="flex:1"></select></div>
-  <div class="row"><span style="width:38px">to</span><select id="diffTo" style="flex:1"></select></div>
-  <div class="row"><button id="runDiff" style="flex:1" class="on">⇄ diff</button><button id="exitDiff">exit</button></div>
-  <div id="diffMsg" class="cnt"></div>
   <h4>Tagged nodes</h4>
   <div id="tagList" class="cnt">none yet</div>
   <h4>Legend</h4>
@@ -383,8 +378,7 @@ function drawOverlay(){
      if(p.x<-20||p.x>W+20||p.y<-20||p.y>H+20)return; const dd=renderer.getNodeDisplayData(id); const r=dd?dd.size:6;
      ctx.font=Math.max(9,Math.min(17,r*1.2))+'px system-ui'; ctx.fillText(gl,p.x,p.y); }); }
 }
-let diffMode=false, diffStatus={}, annos={};
-const DIFFC={new:'#1f883d',gone:'#cf222e',changed:'#fb8500',same:'#c7ced6'};
+let annos={};
 function setColorBy(v){ colorBy=v||null; const sel=$('colorBy'); if(sel)sel.value=v||''; }
 const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); return s;};
 function render(){
@@ -395,13 +389,11 @@ function render(){
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
    if(!passFilter(n,a))return Object.assign({},d,{hidden:true});
    let o=nodeScale!==1?Object.assign({},d,{size:d.size*nodeScale}):d;
-   if(diffMode){ const st=diffStatus[n]||'same';
-     o=Object.assign({},d,{color:DIFFC[st],size:st==='gone'?Math.max(2,d.size*0.75):d.size,zIndex:st==='same'?0:2}); }
-   else if(colorBy&&metrics){ o=applyMetric(n,d); }
+   if(colorBy&&metrics){ o=applyMetric(n,d); }
    if(annos[n]&&annos[n].tag)o=Object.assign({},o,{label:'🏷 '+(o.label||a.label),zIndex:(o.zIndex||1)+1});
    if(pathSet){ return pathSet.has(n)?Object.assign({},o,{zIndex:3,size:o.size*1.15}):Object.assign({},o,{color:DIM,label:'',zIndex:0}); }
    if(focus){ return focus.has(n)?Object.assign({},o,{zIndex:2}):Object.assign({},o,{color:DIM,label:'',size:Math.max(2,o.size*0.6),zIndex:0}); }
-   if(hover&&!diffMode){ if(hover.has(n)){ o=Object.assign({},o,{zIndex:4,highlighted:n===hoverNode,size:n===hoverNode?o.size*1.25:o.size}); }
+   if(hover){ if(hover.has(n)){ o=Object.assign({},o,{zIndex:4,highlighted:n===hoverNode,size:n===hoverNode?o.size*1.25:o.size}); }
      else { return Object.assign({},o,{color:DIM2,label:'',size:Math.max(1.5,o.size*0.5),zIndex:0}); } }
    return o; });
  renderer.setSetting('edgeReducer',(e,d)=>{ const x=g.extremities(e);
@@ -507,7 +499,7 @@ function dl(blob,name){ const a=document.createElement('a'); a.download=name; a.
 let MODE='full';
 function visibleCount(){ let n=0; g.forEachNode((id,a)=>{if(passFilter(id,a))n++;}); return n; }
 function updateStat(){ $('stat').textContent=visibleCount()+' shown / '+g.order+' nodes · '+g.size+' edges · '+MODE; famCounts(); }
-function load(){ stopLayout(); diffMode=false; diffStatus={}; hover=null; $('stat').textContent='loading '+MODE+'…'; $('spin').style.display='block'; focus=null; pathSet=null; src=null; dst=null; metrics=null; $('mtop').innerHTML=''; $('mlegend').textContent=''; renderSlots(); $('pfMsg').textContent='';
+function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE+'…'; $('spin').style.display='block'; focus=null; pathSet=null; src=null; dst=null; metrics=null; $('mtop').innerHTML=''; $('mlegend').textContent=''; renderSlots(); $('pfMsg').textContent='';
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
    g.clear(); if(renderer){renderer.kill();renderer=null;}
@@ -575,21 +567,6 @@ $('views').querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ const msg=VIE
  if(colorBy)loadMetrics(()=>renderer&&renderer.refresh()); else renderer&&renderer.refresh(); updateStat(); });
 
 // ── run diff ───────────────────────────────────────────────────────────────
-function fillRuns(){ fetch(BASE+'/runs').then(r=>r.json()).then(d=>{ const runs=d.runs||[];
- const opt=runs.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.label)+'</option>').join('');
- $('diffFrom').innerHTML=opt; $('diffTo').innerHTML=opt;
- if(runs.length>1){ $('diffTo').selectedIndex=0; $('diffFrom').selectedIndex=1; }
- $('diffMsg').textContent=runs.length+' run'+(runs.length===1?'':'s'); }).catch(()=>{}); }
-$('runDiff').onclick=()=>{ const from=$('diffFrom').value, to=$('diffTo').value;
- if(!from||!to){$('diffMsg').textContent='need 2 runs';return;} if(from===to){$('diffMsg').textContent='pick different runs';return;}
- $('diffMsg').textContent='diffing…'; stopLayout(); focus=null; pathSet=null; metrics=null;
- fetch(BASE+'/diff?from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to)).then(r=>r.json()).then(res=>{
-   g.clear(); if(renderer){renderer.kill();renderer=null;}
-   diffStatus=res.status||{}; diffMode=true; add({nodes:res.nodes,edges:res.edges}); render(); startLayout(); loadAnnos();
-   const m=res.meta||{}; $('diffMsg').innerHTML='<b style="color:#1f883d">+'+(m.new||0)+' new</b> · <b style="color:#cf222e">-'+(m.gone||0)+' gone</b> · <b style="color:#fb8500">'+(m.changed||0)+' chg</b>';
-   $('stat').textContent='diff · '+g.order+' nodes'; setTimeout(()=>renderer&&renderer.getCamera().animatedReset(),450);
- }).catch(()=>{$('diffMsg').textContent='diff failed';}); };
-$('exitDiff').onclick=()=>{ if(diffMode)load(); };
 $('mode').onclick=()=>{ MODE=(MODE==='full')?'overview':'full'; $('mode').textContent=(MODE==='full')?'◰ full':'◱ overview'; load(); };
 $('reload').onclick=load;
 $('q').addEventListener('change',e=>{ const q=(e.target.value||'').trim().toLowerCase(); if(!q||!renderer)return;
@@ -628,5 +605,5 @@ const LEGEND=[['domain','domain'],['sub','subdomain'],['sub_int','internal host'
  ['favicon','favicon'],['intel','intel']];
 function buildLegend(){ $('legend').innerHTML=LEGEND.map(([g,l])=>'<span class="lg"><i style="background:'+(COL[g]||'#8c959f')+'"></i>'+l+'</span>').join(''); }
 document.addEventListener('click',hideCtx);
-applyTheme(); buildFilters(); buildLegend(); renderSlots(); fillRuns(); load();
+applyTheme(); buildFilters(); buildLegend(); renderSlots(); load();
 </script></body></html>

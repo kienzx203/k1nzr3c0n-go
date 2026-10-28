@@ -247,8 +247,6 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/full", s.handleGraph2Full)
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/export", s.handleGraph2Export)
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/metrics", s.handleGraph2Metrics)
-	m.HandleFunc("GET /api/v1/targets/{name}/graph2/runs", s.handleGraph2Runs)
-	m.HandleFunc("GET /api/v1/targets/{name}/graph2/diff", s.handleGraph2Diff)
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/annotations", s.handleGraph2Annotations)
 	m.HandleFunc("POST /api/v1/targets/{name}/graph2/annotations", s.handleGraph2AnnotationsSave)
 	m.HandleFunc("GET /api/v1/targets/{name}/graph2/enrich", s.handleGraph2Enrich)
