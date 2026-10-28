@@ -359,47 +359,66 @@ def html(g):
 _TPL = r"""<!doctype html><html><head><meta charset="utf-8"><title>Attack surface — __TARGET__</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/layout-base@2.0.1/layout-base.js"></script>
+<script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"></script>
+<script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+<script src="https://unpkg.com/cytoscape-expand-collapse@4.1.1/cytoscape-expand-collapse.js"></script>
 <style>
  :root{--bg:#0d1117;--fg:#c9d1d9;--mut:#8b949e;--bd:#30363d;--card:#161b22;--acc:#58a6ff}
- *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
-   font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif;overflow:hidden}
- #bar{position:fixed;inset:0 0 auto 0;z-index:6;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+ *{box-sizing:border-box} html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);
+   font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+ #bar{position:fixed;inset:0 0 auto 0;z-index:6;display:flex;gap:9px;align-items:center;flex-wrap:wrap;
    padding:7px 12px;background:var(--card);border-bottom:1px solid var(--bd)}
  #bar b{color:#f0f6fc} .stat{color:var(--mut);font-size:12px}
- input,button,select{background:#0d1117;border:1px solid var(--bd);color:var(--fg);border-radius:6px;
-   padding:4px 8px;font-size:12px} button{cursor:pointer} button:hover{border-color:var(--acc)}
- button.on{background:#1f6feb33;border-color:var(--acc);color:#fff}
- #chips{display:flex;gap:5px;flex-wrap:wrap} .chip{display:inline-flex;align-items:center;gap:4px;
-   font-size:11px;color:var(--mut);cursor:pointer;user-select:none;padding:2px 7px;border:1px solid var(--bd);
-   border-radius:20px} .chip.off{opacity:.35;text-decoration:line-through} .chip i{width:9px;height:9px;border-radius:50%}
- #cy{position:fixed;inset:46px 0 0 0}
- #panel{position:fixed;top:54px;right:10px;width:310px;max-height:84vh;overflow:auto;background:var(--card);
-   border:1px solid var(--bd);border-radius:10px;padding:13px 15px;display:none;z-index:7;white-space:pre-wrap;
-   font-family:ui-monospace,monospace;font-size:11px;box-shadow:0 8px 30px #0008}
- #panel h3{margin:0 0 6px;color:#f0f6fc;font:600 13px system-ui} #panel .x{float:right;cursor:pointer;color:var(--mut)}
- #hint{position:fixed;bottom:10px;left:12px;color:#484f58;font-size:11px;z-index:5}
+ input,button,select{background:#0d1117;border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:4px 8px;font-size:12px}
+ button{cursor:pointer} button:hover{border-color:var(--acc)} button.on{background:#1f6feb33;border-color:var(--acc);color:#fff}
+ #chips{display:flex;gap:5px;flex-wrap:wrap} .chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;
+   color:var(--mut);cursor:pointer;user-select:none;padding:2px 7px;border:1px solid var(--bd);border-radius:20px}
+ .chip.off{opacity:.35;text-decoration:line-through} .chip i{width:9px;height:9px;border-radius:50%}
+ #main{position:fixed;inset:46px 0 0 0;display:flex}
+ #cy{flex:1;min-width:0;height:100%}
+ #side{width:340px;flex-shrink:0;border-left:1px solid var(--bd);background:var(--card);display:flex;flex-direction:column}
+ #sidetabs{display:flex;border-bottom:1px solid var(--bd)}
+ #sidetabs button{flex:1;border:0;border-radius:0;background:transparent;padding:7px;color:var(--mut)}
+ #sidetabs button.on{color:#f0f6fc;box-shadow:inset 0 -2px 0 var(--acc)}
+ #tablewrap{flex:1;overflow:auto} #detailwrap{flex:1;overflow:auto;padding:12px 14px;white-space:pre-wrap;
+   font-family:ui-monospace,monospace;font-size:11px;display:none}
+ table{width:100%;border-collapse:collapse;font-size:11px}
+ th{position:sticky;top:0;background:var(--card);text-align:left;padding:6px 8px;color:var(--mut);cursor:pointer;
+   border-bottom:1px solid var(--bd);white-space:nowrap;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+ th:hover{color:var(--fg)} td{padding:4px 8px;border-bottom:1px solid #21262d;font-family:ui-monospace,monospace}
+ tr{cursor:pointer} tr:hover{background:#1f6feb14} tr.sel{background:#1f6feb2e}
+ td .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+ .risk{color:#ff7a45;font-weight:700} #detailwrap h3{margin:0 0 6px;color:#f0f6fc;font:600 13px system-ui}
+ #hint{position:fixed;bottom:8px;left:12px;color:#484f58;font-size:11px;z-index:5}
 </style></head><body>
 <div id="bar">
- <b>🎯 __TARGET__</b>
- <span class="stat">__STAT__</span>
- <input id="q" placeholder="search host / ip / asn…" style="width:180px">
- <select id="layout" title="layout">
-   <option value="concentric">◎ tiers</option><option value="cose">✸ force</option>
-   <option value="breadthfirst">⊟ layered</option><option value="grid">▦ grid</option>
- </select>
- <button id="signal" class="on" title="hide no-http + CDN noise">signal only</button>
- <button id="cluster" title="collapse subnets into one node">⊡ clusters</button>
- <button id="fit">⤢ fit</button>
+ <b>🎯 __TARGET__</b><span class="stat">__STAT__</span>
+ <input id="q" placeholder="search…" style="width:160px">
+ <select id="layout"><option value="fcose">✸ fcose</option><option value="concentric">◎ tiers</option>
+   <option value="breadthfirst">⊟ layered</option><option value="cose">cose</option></select>
+ <button id="expand">⊕ expand</button><button id="collapse" class="on">⊖ collapse</button>
+ <button id="signal" class="on">signal</button><button id="fit">⤢ fit</button>
  <span id="chips"></span>
 </div>
-<div id="cy"></div><div id="panel"></div>
-<div id="hint">click = focus + attack-path · dbl-click bg = reset · drag = pan · scroll = zoom</div>
+<div id="main">
+ <div id="cy"></div>
+ <div id="side">
+   <div id="sidetabs"><button id="tabTable" class="on">Table</button><button id="tabDetail">Detail</button></div>
+   <div id="tablewrap"><table id="tbl"><thead><tr>
+     <th data-k="type">type</th><th data-k="label">name</th><th data-k="info">info</th><th data-k="risk">risk</th>
+   </tr></thead><tbody id="tbody"></tbody></table></div>
+   <div id="detailwrap"></div>
+ </div>
+</div>
+<div id="hint">click node = focus + attack-path · dbl subnet = expand/collapse · click row = jump</div>
 <script>
+try{cytoscape.use(window.cytoscapeFcose);}catch(e){}
+try{cytoscape.use(window.cytoscapeExpandCollapse);}catch(e){}
 const ELES=/*DATA*/0, PAL=/*PAL*/0, N=__N__;
 const LBL={domain:'domain',sub:'subdomain',sub_dead:'no-http',vhost:'interesting',sub_int:'internal host',
   ip_pub:'IP',ip_int:'internal IP',ip_origin:'origin IP',asn:'ASN',subnet:'subnet',provider:'CDN/CNAME',
   vuln_critical:'critical',vuln_high:'high',vuln_medium:'medium',vuln_low:'low',vuln_info:'info'};
-const SEVCOL={critical:'#ff4d4f',high:'#ff7a45',medium:'#ffc53d',low:'#73d13d'};
 const cy=cytoscape({
  container:document.getElementById('cy'), elements:ELES, wheelSensitivity:0.25,
  textureOnViewport:true, hideEdgesOnViewport:true, pixelRatio:1, motionBlur:false, maxZoom:4, minZoom:0.04,
@@ -407,113 +426,110 @@ const cy=cytoscape({
   {selector:'node',style:{'background-color':'data(col)','border-color':'data(bd)','border-width':2,
     'width':'data(sz)','height':'data(sz)','label':'data(label)','color':'#c9d1d9','font-size':9,
     'text-valign':'bottom','text-margin-y':2,'text-wrap':'ellipsis','text-max-width':90,
-    'min-zoomed-font-size':12,'overlay-opacity':0}},
+    'min-zoomed-font-size':11,'overlay-opacity':0}},
   {selector:'node[kind="vuln"]',style:{'shape':'triangle','color':'#fff','font-size':8}},
   {selector:'node[group="domain"]',style:{'shape':'round-diamond','font-size':13,'color':'#f0f6fc','text-valign':'center'}},
   {selector:'node[group="asn"]',style:{'shape':'hexagon'}},
-  {selector:':parent',style:{'background-opacity':0.08,'background-color':'#d29922','border-color':'#9e6a03',
+  {selector:':parent',style:{'background-opacity':0.07,'background-color':'#d29922','border-color':'#9e6a03',
     'border-style':'dashed','border-width':1.5,'shape':'round-rectangle','label':'data(label)','color':'#d29922',
-    'font-size':10,'text-valign':'top','text-margin-y':-2,'padding':'12px'}},
+    'font-size':10,'text-valign':'top','text-margin-y':-3,'padding':'14px','min-zoomed-font-size':6}},
+  {selector:'node.cy-expand-collapse-collapsed-node',style:{'background-opacity':0.22,'border-style':'solid',
+    'shape':'round-rectangle','width':'label','height':28,'padding':'8px','font-size':11,'color':'#f0d08a'}},
   {selector:'edge',style:{'width':0.7,'line-color':'#283039','target-arrow-color':'#283039',
     'target-arrow-shape':'triangle','arrow-scale':0.5,'curve-style':'bezier','opacity':0.7}},
   {selector:'edge[sev]',style:{'line-color':'#6e40c9','target-arrow-color':'#6e40c9'}},
   {selector:'edge[label="CNAME"]',style:{'line-style':'dashed','line-color':'#39c5cf'}},
-  {selector:'.dim',style:{'opacity':0.07}},
-  {selector:'.hl',style:{'opacity':1,'border-width':4}},
+  {selector:'.dim',style:{'opacity':0.06}},
+  {selector:'.hl',style:{'opacity':1,'border-width':4,'border-color':'#58a6ff'}},
   {selector:'.path',style:{'line-color':'#58a6ff','target-arrow-color':'#58a6ff','width':3,'opacity':1,'z-index':99}},
   {selector:'.pathnode',style:{'border-color':'#58a6ff','border-width':4,'opacity':1}},
   {selector:'.hidden',style:{'display':'none'}}
- ],
- layout:layoutCfg('concentric')
+ ]
 });
 function layoutCfg(name){
- if(name==='concentric') return {name:'concentric',concentric:n=>({domain:9,asn:7,subnet:6,ip_origin:5,ip_pub:5,
-   ip_int:5,vhost:4,sub:3,sub_int:3,sub_dead:2})[n.data('group')]||1,
-   levelWidth:()=>2,minNodeSpacing:28,animate:false,spacingFactor:1.1};
- if(name==='cose') return {name:'cose',animate:false,nodeRepulsion:9000,idealEdgeLength:70,nestingFactor:0.9,gravity:0.3,numIter:800};
- if(name==='breadthfirst') return {name:'breadthfirst',directed:true,spacingFactor:1.1,animate:false,
-   roots:cy?cy.nodes('[group="domain"]'):undefined};
- return {name:'grid',animate:false};
+ if(name==='fcose' && !window.cytoscapeFcose) name='concentric';
+ if(name==='fcose') return {name:'fcose',quality:'default',animate:false,randomize:true,packComponents:true,
+   nodeSeparation:80,idealEdgeLength:75,nodeRepulsion:6500,gravity:0.25,numIter:1500};
+ if(name==='concentric') return {name:'concentric',animate:false,minNodeSpacing:30,spacingFactor:1.1,
+   concentric:n=>({domain:9,asn:7,subnet:6,ip_origin:5,ip_pub:5,ip_int:5,vhost:4,sub:3,sub_int:3,sub_dead:2})[n.data('group')]||1,
+   levelWidth:()=>2};
+ if(name==='breadthfirst') return {name:'breadthfirst',directed:true,animate:false,spacingFactor:1.1,roots:cy.nodes('[group="domain"]')};
+ return {name:'cose',animate:false,numIter:800};
 }
-// ── chips (per group present) ──
+// expand/collapse (compound subnets) — skeleton-first
+let api=null;
+try{ api=cy.expandCollapse({layoutBy:null,fisheye:false,animate:false,undoable:false,cueEnabled:true,
+  expandCollapseCuePosition:'top-left',expandCollapseCueSize:11}); }catch(e){}
+function relayout(){ cy.layout(layoutCfg(document.getElementById('layout').value)).run(); }
+function runInit(){
+ relayout();
+ if(api){ try{api.collapseAll();}catch(e){} setTimeout(()=>{try{cy.fit(40);}catch(e){}},60); }
+ else cy.fit(40);
+}
+cy.ready(runInit);
+document.getElementById('layout').onchange=relayout;
+document.getElementById('expand').onclick=()=>{if(api){api.expandAll();relayout();}};
+document.getElementById('collapse').onclick=()=>{if(api){api.collapseAll();setTimeout(()=>cy.fit(40),60);}};
+document.getElementById('fit').onclick=()=>cy.animate({fit:{padding:40}},{duration:250});
+// filter chips + signal
 const present=[...new Set(ELES.filter(e=>e.data.group).map(e=>e.data.group))];
-const order=Object.keys(LBL).filter(g=>present.includes(g));
-const off=new Set();
-document.getElementById('chips').innerHTML=order.map(g=>
- `<span class="chip" data-g="${g}"><i style="background:${(PAL[g]||['#888'])[0]}"></i>${LBL[g]||g}</span>`).join('');
-document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
- const g=c.dataset.g; c.classList.toggle('off');
- off.has(g)?off.delete(g):off.add(g); applyVis();
-});
-// ── signal filter (hide no-http + cdn by default) ──
+const ORD=Object.keys(LBL).filter(g=>present.includes(g)); const off=new Set();
+document.getElementById('chips').innerHTML=ORD.map(g=>`<span class="chip" data-g="${g}"><i style="background:${(PAL[g]||['#888'])[0]}"></i>${LBL[g]||g}</span>`).join('');
+document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{const g=c.dataset.g;c.classList.toggle('off');off.has(g)?off.delete(g):off.add(g);applyVis();});
 let signal=true;
 document.getElementById('signal').onclick=e=>{signal=!signal;e.target.classList.toggle('on',signal);applyVis();};
-function applyVis(){
- cy.batch(()=>{
-  cy.nodes().forEach(n=>{
-   const g=n.data('group');
-   const hide = off.has(g) || (signal && (g==='sub_dead'||g==='provider'));
-   n.toggleClass('hidden',hide);
-  });
- });
-}
+function applyVis(){cy.batch(()=>cy.nodes().forEach(n=>{const g=n.data('group');
+  n.toggleClass('hidden',off.has(g)||(signal&&g==='provider'));}));}
 applyVis();
-// ── clusters collapse/expand ──
-let collapsed=false;
-document.getElementById('cluster').onclick=e=>{
- collapsed=!collapsed; e.target.classList.toggle('on',collapsed);
- cy.batch(()=>{
-  cy.nodes(':parent').forEach(p=>{
-   const kids=p.children();
-   kids.toggleClass('hidden',collapsed);
-   p.data('label', collapsed? (p.data('label').split('  ')[0]+'  ('+kids.length+')') : p.data('label').split('  (')[0]);
-   p.style('background-opacity', collapsed?0.25:0.08);
-  });
- });
-};
-// ── search ──
-let qT; const qEl=document.getElementById('q');
-qEl.addEventListener('input',()=>{
- clearTimeout(qT);
- qT=setTimeout(()=>{                       // debounce so typing stays smooth on big graphs
-  const q=qEl.value.toLowerCase().trim();
-  if(!q){cy.batch(()=>cy.elements().removeClass('dim hl'));qEl.removeAttribute('title');return;}
+// ── coordinated TABLE ──
+const tbody=document.getElementById('tbody'); let sortK='risk',sortDir=-1;
+const rows=ELES.filter(e=>!e.data.source&&e.data.group&&e.data.group!=='subnet').map(e=>({
+  id:e.data.id,type:LBL[e.data.group]||e.data.group,label:(e.data.label||'').split('  +')[0],
+  info:(e.data.title||'').replace(/\\n/g,' ').slice(0,60),risk:e.data.risk||0,grp:e.data.group,col:e.data.col}));
+function renderTable(filter){
+ const f=(filter||'').toLowerCase();
+ let r=rows.filter(x=>!f||x.label.toLowerCase().includes(f)||x.info.toLowerCase().includes(f));
+ r.sort((a,b)=>{const A=a[sortK],B=b[sortK];return (A<B?-1:A>B?1:0)*sortDir;});
+ tbody.innerHTML=r.slice(0,600).map(x=>`<tr data-id="${x.id}"><td><span class="dot" style="background:${x.col}"></span>${x.type}</td>`+
+   `<td>${x.label}</td><td style="color:var(--mut)">${x.info||''}</td><td class="${x.risk?'risk':''}">${x.risk||''}</td></tr>`).join('');
+ tbody.querySelectorAll('tr').forEach(tr=>tr.onclick=()=>{const id=tr.dataset.id;focusNode(cy.$id(id),true);
+   tbody.querySelectorAll('tr').forEach(t=>t.classList.remove('sel'));tr.classList.add('sel');});
+}
+document.querySelectorAll('#tbl th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;
+  if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==='risk'?-1:1);}renderTable(document.getElementById('q').value);});
+renderTable('');
+// side tabs
+function sideTab(t){document.getElementById('tablewrap').style.display=t==='table'?'block':'none';
+ document.getElementById('detailwrap').style.display=t==='detail'?'block':'none';
+ document.getElementById('tabTable').classList.toggle('on',t==='table');
+ document.getElementById('tabDetail').classList.toggle('on',t==='detail');}
+document.getElementById('tabTable').onclick=()=>sideTab('table');
+document.getElementById('tabDetail').onclick=()=>sideTab('detail');
+// search (debounced) — graph + table
+let qT;const qEl=document.getElementById('q');
+qEl.addEventListener('input',()=>{clearTimeout(qT);qT=setTimeout(()=>{const q=qEl.value.toLowerCase().trim();
+  renderTable(q);
+  if(!q){cy.batch(()=>cy.elements().removeClass('dim hl'));return;}
   const hit=cy.nodes().filter(n=>(n.data('label')||'').toLowerCase().includes(q)||n.id().toLowerCase().includes(q));
-  cy.batch(()=>{                            // dim all, keep matches + their context lit
-   cy.elements().addClass('dim');
-   hit.closedNeighborhood().removeClass('dim'); hit.addClass('hl');
-  });
-  qEl.title=hit.length+' match';
-  if(hit.length&&hit.length<=8) cy.animate({fit:{eles:hit,padding:90}},{duration:250});
- },150);
-});
-// ── focus + attack-path on tap ──
-const P=document.getElementById('panel');
+  cy.batch(()=>{cy.elements().addClass('dim');hit.closedNeighborhood().removeClass('dim');hit.addClass('hl');});
+  if(hit.length&&hit.length<=8)cy.animate({fit:{eles:hit,padding:90}},{duration:250});},150);});
+// focus + attack-path + detail
+const DET=document.getElementById('detailwrap');
 function root(){return cy.nodes('[group="domain"]')[0]||cy.nodes('[group="ip_origin"]')[0]||cy.nodes('[group="ip_pub"]')[0];}
-cy.on('tap','node',ev=>{
- const n=ev.target; const r=root();
- cy.batch(()=>{                             // one style pass → no interaction lag on big graphs
-  cy.elements().removeClass('dim hl path pathnode').addClass('dim');
-  n.closedNeighborhood().removeClass('dim'); n.addClass('hl');
-  if(r&&r.id()!==n.id()){                   // attack-path: shortest path from exposed root → node
-   const p=cy.elements().dijkstra({root:r,directed:false}).pathTo(n);
-   if(p&&p.length){p.removeClass('dim').addClass('path'); p.nodes().addClass('pathnode');}
-  }
- });
- // detail panel
+function focusNode(n,fit){
+ if(!n||!n.length)return; const r=root();
+ cy.batch(()=>{cy.elements().removeClass('dim hl path pathnode').addClass('dim');
+  n.closedNeighborhood().removeClass('dim');n.addClass('hl');
+  if(r&&r.id()!==n.id()){const p=cy.elements().dijkstra({root:r,directed:false}).pathTo(n);
+   if(p&&p.length){p.removeClass('dim').addClass('path');p.nodes().addClass('pathnode');}}});
  const links=n.connectedEdges().map(e=>{const o=e.source().id()===n.id()?e.target():e.source();return (e.data('label')||'')+' → '+o.data('label');});
- P.innerHTML='<span class="x" onclick="this.parentElement.style.display=\'none\'">✕</span>'+
-   '<h3>'+n.data('label')+'</h3>'+(LBL[n.data('group')]||n.data('group'))+
-   (n.data('risk')?'  · risk '+n.data('risk'):'')+'\n\n'+(n.data('title')||'').replace(/\\n/g,'\n')+
-   '\n\n'+links.length+' links:\n'+links.slice(0,50).map(x=>'• '+x).join('\n');
- P.style.display='block';
-});
-cy.on('tap',ev=>{if(ev.target===cy){cy.elements().removeClass('dim hl path pathnode');P.style.display='none';}});
-cy.on('dbltap',ev=>{if(ev.target===cy)cy.animate({fit:{padding:40}},{duration:300});});
-// ── controls ──
-document.getElementById('layout').onchange=e=>cy.layout(layoutCfg(e.target.value)).run();
-document.getElementById('fit').onclick=()=>cy.animate({fit:{padding:40}},{duration:300});
-cy.ready(()=>cy.fit(40));
+ DET.innerHTML='<h3>'+n.data('label')+'</h3>'+(LBL[n.data('group')]||n.data('group'))+(n.data('risk')?'  · risk '+n.data('risk'):'')+
+   '\n\n'+(n.data('title')||'').replace(/\\n/g,'\n')+'\n\n'+links.length+' links:\n'+links.slice(0,60).map(x=>'• '+x).join('\n');
+ sideTab('detail');
+ if(fit)cy.animate({fit:{eles:n.closedNeighborhood(),padding:120},},{duration:300});
+}
+cy.on('tap','node',ev=>{if(!ev.target.hasClass('cy-expand-collapse-collapsed-node'))focusNode(ev.target,false);});
+cy.on('tap',ev=>{if(ev.target===cy){cy.elements().removeClass('dim hl path pathnode');}});
 </script></body></html>"""
 
 if __name__ == '__main__':
