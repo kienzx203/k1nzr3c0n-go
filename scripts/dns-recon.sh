@@ -6,7 +6,8 @@
 #   fp        DNS server fingerprint (version.bind / hostname.bind)
 #   axfr      zone transfer against every NS (the jackpot if misconfigured)
 #   nsec      DNSSEC check -> NSEC zone-walk (full zone) / flag NSEC3 for cracking
-#   brute     wordlist brute-force (built-in devops/internal list, or -w FILE)
+#   brute     wordlist brute-force — built-in ~200 devops/internal words MERGED
+#             with -w FILE (deduped); --no-builtin uses only the file
 #   perm      permutations of discovered hosts (dev-/stg-/test-/-staging/numbered)
 #   resolve   resolve every discovered host -> IP (NSEC/AXFR names carry no IP);
 #             flags hosts pointing to internal RFC1918 IPs (split-horizon leak)
@@ -15,7 +16,9 @@
 #
 # Usage:
 #   ./dns-recon.sh <domain> [-w wordlist] [-o outdir] [-t threads]
-#                  [-r resolver] [--only mod1,mod2] [--skip mod1,mod2] [--quiet]
+#                  [-r resolver] [--only mod1,mod2] [--skip mod1,mod2]
+#                  [--no-builtin] [--quiet]
+#   -w merges the file with the built-in words (deduped); --no-builtin = file only
 #
 # Output: <outdir>/  subdomains.txt  ips.txt  internal_ips.txt  records.txt
 #                    zone_nsec.txt  ptr.txt  interesting.txt  summary.txt
@@ -25,7 +28,7 @@ set -uo pipefail
 
 # ── args ──────────────────────────────────────────────────────────────────────
 DOMAIN=""; OUT=""; WORDLIST=""; THREADS=40; RESOLVER="1.1.1.1"
-ONLY=""; SKIP=""; QUIET=0
+ONLY=""; SKIP=""; QUIET=0; NO_BUILTIN=0
 RESOLVERS_PUB="1.1.1.1 8.8.8.8 9.9.9.9"
 usage() { grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 while [ $# -gt 0 ]; do
@@ -37,6 +40,7 @@ while [ $# -gt 0 ]; do
     --only) ONLY="$2"; shift 2;;
     --skip) SKIP="$2"; shift 2;;
     --quiet) QUIET=1; shift;;
+    --no-builtin) NO_BUILTIN=1; shift;;   # with -w: use ONLY the file, skip built-in words
     -h|--help) usage 0;;
     -*) echo "unknown flag: $1" >&2; usage 1;;
     *) DOMAIN="$1"; shift;;
@@ -223,10 +227,14 @@ beta alpha canary blue green v1 v2 v3 new old2 legacy tmp temp cloud cloud1 clou
 brute() {
   hdr "Brute-force"
   local wl="$OUT/.wl"
-  if [ -n "$WORDLIST" ] && [ -f "$WORDLIST" ]; then cp "$WORDLIST" "$wl"
-  else printf '%s\n' $WORDS_BUILTIN | grep -v '^$' | sort -u > "$wl"; fi
+  # built-in words are ALWAYS merged with -w (deduped), unless --no-builtin.
+  {
+    [ "$NO_BUILTIN" = 1 ] || printf '%s\n' $WORDS_BUILTIN
+    [ -n "$WORDLIST" ] && [ -f "$WORDLIST" ] && tr -d '\r' < "$WORDLIST"
+  } | sed 's/[[:space:]].*//; /^#/d; /^$/d' | tr 'A-Z' 'a-z' | sort -u > "$wl"
   local n; n=$(wc -l < "$wl")
-  note "testing $n names x resolver $RESOLVER (threads=$THREADS)"
+  local srcs="built-in"; [ -n "$WORDLIST" ] && srcs="$([ "$NO_BUILTIN" = 1 ] && echo "$WORDLIST" || echo "built-in + $WORDLIST")"
+  note "testing $n names ($srcs) x resolver $RESOLVER (threads=$THREADS)"
   detect_wildcard
   export DE RE_IP4 RESOLVER WILDCARD_IP
   sed "s/\$/.$D/" "$wl" | xargs -P "$THREADS" -I{} bash -c '
