@@ -14,7 +14,103 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/k1z/config"
+	"github.com/Autumn-27/artex/k1z/store"
 )
+
+// graphMergeFiles are the per-run workspace files the target graph unions across
+// all of a target's runs (recon-graph.py dedupes internally).
+var graphMergeFiles = []string{
+	"subdomains.txt", "subdomains_resolved_resp.txt", "resolved.txt", "dns_resolved.txt",
+	"httpx.json", "naabu.json", "nuclei.json", "nuclei_hosts.json", "nuclei_misconfig.json",
+	"censys_hosts.txt", "censys_ip.txt", "fofa_ip_port.txt", "internal_hosts.txt", "dns_internal_hosts.txt",
+	"internal_subnets.txt", "dns_internal_subnets.txt", "interesting.txt", "origin_ips.txt",
+	"ptr.txt", "dns_ptr.txt", "dns_zone_nsec.txt", "p_dns_zone.txt", "takeover_findings.txt", "cdncheck.json",
+}
+
+func safeTargetDir(t string) string {
+	var b strings.Builder
+	for _, c := range t {
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' {
+			b.WriteRune(c)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	if b.Len() == 0 {
+		return "target"
+	}
+	return b.String()
+}
+
+// handleTargetGraph builds (or serves cached) the aggregate attack-surface graph
+// for a target by unioning the output of all its runs' workspaces and rendering
+// it with recon-graph.py. Serves the HTML directly (opened in a new tab by the UI).
+func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
+	target := r.PathValue("name")
+	if target == "" {
+		writeDetail(w, 400, "target required")
+		return
+	}
+	runs, _, err := s.St.ListRuns(store.RunFilter{Limit: 200})
+	if err != nil {
+		writeDetail(w, 500, err.Error())
+		return
+	}
+	var wss []string
+	var newest time.Time
+	for _, run := range runs {
+		if run.Target != target || run.Workspace == "" || !dirExists(run.Workspace) {
+			continue
+		}
+		wss = append(wss, run.Workspace)
+		for _, t := range []time.Time{run.FinishedAt, run.StartedAt, run.CreatedAt} {
+			if t.After(newest) {
+				newest = t
+			}
+		}
+	}
+	if len(wss) == 0 {
+		writeDetail(w, 404, "no run workspace found for this target")
+		return
+	}
+	merged := filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(target))
+	gh := filepath.Join(merged, "recon-graph.html")
+	// cache: serve if the graph is newer than the latest run
+	if fi, e := os.Stat(gh); e == nil && !newest.After(fi.ModTime()) {
+		http.ServeFile(w, r, gh)
+		return
+	}
+	os.MkdirAll(merged, 0o755)
+	for _, f := range graphMergeFiles {
+		var buf []byte
+		for _, ws := range wss {
+			if b, e := os.ReadFile(filepath.Join(ws, f)); e == nil && len(b) > 0 {
+				buf = append(buf, b...)
+				if b[len(b)-1] != '\n' {
+					buf = append(buf, '\n')
+				}
+			}
+		}
+		_ = os.WriteFile(filepath.Join(merged, f), buf, 0o644)
+	}
+	script := filepath.Join(config.BaseDir(), "scripts", "recon-graph.py")
+	if !fileExists(script) {
+		script = "/opt/k1nzr3c0n-src/scripts/recon-graph.py"
+	}
+	if !fileExists(script) {
+		writeDetail(w, 500, "recon-graph.py not found (deploy scripts/)")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "python3", script, merged, "-o", filepath.Join(merged, "recon-graph"), "--target", target)
+	cmd.Dir = merged
+	if out, e := cmd.CombinedOutput(); e != nil {
+		writeDetail(w, 500, "graph build failed: "+strings.TrimSpace(string(out)))
+		return
+	}
+	http.ServeFile(w, r, gh)
+}
 
 // graphFresh reports whether recon-graph.{json,html} already exist and are at
 // least as new as every other file in the workspace (so a rebuild is a no-op).

@@ -242,6 +242,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/scope/check", s.handleScopeCheck)
 	m.HandleFunc("GET /api/v1/targets", s.handleListTargets)
 	m.HandleFunc("POST /api/v1/targets", s.handleCreateTarget)
+	m.HandleFunc("GET /api/v1/targets/{name}/graph", s.handleTargetGraph)
 	m.HandleFunc("GET /api/v1/targets/{name}/audit", s.handleTargetAudit)
 	m.HandleFunc("GET /api/v1/targets/{name}/new-assets", s.handleTargetNewAssets)
 	m.HandleFunc("GET /api/v1/targets/{name}", s.handleGetTarget)

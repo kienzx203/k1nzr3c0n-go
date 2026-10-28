@@ -162,6 +162,9 @@ function TargetDetail({ name, onChanged, onDeleted }) {
                 → {MODE_META[key].label}
               </button>
             ))}
+            <a href={`/api/v1/targets/${encodeURIComponent(detail.name)}/graph`} target="_blank" rel="noreferrer"
+               className="btn btn-ghost" style={{ fontSize: 10 }}
+               title="Aggregate attack-surface graph across all runs of this target">🕸 Graph</a>
             <button className="btn btn-danger" style={{ fontSize: 10 }} onClick={remove}>Unregister</button>
           </div>
         </div>
