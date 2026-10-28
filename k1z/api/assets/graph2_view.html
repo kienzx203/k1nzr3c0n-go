@@ -54,6 +54,7 @@
  <span class="sp"></span>
  <button id="lay">⚛ layout</button>
  <button id="mode">◰ full</button>
+ <button id="geo">🌍 geo</button>
  <button id="fit">⤢ fit</button>
  <button id="reload">↻</button>
  <div class="menu" id="exp"><button id="expBtn">⇩ export ▾</button>
@@ -67,6 +68,7 @@
 </div>
 <div id="main">
  <div id="cy"></div>
+ <canvas id="geoCanvas" style="position:absolute;inset:0;z-index:2;pointer-events:none;display:none"></canvas>
  <div class="panel" id="left">
   <h4>Filters</h4>
   <div id="filters"></div>
@@ -228,6 +230,7 @@ $('colorBy').onchange=e=>{ colorBy=e.target.value||null;
 // ── render + interaction ────────────────────────────────────────────────
 let renderer=null, focus=null, pathSet=null, pickMode=null, src=null, dst=null;
 let diffMode=false, diffStatus={}, annos={};
+let geoMode=false, geoSet=null;
 const DIFFC={new:'#1f883d',gone:'#cf222e',changed:'#fb8500',same:'#c7ced6'};
 function setColorBy(v){ colorBy=v||null; const sel=$('colorBy'); if(sel)sel.value=v||''; }
 const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); return s;};
@@ -238,6 +241,7 @@ function render(){
    zIndex:true,minCameraRatio:0.02,maxCameraRatio:20});
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
    if(!passFilter(n,a))return Object.assign({},d,{hidden:true});
+   if(geoMode)return (geoSet&&geoSet.has(n))?Object.assign({},d,{zIndex:2}):Object.assign({},d,{hidden:true});
    let o=d;
    if(diffMode){ const st=diffStatus[n]||'same';
      o=Object.assign({},d,{color:DIFFC[st],size:st==='gone'?Math.max(2,d.size*0.75):d.size,zIndex:st==='same'?0:2}); }
@@ -248,6 +252,7 @@ function render(){
    return o; });
  renderer.setSetting('edgeReducer',(e,d)=>{ const x=g.extremities(e);
    if(!passFilter(x[0],g.getNodeAttributes(x[0]))||!passFilter(x[1],g.getNodeAttributes(x[1])))return Object.assign({},d,{hidden:true});
+   if(geoMode)return (geoSet&&geoSet.has(x[0])&&geoSet.has(x[1]))?d:Object.assign({},d,{hidden:true});
    if(pathSet){ return (pathSet.has(x[0])&&pathSet.has(x[1]))?Object.assign({},d,{color:'#cf222e',size:2.4,zIndex:3}):Object.assign({},d,{hidden:true}); }
    if(focus&&(!focus.has(x[0])||!focus.has(x[1])))return Object.assign({},d,{hidden:true});
    return d; });
@@ -256,6 +261,7 @@ function render(){
    pathSet=null; focus=hood(node); renderer.refresh(); detail(node); });
  renderer.on('clickStage',()=>{ if(focus||pathSet){focus=null;pathSet=null;renderer.refresh();} });
  renderer.on('rightClickNode',e=>{ const o=e.event&&e.event.original; if(o)o.preventDefault(); showCtx(o?o.clientX:e.event.x,o?o.clientY:e.event.y,e.node); });
+ renderer.on('afterRender',()=>{ if(geoMode)drawGraticule(); });
  let drag=null;
  renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node; g.setNodeAttribute(drag,'highlighted',true); fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
  renderer.getMouseCaptor().on('mousemovebody',e=>{ if(!drag)return; const p=renderer.viewportToGraph(e);
@@ -341,7 +347,7 @@ function dl(blob,name){ const a=document.createElement('a'); a.download=name; a.
 let MODE='full';
 function visibleCount(){ let n=0; g.forEachNode((id,a)=>{if(passFilter(id,a))n++;}); return n; }
 function updateStat(){ $('stat').textContent=visibleCount()+' shown / '+g.order+' nodes · '+g.size+' edges · '+MODE; famCounts(); }
-function load(){ stopLayout(); diffMode=false; diffStatus={}; $('stat').textContent='loading '+MODE+'…'; focus=null; pathSet=null; src=null; dst=null; metrics=null; $('mtop').innerHTML=''; $('mlegend').textContent=''; renderSlots(); $('pfMsg').textContent='';
+function load(){ stopLayout(); if(geoMode)exitGeo(); diffMode=false; diffStatus={}; $('stat').textContent='loading '+MODE+'…'; focus=null; pathSet=null; src=null; dst=null; metrics=null; $('mtop').innerHTML=''; $('mlegend').textContent=''; renderSlots(); $('pfMsg').textContent='';
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
    g.clear(); if(renderer){renderer.kill();renderer=null;}
@@ -373,7 +379,7 @@ function fillRuns(){ fetch(BASE+'/runs').then(r=>r.json()).then(d=>{ const runs=
  $('diffMsg').textContent=runs.length+' run'+(runs.length===1?'':'s'); }).catch(()=>{}); }
 $('runDiff').onclick=()=>{ const from=$('diffFrom').value, to=$('diffTo').value;
  if(!from||!to){$('diffMsg').textContent='need 2 runs';return;} if(from===to){$('diffMsg').textContent='pick different runs';return;}
- $('diffMsg').textContent='diffing…'; stopLayout(); focus=null; pathSet=null; metrics=null;
+ $('diffMsg').textContent='diffing…'; stopLayout(); if(geoMode)exitGeo(); focus=null; pathSet=null; metrics=null;
  fetch(BASE+'/diff?from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to)).then(r=>r.json()).then(res=>{
    g.clear(); if(renderer){renderer.kill();renderer=null;}
    diffStatus=res.status||{}; diffMode=true; add({nodes:res.nodes,edges:res.edges}); render(); startLayout(); loadAnnos();
@@ -406,6 +412,30 @@ function enrich(id,kind){ toast('transform '+kind+'…',8000);
    toast(kind+': +'+added+' node'+(added===1?'':'s')+(added?'':' (nothing resolved)'),3500);
  }).catch(()=>toast('transform failed',3000)); }
 $('cy').addEventListener('contextmenu',ev=>ev.preventDefault());
+
+// ── geo map (offline MaxMind) ────────────────────────────────────────────
+function geoXY(lon,lat){ return {x:lon*0.22,y:-lat*0.22}; }
+function drawGraticule(){ const cv=$('geoCanvas'),cont=$('cy'); if(!geoMode||!renderer){cv.style.display='none';return;}
+ const dpr=window.devicePixelRatio||1,W=cont.offsetWidth,H=cont.offsetHeight;
+ cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px'; cv.style.display='block';
+ const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H); ctx.font='10px system-ui'; ctx.lineWidth=1;
+ for(let lon=-180;lon<=180;lon+=30){ const a=renderer.graphToViewport(geoXY(lon,85)),b=renderer.graphToViewport(geoXY(lon,-85));
+   ctx.strokeStyle=lon===0?'#9fb3c8':'#e4e9ef'; ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+   ctx.fillStyle='#aeb7c0'; ctx.fillText(lon+'°',a.x+2,12); }
+ for(let lat=-90;lat<=90;lat+=30){ const a=renderer.graphToViewport(geoXY(-180,lat)),b=renderer.graphToViewport(geoXY(180,lat));
+   ctx.strokeStyle=lat===0?'#9fb3c8':'#e4e9ef'; ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+   ctx.fillStyle='#aeb7c0'; ctx.fillText(lat+'°',4,a.y-2); }
+}
+function exitGeo(){ geoMode=false; geoSet=null; $('geo').classList.remove('on'); $('geoCanvas').style.display='none'; }
+$('geo').onclick=()=>{ if(geoMode){ exitGeo(); startLayout(5000); renderer&&renderer.refresh(); return; }
+ toast('geolocating IPs (offline)…',8000);
+ fetch(BASE+'/geo').then(r=>r.json()).then(d=>{ if(!d.available){ toast('geo DB not found — '+(d.hint||''),8000); return; }
+   const pts=d.points||[]; if(!pts.length){ toast('no IPs geolocated (private-only?)',4000); return; }
+   stopLayout(); geoMode=true; $('geo').classList.add('on'); const set=new Set();
+   pts.forEach(p=>{ if(g.hasNode(p.id)){ const xy=geoXY(p.lon,p.lat); g.setNodeAttribute(p.id,'x',xy.x); g.setNodeAttribute(p.id,'y',xy.y); set.add(p.id);} });
+   geoSet=set; renderer.refresh(); setTimeout(()=>{renderer.getCamera().animatedReset(); drawGraticule();},60);
+   const m=d.meta||{}; toast('geo: '+(m.located||pts.length)+' / '+(m.ips||'?')+' IPs located · grid = lon/lat',5000);
+ }).catch(()=>toast('geo lookup failed',3000)); };
 
 // ── panels ──────────────────────────────────────────────────────────────
 function openLeft(v){ $('left').classList.toggle('hide',!v); }
