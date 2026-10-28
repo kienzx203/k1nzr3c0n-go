@@ -978,6 +978,17 @@ func Build(dir, target string) *Graph {
 				g.link("dom:"+target, id, "scope")
 			}
 		}
+		// Rescue orphan hosts — dead subdomains that never resolved to an IP and
+		// have no CNAME end up with zero edges, so the force layout flings them
+		// far off-screen and they look "missing". Hang every orphan host off the
+		// apex domain so it stays in the main component and is always visible.
+		if _, ok := g.Nodes["dom:"+target]; ok {
+			for id := range g.Nodes {
+				if strings.HasPrefix(id, "h:") && len(g.adj[id]) == 0 {
+					g.link(id, "dom:"+target, "sub")
+				}
+			}
+		}
 	}
 	return g
 }
