@@ -131,6 +131,30 @@ func hostOfURL(u string) string {
 	return strings.ToLower(strings.SplitN(u, ":", 2)[0])
 }
 
+// readTruffle returns one secret label per trufflehog/gitleaks finding.
+func readTruffle(dir string) []string {
+	var out []string
+	for _, ln := range lines(firstExisting(dir, "trufflehog_results.jsonl")) {
+		var m map[string]any
+		if json.Unmarshal([]byte(ln), &m) == nil {
+			if d := str(m["DetectorName"]); d != "" {
+				out = append(out, d)
+			}
+		}
+	}
+	if b, e := os.ReadFile(filepath.Join(dir, "gitleaks_results.json")); e == nil && len(b) > 0 {
+		var arr []map[string]any
+		if json.Unmarshal(b, &arr) == nil {
+			for _, m := range arr {
+				if r := str(m["RuleID"]); r != "" {
+					out = append(out, r)
+				}
+			}
+		}
+	}
+	return out
+}
+
 // gitleaksCount returns the number of entries in gitleaks_results.json (array).
 func gitleaksCount(dir string) int {
 	b, err := os.ReadFile(filepath.Join(dir, "gitleaks_results.json"))
@@ -627,60 +651,83 @@ func Build(dir, target string) *Graph {
 			buckets = append(buckets, bkt{name, strings.TrimSpace(region + " " + provider)})
 		}
 	})
-	// high-cardinality surface (URLs/endpoints/params/secrets) → counts on the domain
 	cnt := func(names ...string) int { return len(lines(firstExisting(dir, names...))) }
-	// path recon (crawl/content-discovery/gf) bucketed PER HOST, plus a bounded
-	// set of notable paths surfaced as nodes attached to their host.
+	// EVERYTHING discovered becomes a node (purpose of the graph: omit nothing).
+	// Capped per class so the WebGL viewer stays renderable; Overview hides these,
+	// Full (default) + click-to-expand show them.
 	urlByHost := map[string]int{}
 	endByHost := map[string]int{}
 	reNotable := regexp.MustCompile(`(?i)/(admin|login|signin|sign-in|dashboard|api|graphql|swagger|openapi|actuator|\.git|\.env|wp-admin|wp-login|phpmyadmin|jenkins|grafana|kibana|console|debug|backup|upload|config|phpinfo|server-status|metrics|\.sql|\.bak|\.zip|internal|private|token|secret|password)`)
-	type pnode struct{ host, url, tag string }
-	var notable []pnode
-	notableSeen := map[string]bool{}
-	addNotable := func(u, tag, h string) {
-		if h == "" {
-			h = hostOfURL(u)
-		}
-		if h == "" || notableSeen[u] || len(notable) >= 300 {
+	type leaf struct {
+		host, val, group, title string
+		ep                      bool
+	}
+	var leaves []leaf
+	leafSeen := map[string]bool{}
+	const urlNodeCap, epNodeCap = 5000, 4000
+	nURLnodes, nEPnodes := 0, 0
+	addURL := func(u string) {
+		u = strings.TrimSpace(u)
+		if !strings.HasPrefix(u, "http") || leafSeen["u\x00"+u] {
 			return
 		}
-		if tag != "" || reNotable.MatchString(u) {
-			notableSeen[u] = true
-			notable = append(notable, pnode{h, u, tag})
-		}
-	}
-	nURL := 0
-	for _, ln := range lines(firstExisting(dir, "all_urls.txt", "live_urls.txt")) {
-		u := strings.TrimSpace(ln)
-		if !strings.HasPrefix(u, "http") {
-			continue
-		}
-		nURL++
+		leafSeen["u\x00"+u] = true
 		if h := hostOfURL(u); h != "" {
 			urlByHost[h]++
 		}
-		addNotable(u, "", "")
+		if nURLnodes >= urlNodeCap {
+			return
+		}
+		nURLnodes++
+		grp := "url"
+		if reNotable.MatchString(u) {
+			grp = "path"
+		}
+		leaves = append(leaves, leaf{hostOfURL(u), u, grp, u, false})
+	}
+	addEP := func(u, tag string) {
+		u = strings.TrimSpace(u)
+		if !strings.HasPrefix(u, "http") || leafSeen["e\x00"+u] {
+			return
+		}
+		leafSeen["e\x00"+u] = true
+		if h := hostOfURL(u); h != "" {
+			endByHost[h]++
+		}
+		if nEPnodes >= epNodeCap {
+			return
+		}
+		nEPnodes++
+		grp, title := "endpoint", u
+		if tag != "" {
+			title = "[" + tag + "] " + u
+		} else if reNotable.MatchString(u) {
+			grp = "path"
+		}
+		leaves = append(leaves, leaf{hostOfURL(u), u, grp, title, true})
+	}
+	nURL := 0
+	for _, ln := range lines(firstExisting(dir, "all_urls.txt", "live_urls.txt")) {
+		if strings.HasPrefix(strings.TrimSpace(ln), "http") {
+			nURL++
+			addURL(ln)
+		}
 	}
 	nEnd := 0
 	for _, p := range []string{"all_endpoints.txt", "linkfinder_endpoints.txt"} {
 		for _, ln := range lines(firstExisting(dir, p)) {
-			u := strings.TrimSpace(ln)
-			if !strings.HasPrefix(u, "http") {
-				continue
+			if strings.HasPrefix(strings.TrimSpace(ln), "http") {
+				nEnd++
+				addEP(ln, "")
 			}
-			nEnd++
-			if h := hostOfURL(u); h != "" {
-				endByHost[h]++
-			}
-			addNotable(u, "", "")
 		}
 	}
 	if ms, _ := filepath.Glob(filepath.Join(dir, "gf", "*.txt")); len(ms) > 0 {
 		for _, f := range ms {
 			cat := strings.TrimSuffix(filepath.Base(f), ".txt")
 			for _, ln := range lines(f) {
-				if u := strings.TrimSpace(ln); strings.HasPrefix(u, "http") {
-					addNotable(u, cat, "")
+				if strings.HasPrefix(strings.TrimSpace(ln), "http") {
+					addEP(ln, cat)
 				}
 			}
 		}
@@ -840,18 +887,70 @@ func Build(dir, target string) *Graph {
 			g.link("dom:"+target, pid, "param")
 		}
 	}
-	// notable paths (admin/login/api/.git/… + gf candidates) → attached to host
-	for _, pn := range notable {
-		hid := "h:" + pn.host
-		if _, ok := g.Nodes[hid]; !ok {
-			continue
+	// every URL / endpoint → a node attached to its host (or the domain if the
+	// host node isn't present), notable ones flagged as "path".
+	for _, lf := range leaves {
+		pfx := "url:"
+		if lf.ep {
+			pfx = "ep:"
 		}
-		t := pn.url
-		if pn.tag != "" {
-			t = "[" + pn.tag + "] " + pn.url
+		id := pfx + lf.val
+		if g.Nodes[id] == nil {
+			g.add(&Node{ID: id, Label: shortURL(lf.val), Group: lf.group, Title: lf.title})
 		}
-		g.add(&Node{ID: "path:" + pn.url, Label: shortURL(pn.url), Group: "path", Title: t})
-		g.link(hid, "path:"+pn.url, "path")
+		a := "dom:" + target
+		if lf.host != "" {
+			if _, ok := g.Nodes["h:"+lf.host]; ok {
+				a = "h:" + lf.host
+			}
+		}
+		if _, ok := g.Nodes[a]; ok {
+			g.link(a, id, lf.group)
+		}
+	}
+	// secrets / dns records / certs / favicons / related-domain intel → nodes
+	if target != "" {
+		detail := func(prefix, group string, max int, names ...string) {
+			seen := map[string]bool{}
+			n := 0
+			for _, nm := range names {
+				fp := firstExisting(dir, nm)
+				if fp == "" {
+					continue
+				}
+				for _, ln := range lines(fp) {
+					v := strings.TrimSpace(ln)
+					if v == "" || seen[v] || n >= max {
+						continue
+					}
+					seen[v] = true
+					n++
+					lbl := v
+					if len(lbl) > 40 {
+						lbl = lbl[:40] + "…"
+					}
+					id := prefix + v
+					if g.Nodes[id] == nil {
+						g.add(&Node{ID: id, Label: lbl, Group: group, Title: v})
+					}
+					g.link("dom:"+target, id, group)
+				}
+			}
+		}
+		detail("sec:", "secret", 600, "jsubfinder_secrets.txt", "secretfinder_results.txt", "swaggerspy_results.txt")
+		detail("dns:", "dns", 1000, "dns_records_subs.txt", "dns_records_raw.txt", "st_dns_records.txt")
+		detail("cert:", "cert", 600, "tlsx_raw.txt")
+		detail("intel:", "intel", 600, "st_associated.txt", "st_pivot_domains.txt", "amass_intel.txt")
+		detail("fav:", "favicon", 400, "favicon_hashes.txt")
+		// trufflehog (jsonl) + gitleaks (array) secrets → one node per finding
+		for i, m := range readTruffle(dir) {
+			if i >= 600 {
+				break
+			}
+			id := "sec:x:" + strconv.Itoa(i)
+			g.add(&Node{ID: id, Label: "secret: " + m, Group: "secret", Title: m})
+			g.link("dom:"+target, id, "secret")
+		}
 	}
 
 	// connected backbone: domain → subnet/ASN clusters, so the graph is one

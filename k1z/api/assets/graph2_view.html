@@ -193,12 +193,16 @@ const g=new GraphCtor();
 const COL={domain:'#0969da',sub:'#54aeff',sub_dead:'#afb8c1',vhost:'#fb8500',sub_int:'#cf222e',
  ip_pub:'#1f883d',ip_int:'#e5484d',ip_origin:'#2da44e',asn:'#8250df',subnet:'#bf8700',provider:'#1b7c83',
  vuln_critical:'#cf222e',vuln_high:'#bc4c00',vuln_medium:'#bf8700',vuln_low:'#1f883d',vuln_info:'#6e7781',
- bucket:'#9a6700',path:'#6f42c1',param:'#bf3989'};
-const TIER={domain:0,asn:1,subnet:1,ip_pub:2,ip_int:2,ip_origin:2,provider:2,vhost:3,sub:3,sub_int:3,sub_dead:3,bucket:3,path:4,param:4};
+ bucket:'#9a6700',path:'#6f42c1',param:'#bf3989',
+ url:'#9aa7b4',endpoint:'#6cb6ff',secret:'#e5484d',dns:'#768390',cert:'#3fb950',favicon:'#a371f7',intel:'#57606a'};
+const TIER={domain:0,asn:1,subnet:1,ip_pub:2,ip_int:2,ip_origin:2,provider:2,vhost:3,sub:3,sub_int:3,sub_dead:3,
+ bucket:3,path:4,param:4,url:4,endpoint:4,secret:4,dns:4,cert:4,favicon:4,intel:4};
 const FAM={domain:'domain',sub:'subdomain',sub_int:'subdomain',sub_dead:'subdomain',vhost:'subdomain',
- ip_pub:'ip',ip_int:'ip',ip_origin:'ip',asn:'asn',subnet:'subnet',provider:'provider',bucket:'bucket',path:'path',param:'param'};
+ ip_pub:'ip',ip_int:'ip',ip_origin:'ip',asn:'asn',subnet:'subnet',provider:'provider',bucket:'bucket',path:'path',param:'param',
+ url:'url',endpoint:'url',secret:'secret',dns:'intel',cert:'intel',favicon:'intel',intel:'intel'};
 const FAMS=[['domain','#0969da'],['subdomain','#54aeff'],['ip','#1f883d'],['asn','#8250df'],
- ['subnet','#bf8700'],['provider','#1b7c83'],['bucket','#9a6700'],['path','#6f42c1'],['param','#bf3989'],['vuln','#cf222e'],['other','#8c959f']];
+ ['subnet','#bf8700'],['provider','#1b7c83'],['bucket','#9a6700'],['path','#6f42c1'],['param','#bf3989'],
+ ['url','#9aa7b4'],['secret','#e5484d'],['intel','#57606a'],['vuln','#cf222e'],['other','#8c959f']];
 const famOf=grp=>!grp?'other':(grp.indexOf('vuln')===0?'vuln':(FAM[grp]||'other'));
 const tierOf=grp=>grp&&grp.indexOf('vuln')===0?4:(TIER[grp]!==undefined?TIER[grp]:3);
 function sizeOf(n){let s={0:14,1:10,2:6,3:4,4:7}[tierOf(n.group)]||4;
