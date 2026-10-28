@@ -7,6 +7,8 @@ const KIND_LABEL = {
   vuln: 'Vulnerability', port: 'Port', http: 'HTTP',
   subdomain: 'Subdomain', url: 'URL',
   secret: 'Secret', param: 'Param', endpoint: 'Endpoint',
+  bucket: 'Bucket', cdn: 'CDN', asn: 'ASN', net: 'Network', ptr: 'PTR',
+  cert: 'Cert', intel: 'Intel', dns: 'DNS', favicon: 'Favicon',
 }
 
 function StatusBadge({ status, onChange }) {

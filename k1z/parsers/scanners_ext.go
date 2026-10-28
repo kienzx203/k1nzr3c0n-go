@@ -448,6 +448,76 @@ func scanServices(st *store.Store, run *store.Run, ws string) {
 	}
 }
 
+// ── gf attack-candidate patterns (xss/sqli/lfi/ssrf/…) ───────────────────────
+
+func scanGF(st *store.Store, run *store.Run, ws string) {
+	ms, _ := filepath.Glob(filepath.Join(ws, "gf", "*.txt"))
+	n := 0
+	for _, f := range ms {
+		cat := strings.TrimSuffix(filepath.Base(f), ".txt")
+		eachLine(f, func(l string) {
+			u := firstURLTok(l)
+			if u == "" {
+				u = strings.TrimSpace(l)
+			}
+			if u == "" || n >= rowCap {
+				return
+			}
+			n++
+			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "endpoint", Host: hostOfURL(u),
+				URL: strp(u), Name: sp(trunc(u, 200)), Tags: `["gf:` + cat + `"]`})
+		})
+	}
+}
+
+// ── DNS records / certs / favicons ───────────────────────────────────────────
+
+func scanDNSRecords(st *store.Store, run *store.Run, ws string) {
+	for _, f := range globFiles(ws, "dns_records_raw.txt", "dns_records_subs_raw.txt") {
+		eachLine(f, func(l string) {
+			if l = strings.TrimSpace(l); l == "" {
+				return
+			}
+			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "dns",
+				Host: strings.ToLower(strings.Fields(l+" ")[0]), Name: sp(trunc(l, 200))})
+		})
+	}
+}
+
+func scanCerts(st *store.Store, run *store.Run, ws string) {
+	for _, f := range globFiles(ws, "tlsx_raw.txt") {
+		eachLine(f, func(l string) {
+			if l = strings.TrimSpace(l); l == "" {
+				return
+			}
+			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "cert",
+				Host: strings.ToLower(strings.Fields(l+" ")[0]), Name: sp(trunc(l, 200))})
+		})
+	}
+	for _, f := range globFiles(ws, "st_ssl.json") {
+		if b, e := os.ReadFile(f); e == nil && len(b) > 0 {
+			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "cert", Host: run.Target,
+				Name: sp("SSL intel: " + filepath.Base(f)), Evidence: sp(trunc(string(b), 2000))})
+		}
+	}
+}
+
+func scanFavicon(st *store.Store, run *store.Run, ws string) {
+	for _, f := range globFiles(ws, "favicon_hashes.txt") {
+		eachLine(f, func(l string) {
+			c := strings.Split(l, ",")
+			if len(c) < 2 {
+				c = strings.Fields(l)
+			}
+			if len(c) < 2 {
+				return
+			}
+			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "favicon",
+				Host: strings.ToLower(strings.TrimSpace(c[0])), Name: sp("favicon " + strings.TrimSpace(c[1]))})
+		})
+	}
+}
+
 // ── intel (whois / domain info) ──────────────────────────────────────────────
 
 func scanIntel(st *store.Store, run *store.Run, ws string) {
