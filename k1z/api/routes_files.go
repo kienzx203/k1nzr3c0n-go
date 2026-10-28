@@ -1,17 +1,48 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Autumn-27/artex/k1z/config"
 )
+
+// handleGenGraph (re)builds the attack-surface graph for a run from its workspace
+// by invoking scripts/recon-graph.py, writing recon-graph.{html,json} into the
+// workspace. The FE then renders recon-graph.html via the file endpoint.
+func (s *Server) handleGenGraph(w http.ResponseWriter, r *http.Request) {
+	ws, ok := s.runWorkspace(w, r.PathValue("run_id"))
+	if !ok {
+		return
+	}
+	script := filepath.Join(config.BaseDir(), "scripts", "recon-graph.py")
+	if !fileExists(script) {
+		script = "/opt/k1nzr3c0n-src/scripts/recon-graph.py"
+	}
+	if !fileExists(script) {
+		writeDetail(w, 500, "recon-graph.py not found (deploy scripts/)")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "python3", script, ws, "-o", filepath.Join(ws, "recon-graph"))
+	cmd.Dir = ws
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		writeDetail(w, 500, "graph build failed: "+strings.TrimSpace(string(out)))
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "html": "recon-graph.html", "json": "recon-graph.json", "log": strings.TrimSpace(string(out))})
+}
 
 // ── run workspace files ──────────────────────────────────────────────────────
 

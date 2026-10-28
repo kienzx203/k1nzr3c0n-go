@@ -194,6 +194,9 @@ export const api = {
   // Reports
   reportUrl: (runId) => `${BASE}/runs/${runId}/report`,
   reportDraftUrl: (runId, format = 'hackerone') => `${BASE}/runs/${runId}/report-draft?format=${format}`,
+  // attack-surface graph (recon-graph.py over the run workspace)
+  genGraph: (runId) => req('POST', `/runs/${runId}/graph`),
+  graphUrl: (runId) => `${BASE}/runs/${runId}/files/recon-graph.html?t=${Date.now()}`,
 
   // Schedules (continuous recon)
   getSchedules:    () => req('GET', '/schedules'),

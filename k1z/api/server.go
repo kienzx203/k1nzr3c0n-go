@@ -200,6 +200,7 @@ func (s *Server) routes() {
 		m.HandleFunc("GET "+prefix+"/runs/{run_id}/screenshots", s.handleScreenshots)
 		m.HandleFunc("GET "+prefix+"/runs/{run_id}/files", s.handleListFiles)
 		m.HandleFunc("GET "+prefix+"/runs/{run_id}/files/{path...}", s.handleGetFile)
+		m.HandleFunc("POST "+prefix+"/runs/{run_id}/graph", s.handleGenGraph)
 		m.HandleFunc("GET "+prefix+"/runs/{run_id}/report", s.handleReport)
 		m.HandleFunc("GET "+prefix+"/runs/{run_id}/report-draft", s.handleReportDraft)
 	}
