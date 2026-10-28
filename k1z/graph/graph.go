@@ -666,15 +666,30 @@ func Build(dir, target string) *Graph {
 	leafSeen := map[string]bool{}
 	const urlNodeCap, epNodeCap = 5000, 4000
 	nURLnodes, nEPnodes := 0, 0
+	// in-scope = the target apex, a subdomain of it, or an already-known host.
+	// Crawlers pull lots of third-party URLs (w3.org, github.com, cdn libs…) —
+	// those are noise and must NOT become graph nodes.
+	base := hostOfURL(target)
+	inScope := func(h string) bool {
+		if h == "" {
+			return false
+		}
+		if hosts[h] {
+			return true
+		}
+		return base != "" && (h == base || strings.HasSuffix(h, "."+base))
+	}
 	addURL := func(u string) {
 		u = strings.TrimSpace(u)
 		if !strings.HasPrefix(u, "http") || leafSeen["u\x00"+u] {
 			return
 		}
-		leafSeen["u\x00"+u] = true
-		if h := hostOfURL(u); h != "" {
-			urlByHost[h]++
+		h := hostOfURL(u)
+		if !inScope(h) {
+			return
 		}
+		leafSeen["u\x00"+u] = true
+		urlByHost[h]++
 		if nURLnodes >= urlNodeCap {
 			return
 		}
@@ -683,17 +698,19 @@ func Build(dir, target string) *Graph {
 		if reNotable.MatchString(u) {
 			grp = "path"
 		}
-		leaves = append(leaves, leaf{hostOfURL(u), u, grp, u, false})
+		leaves = append(leaves, leaf{h, u, grp, u, false})
 	}
 	addEP := func(u, tag string) {
 		u = strings.TrimSpace(u)
 		if !strings.HasPrefix(u, "http") || leafSeen["e\x00"+u] {
 			return
 		}
-		leafSeen["e\x00"+u] = true
-		if h := hostOfURL(u); h != "" {
-			endByHost[h]++
+		h := hostOfURL(u)
+		if !inScope(h) {
+			return
 		}
+		leafSeen["e\x00"+u] = true
+		endByHost[h]++
 		if nEPnodes >= epNodeCap {
 			return
 		}
@@ -704,7 +721,7 @@ func Build(dir, target string) *Graph {
 		} else if reNotable.MatchString(u) {
 			grp = "path"
 		}
-		leaves = append(leaves, leaf{hostOfURL(u), u, grp, title, true})
+		leaves = append(leaves, leaf{h, u, grp, title, true})
 	}
 	nURL := 0
 	for _, ln := range lines(firstExisting(dir, "all_urls.txt", "live_urls.txt")) {

@@ -98,6 +98,20 @@ func parseJSONArray(path string, fn func(map[string]any)) {
 	}
 }
 
+// inTargetScope reports whether host is the target apex or a subdomain of it.
+// Crawlers emit many third-party URLs (w3.org, github, CDN libs) — those are
+// noise and must not be stored as findings.
+func inTargetScope(target, host string) bool {
+	base := hostOfURL(target)
+	if base == "" {
+		return host != ""
+	}
+	if host == "" {
+		return true // relative endpoint, attributed to the target
+	}
+	return host == base || strings.HasSuffix(host, "."+base)
+}
+
 func firstField(s string) string {
 	f := strings.Fields(s)
 	if len(f) == 0 {
@@ -210,6 +224,9 @@ func scanURLs(st *store.Store, run *store.Run, ws string) {
 		if u == "" || !strings.HasPrefix(u, "http") || seen[u] {
 			return
 		}
+		if !inTargetScope(run.Target, hostOfURL(u)) { // skip third-party noise
+			return
+		}
 		seen[u] = true
 		if n >= rowCap {
 			return
@@ -250,6 +267,9 @@ func scanEndpoints(st *store.Store, run *store.Run, ws string) {
 		}
 		if code == 404 { // drop not-found noise from content discovery
 			return
+		}
+		if strings.HasPrefix(u, "http") && !inTargetScope(run.Target, hostOfURL(u)) {
+			return // third-party endpoint
 		}
 		seen[u] = true
 		if n >= rowCap {
