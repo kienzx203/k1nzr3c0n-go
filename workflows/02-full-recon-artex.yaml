@@ -1050,15 +1050,24 @@ steps:
     grep -oE '[a-zA-Z0-9._-]+\.{target}' {workspace}/.cen_raw 2>/dev/null \
       | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
       | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_censys.txt || true
-    # (2) host/ip/port -> censys_ip.txt (origin IP + service map; side output like fofa_ip_port.txt)
-    jq -r '.result.hits[]? | (.webproperty_v1.resource // .host_v1.resource // empty) | select(type=="object") | "\(.hostname // "-")\t\(.ip // "-")\t\(.port // "-")"' {workspace}/.cen_raw 2>/dev/null \
-      | grep -vE '^-\t-\t-$' | sort -u > {workspace}/censys_ip.txt || true
+    # (2) host/ip/port -> censys_ip.txt (clean FOFA-style map from webproperty endpoints: hostname+ip+port)
+    jq -r '.result.hits[]? | .webproperty_v1.resource // empty | .hostname as $h | select($h) | (.endpoints[]? | "\($h)\t\(.ip // "-")\t\(.port)")' {workspace}/.cen_raw 2>/dev/null \
+      | grep -E "^([a-z0-9._-]+\.)?{target}[[:space:]]" | sort -u > {workspace}/censys_ip.txt || true
+    # (3) per-IP intel -> censys_hosts.txt : ip  ASN  org  bgp-prefix  country  reverse-dns  (origin + ASN map)
+    jq -r '.result.hits[]? | .host_v1.resource // empty | select(.ip) | [.ip, "AS\(.autonomous_system.asn // "?")", (.autonomous_system.name // "?"), (.autonomous_system.bgp_prefix // "?"), (.location.country_code // .autonomous_system.country_code // "?"), ((.dns.reverse_dns.names // []) | join(","))] | @tsv' {workspace}/.cen_raw 2>/dev/null | sort -u > {workspace}/censys_hosts.txt || true
+    # (4) full service surface -> censys_ports.txt : ip  port  protocol  tls  (EVERY open port, not just 80/443)
+    jq -r '.result.hits[]? | .host_v1.resource // empty | .ip as $ip | select($ip) | (.services[]? | "\($ip)\t\(.port)\t\(.protocol // "?")\t\(if .tls then "tls" else "-" end)")' {workspace}/.cen_raw 2>/dev/null | sort -u > {workspace}/censys_ports.txt || true
+    # (5) BGP prefixes -> censys_prefixes.txt : prefix  ASN  org  (CIDR ranges to pivot-scan the origin)
+    jq -r '.result.hits[]? | .host_v1.resource // empty | select(.autonomous_system.bgp_prefix) | [.autonomous_system.bgp_prefix, "AS\(.autonomous_system.asn)", .autonomous_system.name] | @tsv' {workspace}/.cen_raw 2>/dev/null | sort -u > {workspace}/censys_prefixes.txt || true
     rm -f {workspace}/.cen_raw
-    touch {workspace}/p_censys.txt {workspace}/censys_ip.txt
-    printf 'Censys Platform: %s subs | %s host/ip/port rows\n' "$(wc -l < {workspace}/p_censys.txt)" "$(wc -l < {workspace}/censys_ip.txt)"
+    touch {workspace}/p_censys.txt {workspace}/censys_ip.txt {workspace}/censys_hosts.txt {workspace}/censys_ports.txt {workspace}/censys_prefixes.txt
+    printf 'Censys: %s subs | %s host/ip/port | %s IP-intel | %s services | %s BGP-prefixes\n' "$(wc -l < {workspace}/p_censys.txt)" "$(wc -l < {workspace}/censys_ip.txt)" "$(wc -l < {workspace}/censys_hosts.txt)" "$(wc -l < {workspace}/censys_ports.txt)" "$(wc -l < {workspace}/censys_prefixes.txt)"
   outputs:
     file: '{workspace}/p_censys.txt'
     ip: '{workspace}/censys_ip.txt'
+    hosts: '{workspace}/censys_hosts.txt'
+    ports: '{workspace}/censys_ports.txt'
+    prefixes: '{workspace}/censys_prefixes.txt'
 - id: p_netlas
   name: passive — Netlas domains API direct (env NETLAS_API_KEY)
   depends_on:
