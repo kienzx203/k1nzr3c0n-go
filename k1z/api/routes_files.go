@@ -73,9 +73,13 @@ func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
 		writeDetail(w, 404, "no run workspace found for this target")
 		return
 	}
+	// invalidate the cache when the generator changed (after a deploy)
+	if si, e := os.Stat(graphScript()); e == nil && si.ModTime().After(newest) {
+		newest = si.ModTime()
+	}
 	merged := filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(target))
 	gh := filepath.Join(merged, "recon-graph.html")
-	// cache: serve if the graph is newer than the latest run
+	// cache: serve if the graph is newer than the latest run (and the generator)
 	if fi, e := os.Stat(gh); e == nil && !newest.After(fi.ModTime()) {
 		http.ServeFile(w, r, gh)
 		return
@@ -93,10 +97,7 @@ func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = os.WriteFile(filepath.Join(merged, f), buf, 0o644)
 	}
-	script := filepath.Join(config.BaseDir(), "scripts", "recon-graph.py")
-	if !fileExists(script) {
-		script = "/opt/k1nzr3c0n-src/scripts/recon-graph.py"
-	}
+	script := graphScript()
 	if !fileExists(script) {
 		writeDetail(w, 500, "recon-graph.py not found (deploy scripts/)")
 		return
@@ -114,6 +115,15 @@ func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
 
 // graphFresh reports whether recon-graph.{json,html} already exist and are at
 // least as new as every other file in the workspace (so a rebuild is a no-op).
+// graphScript resolves the recon-graph.py path (deployed, else source checkout).
+func graphScript() string {
+	s := filepath.Join(config.BaseDir(), "scripts", "recon-graph.py")
+	if !fileExists(s) {
+		s = "/opt/k1nzr3c0n-src/scripts/recon-graph.py"
+	}
+	return s
+}
+
 func graphFresh(ws string) bool {
 	gj, err1 := os.Stat(filepath.Join(ws, "recon-graph.json"))
 	gh, err2 := os.Stat(filepath.Join(ws, "recon-graph.html"))
@@ -123,6 +133,10 @@ func graphFresh(ws string) bool {
 	gt := gj.ModTime()
 	if gh.ModTime().Before(gt) {
 		gt = gh.ModTime()
+	}
+	// invalidate when the generator itself changed (e.g. after a deploy)
+	if si, e := os.Stat(graphScript()); e == nil && si.ModTime().After(gt) {
+		return false
 	}
 	fresh := true
 	filepath.WalkDir(ws, func(p string, d fs.DirEntry, err error) error {
@@ -149,10 +163,7 @@ func (s *Server) handleGenGraph(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	script := filepath.Join(config.BaseDir(), "scripts", "recon-graph.py")
-	if !fileExists(script) {
-		script = "/opt/k1nzr3c0n-src/scripts/recon-graph.py"
-	}
+	script := graphScript()
 	if !fileExists(script) {
 		writeDetail(w, 500, "recon-graph.py not found (deploy scripts/)")
 		return
