@@ -1057,16 +1057,30 @@ steps:
     grep -oE '[a-zA-Z0-9._-]+\.{target}' {workspace}/.cen_raw 2>/dev/null \
       | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
       | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_censys.txt || true
-    # (2) host/ip/port -> censys_ip.txt (clean FOFA-style map from webproperty endpoints: hostname+ip+port)
+    # build the IN-SCOPE IP set: host IPs whose forward/reverse DNS is in-scope, plus
+    # webproperty endpoint IPs serving an in-scope hostname. Keeps IP intel on the
+    # target's OWN assets — a hosting provider's IPs also carry thousands of third-party
+    # customer sites, which must stay out of scope.
+    {
+      jq -r '.result.hits[]? | .host_v1.resource // empty | select(.ip) | .ip as $ip | ((.dns.names // []) + (.dns.reverse_dns.names // []))[]? | "\($ip)\t\(.)"' {workspace}/.cen_raw 2>/dev/null
+      jq -r '.result.hits[]? | .webproperty_v1.resource // empty | select(.hostname) | .hostname as $h | (.endpoints[]? | "\(.ip // "-")\t\($h)")' {workspace}/.cen_raw 2>/dev/null
+    } | tr '[:upper:]' '[:lower:]' | sed 's/\*\.//' \
+      | grep -E "[[:space:]]([a-z0-9._-]+\.)?{target}$" | cut -f1 | grep -vE '^-?$' | sort -u > {workspace}/.cen_inscope_ips
+    # (2) censys_ip.txt : in-scope hostname  ip  port  (from webproperty endpoints)
     jq -r '.result.hits[]? | .webproperty_v1.resource // empty | .hostname as $h | select($h) | (.endpoints[]? | "\($h)\t\(.ip // "-")\t\(.port)")' {workspace}/.cen_raw 2>/dev/null \
       | grep -E "^([a-z0-9._-]+\.)?{target}[[:space:]]" | sort -u > {workspace}/censys_ip.txt || true
-    # (3) per-IP intel -> censys_hosts.txt : ip  ASN  org  bgp-prefix  country  reverse-dns  (origin + ASN map)
-    jq -r '.result.hits[]? | .host_v1.resource // empty | select(.ip) | [.ip, "AS\(.autonomous_system.asn // "?")", (.autonomous_system.name // "?"), (.autonomous_system.bgp_prefix // "?"), (.location.country_code // .autonomous_system.country_code // "?"), ((.dns.reverse_dns.names // []) | join(","))] | @tsv' {workspace}/.cen_raw 2>/dev/null | sort -u > {workspace}/censys_hosts.txt || true
-    # (4) full service surface -> censys_ports.txt : ip  port  protocol  tls  (EVERY open port, not just 80/443)
-    jq -r '.result.hits[]? | .host_v1.resource // empty | .ip as $ip | select($ip) | (.services[]? | "\($ip)\t\(.port)\t\(.protocol // "?")\t\(if .tls then "tls" else "-" end)")' {workspace}/.cen_raw 2>/dev/null | sort -u > {workspace}/censys_ports.txt || true
-    # (5) BGP prefixes -> censys_prefixes.txt : prefix  ASN  org  (CIDR ranges to pivot-scan the origin)
-    jq -r '.result.hits[]? | .host_v1.resource // empty | select(.autonomous_system.bgp_prefix) | [.autonomous_system.bgp_prefix, "AS\(.autonomous_system.asn)", .autonomous_system.name] | @tsv' {workspace}/.cen_raw 2>/dev/null | sort -u > {workspace}/censys_prefixes.txt || true
-    rm -f {workspace}/.cen_raw
+    # (3) censys_hosts.txt : ip  ASN  org  bgp-prefix  country  reverse-dns  (ONLY in-scope IPs)
+    # (4) censys_ports.txt : ip  port  protocol  tls  (EVERY open port, ONLY in-scope IPs)
+    : > {workspace}/censys_hosts.txt; : > {workspace}/censys_ports.txt
+    if [ -s {workspace}/.cen_inscope_ips ]; then
+      jq -r '.result.hits[]? | .host_v1.resource // empty | select(.ip) | [.ip, "AS\(.autonomous_system.asn // "?")", (.autonomous_system.name // "?"), (.autonomous_system.bgp_prefix // "?"), (.location.country_code // .autonomous_system.country_code // "?"), ((.dns.reverse_dns.names // []) | join(","))] | @tsv' {workspace}/.cen_raw 2>/dev/null \
+        | awk -F'\t' 'NR==FNR{k[$1];next} ($1 in k)' {workspace}/.cen_inscope_ips - | sort -u > {workspace}/censys_hosts.txt
+      jq -r '.result.hits[]? | .host_v1.resource // empty | .ip as $ip | select($ip) | (.services[]? | "\($ip)\t\(.port)\t\(.protocol // "?")\t\(if .tls then "tls" else "-" end)")' {workspace}/.cen_raw 2>/dev/null \
+        | awk -F'\t' 'NR==FNR{k[$1];next} ($1 in k)' {workspace}/.cen_inscope_ips - | sort -u > {workspace}/censys_ports.txt
+    fi
+    # (5) censys_prefixes.txt : bgp-prefix  ASN  org  (CIDR ranges to pivot-scan, unique per prefix)
+    awk -F'\t' '$4!="?" && !seen[$4]++ {print $4"\t"$2"\t"$3}' {workspace}/censys_hosts.txt | sort -u > {workspace}/censys_prefixes.txt || true
+    rm -f {workspace}/.cen_raw {workspace}/.cen_inscope_ips
     touch {workspace}/p_censys.txt {workspace}/censys_ip.txt {workspace}/censys_hosts.txt {workspace}/censys_ports.txt {workspace}/censys_prefixes.txt
     printf 'Censys: %s subs | %s host/ip/port | %s IP-intel | %s services | %s BGP-prefixes\n' "$(wc -l < {workspace}/p_censys.txt)" "$(wc -l < {workspace}/censys_ip.txt)" "$(wc -l < {workspace}/censys_hosts.txt)" "$(wc -l < {workspace}/censys_ports.txt)" "$(wc -l < {workspace}/censys_prefixes.txt)"
   outputs:
