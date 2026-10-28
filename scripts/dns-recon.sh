@@ -12,6 +12,9 @@
 #   resolve   resolve every discovered host -> IP (NSEC/AXFR names carry no IP);
 #             flags hosts pointing to internal RFC1918 IPs (split-horizon leak)
 #   ptr       reverse DNS on discovered IPs + /24 neighbours
+#   svc       ACTIVE (opt-in: --svc) — harvest hostnames from HTTP/TLS of the
+#             discovered IPs: cert SAN, redirect Location, Docker-Registry /v2/
+#             Bearer realm. Finds hosts that have NO DNS record at all.
 #   classify  flag RFC1918/internal IPs leaked in public DNS + split-horizon,
 #             and derive internal /24 ranges from them (internal_subnets.txt)
 #
@@ -30,7 +33,7 @@ set -uo pipefail
 
 # ── args ──────────────────────────────────────────────────────────────────────
 DOMAIN=""; OUT=""; WORDLIST=""; THREADS=40; RESOLVER="1.1.1.1"
-ONLY=""; SKIP=""; QUIET=0; NO_BUILTIN=0
+ONLY=""; SKIP=""; QUIET=0; NO_BUILTIN=0; DO_SVC=0
 RESOLVERS_PUB="1.1.1.1 8.8.8.8 9.9.9.9"
 usage() { grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 while [ $# -gt 0 ]; do
@@ -43,6 +46,7 @@ while [ $# -gt 0 ]; do
     --skip) SKIP="$2"; shift 2;;
     --quiet) QUIET=1; shift;;
     --no-builtin) NO_BUILTIN=1; shift;;   # with -w: use ONLY the file, skip built-in words
+    --svc) DO_SVC=1; shift;;              # enable ACTIVE service-layer harvest (HTTP/TLS probes)
     -h|--help) usage 0;;
     -*) echo "unknown flag: $1" >&2; usage 1;;
     *) DOMAIN="$1"; shift;;
@@ -315,6 +319,38 @@ ptr() {
   [ "$n" -gt 0 ] && sed 's/^/  /' "$OUT/ptr.txt" | head -40
 }
 
+# ── service-layer hostname harvest (finds hosts with NO DNS record) ───────────
+# A DNS tool is blind to names that only live at the HTTP/TLS layer — e.g. an
+# internal container registry whose name is published nowhere in DNS but leaks in:
+#   - the TLS cert SAN presented by the gateway/ingress
+#   - a redirect Location header
+#   - a Docker Registry 401 WWW-Authenticate: Bearer realm="https://<name>/..."
+# We probe the IPs dig already found (:443 cert + / and /v2/ responses).
+svc() {
+  hdr "Service harvest (cert SAN / redirect / registry /v2 realm)"
+  command -v openssl >/dev/null || warn "openssl missing — cert SAN harvest skipped"
+  sort -u "$OUT/.ips" > "$OUT/.svcips"
+  local n; n=$(wc -l < "$OUT/.svcips"); [ "$n" -gt 0 ] || { note "no IPs to probe"; return; }
+  note "probing $n IPs (:443 cert SAN, / + /v2/ realm & redirects)"
+  export D HRE="[a-z0-9_.-]+\.${DE}"
+  xargs -P "$THREADS" -I{} bash -c '
+    ip="{}"
+    # 1) TLS certificate SAN
+    echo | timeout 7 openssl s_client -connect "$ip:443" -servername "$D" 2>/dev/null \
+      | openssl x509 -noout -ext subjectAltName 2>/dev/null | grep -oiE "$HRE"
+    # 2) redirect Location + Docker-Registry realm (/v2/) + any WWW-Authenticate
+    for u in "https://$ip/" "https://$ip/v2/" "http://$ip/"; do
+      timeout 7 curl -skI -H "Host: $D" --max-time 7 "$u" 2>/dev/null \
+        | grep -iE "^location:|^www-authenticate:|realm=|docker-distribution" | grep -oiE "$HRE"
+    done
+  ' < "$OUT/.svcips" 2>/dev/null | tr "A-Z" "a-z" | sort -u > "$OUT/.svcharvest"
+  comm -23 "$OUT/.svcharvest" <(sort -u "$OUT/.subs") 2>/dev/null > "$OUT/svc_new_hosts.txt" || cp "$OUT/.svcharvest" "$OUT/svc_new_hosts.txt"
+  cat "$OUT/.svcharvest" | add_subs
+  local nn; nn=$(wc -l < "$OUT/svc_new_hosts.txt")
+  if [ "$nn" -gt 0 ]; then bad "$nn hostname(s) harvested from service responses (NOT in DNS!) -> svc_new_hosts.txt"; sed 's/^/    /' "$OUT/svc_new_hosts.txt" | head -25
+  else ok "no new hostnames leaked by services"; fi
+}
+
 # ── classify + summary ────────────────────────────────────────────────────────
 classify() {
   hdr "Classification"
@@ -361,6 +397,8 @@ want brute    && brute
 want perm     && perm
 want resolve  && resolve_all
 want ptr      && ptr
+# svc is ACTIVE (HTTP/TLS probes) — opt-in via --svc or --only svc
+{ [ "$DO_SVC" = 1 ] || { [ -n "$ONLY" ] && [[ ",$ONLY," == *",svc,"* ]]; }; } && svc
 classify
 rm -f "$OUT"/.subs "$OUT"/.ips "$OUT"/.wl "$OUT"/.brute "$OUT"/.perm "$OUT"/.permwl "$OUT"/.allsubs 2>/dev/null
 hdr "Summary"; sed 's/^/  /' "$OUT/summary.txt"
