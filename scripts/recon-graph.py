@@ -271,7 +271,9 @@ PALETTE = {
 }
 SEVW = {'critical': 8, 'high': 5, 'medium': 3, 'low': 1}
 
-def cy_elements(g):
+HOST_GROUPS = ('sub', 'sub_dead', 'vhost', 'sub_int')
+
+def cy_elements(g, budget=800):
     # IP -> parent subnet: compound containment (replaces the 'in' edge → clusters)
     parent = {}
     for e in g['edges']:
@@ -283,38 +285,76 @@ def cy_elements(g):
         deg[e['to']] = deg.get(e['to'], 0) + 1
         if e['label'] in SEVW:
             risk[e['from']] = risk.get(e['from'], 0) + SEVW[e['label']]
+    vuln_hosts = set(e['from'] for e in g['edges'] if e['label'] in SEVW)
+
+    # NODE BUDGET: a flat graph of 10k+ hosts is unreadable (and un-renderable).
+    # Keep all infra (ip/subnet/asn/vuln/domain/provider) + only the most
+    # important hosts (vuln > internal > interesting > alive > high-degree);
+    # roll the dropped no-http leaf hosts onto their IP as a "+N" badge.
+    def score(n):
+        gg = n['group']
+        return ((100 if n['id'] in vuln_hosts else 0) + (60 if gg == 'sub_int' else 0)
+                + (40 if gg == 'vhost' else 0) + (25 if gg == 'sub' else 0)
+                + risk.get(n['id'], 0) * 50 + min(deg.get(n['id'], 0), 30))
+    allhosts = [n for n in g['nodes'] if n['group'] in HOST_GROUPS]
+    pruned = len(allhosts) > budget
+    keep = set(n['id'] for n in g['nodes'] if n['group'] not in HOST_GROUPS)   # infra always
+    if not pruned:
+        keep |= set(n['id'] for n in allhosts)
+        shown = len(allhosts)
+    else:
+        # drop the no-http noise entirely; keep only notable hosts (capped)
+        notable = sorted((n for n in allhosts
+                          if n['group'] in ('sub_int', 'vhost', 'sub') or n['id'] in vuln_hosts),
+                         key=score, reverse=True)[:budget]
+        keep |= set(n['id'] for n in notable)
+        shown = len(notable)
+    extra = {}
+    for e in g['edges']:
+        if e['label'] == 'A' and e['from'] not in keep and e['to'] in keep:
+            extra[e['to']] = extra.get(e['to'], 0) + 1
+
     els = []
     for n in g['nodes']:
+        if n['id'] not in keep:
+            continue
         grp = n['group']; pal = PALETTE.get(grp, ('#8b949e', '#484f58'))
+        label = n['label']
+        if extra.get(n['id']):
+            label = f"{label}  +{extra[n['id']]}"
         bump = (2 if grp.startswith('vuln') else 0) + (3 if grp in ('ip_int', 'sub_int') else 0) \
              + (2 if grp in ('ip_origin', 'vhost') else 0)
-        sz = min(64, 13 + bump * 2 + min(deg.get(n['id'], 1), 20) + risk.get(n['id'], 0))
-        d = {'id': n['id'], 'label': n['label'], 'group': grp, 'title': n.get('title', ''),
+        sz = min(72, 13 + bump * 2 + min(deg.get(n['id'], 1), 24) + risk.get(n['id'], 0) + min(extra.get(n['id'], 0), 20))
+        d = {'id': n['id'], 'label': label, 'group': grp, 'title': n.get('title', ''),
              'col': pal[0], 'bd': pal[1], 'sz': sz, 'risk': risk.get(n['id'], 0),
              'internal': 1 if grp in ('ip_int', 'sub_int') else 0,
              'dead': 1 if grp == 'sub_dead' else 0,
              'cdn': 1 if grp == 'provider' else 0,
              'kind': ('vuln' if grp.startswith('vuln') else grp.split('_')[0])}
-        if n['id'] in parent and parent[n['id']] != n['id']:
+        if n['id'] in parent and parent[n['id']] != n['id'] and parent[n['id']] in keep:
             d['parent'] = parent[n['id']]
         els.append({'data': d})
     for e in g['edges']:
-        if e['label'] == 'in':
+        if e['label'] == 'in' or e['from'] not in keep or e['to'] not in keep:
             continue
         sev = e['label'] if e['label'] in SEVW else ''
         els.append({'data': {'id': e['from'] + '>' + e['to'] + '>' + e['label'],
                              'source': e['from'], 'target': e['to'], 'label': e['label'], 'sev': sev}})
-    return els
+    return els, (len(allhosts), shown, pruned)
 
 def html(g):
-    data = json.dumps(cy_elements(g))
+    els, meta = cy_elements(g)
+    data = json.dumps(els)
     pal = json.dumps(PALETTE)
     st = g['stats']; sv = st.get('sev', {}); tgt = g.get('target') or 'recon'
+    n_hosts, n_shown, pruned = meta
     stat = (f"{st['subdomains']} subs · {st['alive']} alive · {st['ips']} IPs · "
             f"{st['internal_hosts']} internal · {st['asn']} ASN · {st['subnets']} nets · "
             f"{st['providers']} cdn · {st['findings']} vulns")
+    if pruned:
+        stat += f" · <b style='color:#f0883e'>top {n_shown} of {n_hosts} hosts shown</b>"
     return (_TPL.replace('/*DATA*/0', data).replace('/*PAL*/0', pal)
-            .replace('__TARGET__', tgt).replace('__STAT__', stat).replace('__N__', str(len(g['nodes']))))
+            .replace('__TARGET__', tgt).replace('__STAT__', stat).replace('__N__', str(len(els))))
 
 _TPL = r"""<!doctype html><html><head><meta charset="utf-8"><title>Attack surface — __TARGET__</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
