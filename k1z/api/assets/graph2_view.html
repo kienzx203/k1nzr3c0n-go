@@ -88,6 +88,15 @@
  .pf b{color:var(--brand)}.pf .x{cursor:pointer;color:var(--mut);padding:0 3px}.pf .x:hover{color:var(--danger)}
  #views{display:flex;flex-wrap:wrap;gap:6px}#views button{height:28px;font-size:11.5px}
  .lg{display:inline-flex;align-items:center;gap:6px;color:var(--fg2);font-size:11.5px}.lg i{width:10px;height:10px;border-radius:50%}
+ #zoom{position:absolute;right:16px;bottom:16px;z-index:5;display:flex;flex-direction:column;gap:0;align-items:stretch;
+   background:var(--surface);border:1px solid var(--bd);border-radius:11px;box-shadow:var(--sh);overflow:hidden;width:40px}
+ #zoom button{border:0;border-radius:0;height:38px;width:40px;padding:0;font-size:17px;color:var(--fg2);background:var(--surface);
+   border-bottom:1px solid var(--bd2);justify-content:center}
+ #zoom button:hover{background:#f1f5fa;color:var(--acc)}
+ #zoom #zlvl{font:600 10px ui-monospace,monospace;color:var(--mut);text-align:center;padding:5px 0;background:var(--card)}
+ .spin{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:8;width:40px;height:40px;
+   border:3px solid #dfe6ee;border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;pointer-events:none}
+ @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
  #hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);color:var(--fg2);font-size:11px;z-index:3;pointer-events:none;
    background:rgba(255,255,255,.78);backdrop-filter:blur(6px);padding:6px 13px;border-radius:999px;border:1px solid var(--bd2);box-shadow:var(--sh-sm)}
  /* menus */
@@ -174,7 +183,14 @@
   <div id="legend" style="display:flex;flex-wrap:wrap;gap:4px 12px"></div>
  </div>
  <div class="panel hide" id="side"><div class="meta">click a node to inspect it</div></div>
- <div id="hint">drag = move · click = inspect · right-click = transforms · click empty = reset · scroll = zoom · ⚛ = re-run layout</div>
+ <div id="zoom">
+  <button id="zin" title="zoom in">＋</button>
+  <button id="zout" title="zoom out">－</button>
+  <button id="zreset" title="reset view">⌖</button>
+  <div id="zlvl">100%</div>
+ </div>
+ <div id="spin" class="spin" style="display:none"></div>
+ <div id="hint">hover = spotlight · drag = move · click = inspect · right-click = transforms · scroll = zoom</div>
 </div>
 <div id="ctx"></div><div id="toast"></div>
 <script>
@@ -287,16 +303,16 @@ $('colorBy').onchange=e=>{ colorBy=e.target.value||null;
  if(colorBy){ loadMetrics(()=>renderer&&renderer.refresh()); } else { renderer&&renderer.refresh(); } };
 
 // ── render + interaction ────────────────────────────────────────────────
-let renderer=null, focus=null, pathSet=null, pickMode=null, src=null, dst=null;
+let renderer=null, focus=null, pathSet=null, pickMode=null, src=null, dst=null, hover=null, hoverNode=null;
 let diffMode=false, diffStatus={}, annos={};
 const DIFFC={new:'#1f883d',gone:'#cf222e',changed:'#fb8500',same:'#c7ced6'};
 function setColorBy(v){ colorBy=v||null; const sel=$('colorBy'); if(sel)sel.value=v||''; }
 const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); return s;};
 function render(){
  if(renderer){renderer.refresh();return;}
- renderer=new Sigma(g,$('cy'),{defaultEdgeColor:'#d9dee3',labelColor:{color:'#24292f'},labelSize:11,labelWeight:'600',
-   labelRenderedSizeThreshold:6,labelDensity:0.7,labelGridCellSize:110,renderEdgeLabels:false,
-   zIndex:true,minCameraRatio:0.02,maxCameraRatio:20});
+ renderer=new Sigma(g,$('cy'),{defaultEdgeColor:'#dbe1e8',labelColor:{color:'#1f2328'},labelSize:11,labelWeight:'600',
+   labelFont:'Inter,system-ui,sans-serif',labelRenderedSizeThreshold:6,labelDensity:0.75,labelGridCellSize:110,
+   renderEdgeLabels:false,zIndex:true,minCameraRatio:0.015,maxCameraRatio:22});
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
    if(!passFilter(n,a))return Object.assign({},d,{hidden:true});
    let o=d;
@@ -306,17 +322,25 @@ function render(){
    if(annos[n]&&annos[n].tag)o=Object.assign({},o,{label:'🏷 '+(o.label||a.label),zIndex:(o.zIndex||1)+1});
    if(pathSet){ return pathSet.has(n)?Object.assign({},o,{zIndex:3,size:o.size*1.15}):Object.assign({},o,{color:'#e2e6ea',label:'',zIndex:0}); }
    if(focus){ return focus.has(n)?Object.assign({},o,{zIndex:2}):Object.assign({},o,{color:'#e6eaee',label:'',size:Math.max(2,o.size*0.6),zIndex:0}); }
+   if(hover&&!diffMode){ if(hover.has(n)){ o=Object.assign({},o,{zIndex:4,highlighted:n===hoverNode,size:n===hoverNode?o.size*1.25:o.size}); }
+     else { return Object.assign({},o,{color:'#eef1f4',label:'',size:Math.max(1.5,o.size*0.5),zIndex:0}); } }
    return o; });
  renderer.setSetting('edgeReducer',(e,d)=>{ const x=g.extremities(e);
    if(!passFilter(x[0],g.getNodeAttributes(x[0]))||!passFilter(x[1],g.getNodeAttributes(x[1])))return Object.assign({},d,{hidden:true});
    if(pathSet){ return (pathSet.has(x[0])&&pathSet.has(x[1]))?Object.assign({},d,{color:'#cf222e',size:2.4,zIndex:3}):Object.assign({},d,{hidden:true}); }
    if(focus&&(!focus.has(x[0])||!focus.has(x[1])))return Object.assign({},d,{hidden:true});
+   if(hover){ if(!(hover.has(x[0])&&hover.has(x[1])))return Object.assign({},d,{hidden:true});
+     return Object.assign({},d,{color:'#7d8793',size:(d.size||0.6)+0.5,zIndex:3}); }
    return d; });
  renderer.on('clickNode',({node})=>{
    if(pickMode){ assignPick(node); return; }
    pathSet=null; focus=hood(node); renderer.refresh(); detail(node); });
  renderer.on('clickStage',()=>{ if(focus||pathSet){focus=null;pathSet=null;renderer.refresh();} });
  renderer.on('rightClickNode',e=>{ const o=e.event&&e.event.original; if(o)o.preventDefault(); showCtx(o?o.clientX:e.event.x,o?o.clientY:e.event.y,e.node); });
+ // hover → spotlight the node's neighbourhood (signature pro-graph interaction)
+ renderer.on('enterNode',({node})=>{ if(pickMode||drag)return; hoverNode=node; hover=hood(node); $('cy').style.cursor='pointer'; renderer.refresh(); });
+ renderer.on('leaveNode',()=>{ if(hover){hover=null;hoverNode=null; $('cy').style.cursor='default'; renderer.refresh();} });
+ renderer.getCamera().on('updated',()=>{ const z=$('zlvl'); if(z)z.textContent=Math.round(100/renderer.getCamera().ratio)+'%'; });
  let drag=null;
  renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node; g.setNodeAttribute(drag,'highlighted',true); fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
  renderer.getMouseCaptor().on('mousemovebody',e=>{ if(!drag)return; const p=renderer.viewportToGraph(e);
@@ -402,14 +426,17 @@ function dl(blob,name){ const a=document.createElement('a'); a.download=name; a.
 let MODE='full';
 function visibleCount(){ let n=0; g.forEachNode((id,a)=>{if(passFilter(id,a))n++;}); return n; }
 function updateStat(){ $('stat').textContent=visibleCount()+' shown / '+g.order+' nodes · '+g.size+' edges · '+MODE; famCounts(); }
-function load(){ stopLayout(); diffMode=false; diffStatus={}; $('stat').textContent='loading '+MODE+'…'; focus=null; pathSet=null; src=null; dst=null; metrics=null; $('mtop').innerHTML=''; $('mlegend').textContent=''; renderSlots(); $('pfMsg').textContent='';
+function load(){ stopLayout(); diffMode=false; diffStatus={}; hover=null; $('stat').textContent='loading '+MODE+'…'; $('spin').style.display='block'; focus=null; pathSet=null; src=null; dst=null; metrics=null; $('mtop').innerHTML=''; $('mlegend').textContent=''; renderSlots(); $('pfMsg').textContent='';
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
    g.clear(); if(renderer){renderer.kill();renderer=null;}
    add(sg); render(); startLayout(); updateStat(); loadAnnos();
    if(colorBy)loadMetrics(()=>renderer&&renderer.refresh());
-   setTimeout(()=>renderer&&renderer.getCamera().animatedReset(),450);
- }).catch(()=>{$('stat').textContent='load failed';}); }
+   setTimeout(()=>{$('spin').style.display='none'; renderer&&renderer.getCamera().animatedReset();},450);
+ }).catch(()=>{$('spin').style.display='none'; $('stat').textContent='load failed';}); }
+$('zin').onclick=()=>renderer&&renderer.getCamera().animatedZoom({duration:200});
+$('zout').onclick=()=>renderer&&renderer.getCamera().animatedUnzoom({duration:200});
+$('zreset').onclick=()=>renderer&&renderer.getCamera().animatedReset({duration:300});
 
 // ── saved views ──────────────────────────────────────────────────────────
 function syncFilterUI(){ document.querySelectorAll('#filters input[data-f]').forEach(cb=>cb.checked=!!filter[cb.dataset.f]); }
