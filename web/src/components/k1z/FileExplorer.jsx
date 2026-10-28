@@ -6,7 +6,7 @@ const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif'])
 
 const TYPE_ORDER = [
   'report', 'nuclei', 'http', 'secrets', 'endpoints', 'url',
-  'subdomain', 'port', 'dir', 'network', 'gf', 'screenshot', 'other',
+  'subdomain', 'ipintel', 'port', 'dir', 'network', 'gf', 'screenshot', 'other',
 ]
 
 const FILE_CATEGORIES = {
@@ -28,9 +28,20 @@ const FILE_CATEGORIES = {
     'p_subfinder', 'p_amass', 'p_assetfinder', 'p_findomain', 'p_chaos',
     'p_cero', 'p_gau_subs', 'p_oneforall', 'p_sublist3r', 'p_uncover',
     'p_urlfinder_subs', 'p_waymore_subs', 'p_waybackurls_subs',
+    // direct-API passive sources (names only)
+    'p_fofa', 'p_censys', 'p_crtsh', 'p_crtsh_psql', 'p_certspotter',
+    'p_hackertarget', 'p_alienvault', 'p_rapiddns', 'p_securitytrails',
+    'p_leakix', 'p_netlas', 'p_columbus', 'p_fullhunt', 'p_subdomaincenter',
+    'p_github_subs', 'p_github_code', 'p_whoisxmlapi', 'p_intelx', 'p_dnsdumpster',
+    'p_criminalip', 'p_google_cse', 'p_bevigil', 'p_shosubgo', 'p_threatcrowd',
+    'p_virustotal', 'p_gauplus', 'p_urlscan', 'p_amass_active', 'axfr_subs',
     'passive_merged', 'a_puredns', 'a_shuffledns', 'a_gobuster_dns',
     'perm_alterx', 'perm_dnsgen',
     'subdomains', 'subzy', 'resolved', 'takeover', 'jsubfinder_subs', 'all_subs', 'alterx',
+  ]},
+  ipintel:   { label: 'IP / Hosts',         names: [
+    'censys_ip', 'censys_hosts', 'censys_ports', 'censys_prefixes',
+    'censys_tenants', 'fofa_ip_port', 'origin_ips',
   ]},
   port:      { label: 'Ports',              names: ['naabu'] },
   dir:       { label: 'Directory Brute',    names: [
@@ -103,7 +114,7 @@ const scColor = sc =>
 
 const ICON = { '.jsonl': '{}', '.json': '{}', '.md': '◈' }
 
-export default function FileExplorer({ runId }) {
+export default function FileExplorer({ runId, running }) {
   const [files, setFiles] = useState([])
   const [selected, setSelected] = useState(null)
   const [content, setContent] = useState('')
@@ -111,11 +122,18 @@ export default function FileExplorer({ runId }) {
   const [filter, setFilter] = useState('')
   const [showAllLines, setShowAllLines] = useState(false)
 
+  // Load the file list, and while the run is still active keep polling so new
+  // step outputs appear without the user having to reopen the tab.
   useEffect(() => {
-    api.getFiles(runId).then(data => {
-      setFiles((data || []).filter(f => f.size > 0))
+    let stop = false
+    const load = () => api.getFiles(runId).then(data => {
+      if (!stop) setFiles((data || []).filter(f => f.size > 0))
     }).catch(() => {})
-  }, [runId])
+    load()
+    if (!running) return () => { stop = true }
+    const t = setInterval(load, 5000)
+    return () => { stop = true; clearInterval(t) }
+  }, [runId, running])
 
   const open = async file => {
     if (selected?.path === file.path) return

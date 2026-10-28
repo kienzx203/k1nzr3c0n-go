@@ -400,7 +400,7 @@ export default function RunDetail() {
           <div className="h-full overflow-y-auto"><STIntelPanel runId={id} /></div>
         )}
         {tab === 'Files' && (
-          <div className="h-full overflow-y-auto"><FileExplorer runId={id} /></div>
+          <div className="h-full overflow-y-auto"><FileExplorer runId={id} running={isActive} /></div>
         )}
         {tab === 'Report' && (
           <div className="h-full overflow-y-auto"><div className="p-6 space-y-4">
