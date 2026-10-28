@@ -259,6 +259,19 @@ func Build(dir, target string) *Graph {
 			}
 		}
 	}
+	// censys_ports.txt: ip\tport\tproto — open ports on in-scope IPs
+	for _, ln := range lines(firstExisting(dir, "censys_ports.txt")) {
+		c := strings.Split(ln, "\t")
+		if len(c) >= 2 {
+			ip := strings.TrimSpace(c[0])
+			if reIP.MatchString(ip) {
+				if ipPorts[ip] == nil {
+					ipPorts[ip] = map[string]struct{}{}
+				}
+				ipPorts[ip][strings.TrimSpace(c[1])] = struct{}{}
+			}
+		}
+	}
 	for _, p := range []string{"internal_hosts.txt", "dns_internal_hosts.txt"} {
 		for _, ln := range lines(firstExisting(dir, p)) {
 			c := strings.Split(ln, "\t")
@@ -452,6 +465,12 @@ func Build(dir, target string) *Graph {
 	cdnOf := map[string]string{}
 	jsonl(firstExisting(dir, "cdncheck.jsonl", "cdncheck.json"), func(m map[string]any) {
 		name := str(m["cdn_name"])
+		if name == "" {
+			name = str(m["waf_name"])
+		}
+		if name == "" {
+			name = str(m["cloud_name"])
+		}
 		if name == "" {
 			name = str(m["cdn"])
 		}

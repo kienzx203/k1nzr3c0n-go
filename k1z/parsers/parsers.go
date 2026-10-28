@@ -373,7 +373,8 @@ func scanSubdomains(st *store.Store, run *store.Run, ws string) {
 	files := globFiles(ws, "subdomains_resolved.txt", "subdomains_all_resolved.txt", "subdomains.txt",
 		"subdomains_all.txt", "passive_merged.txt", "tlsx_new_subs.txt", "js_subs.txt", "jsubfinder_subs.txt",
 		"st_intel_subs.txt", "reverse_dns_subs.txt", "ptr_subs.txt", "dns_records_subs.txt",
-		"vhost_new_hosts.txt", "favicon_in_scope.txt", "dns_svc_new_hosts.txt", "dns_zone_nsec.txt", "p_dns_zone.txt")
+		"vhost_new_hosts.txt", "favicon_in_scope.txt", "dns_svc_new_hosts.txt", "dns_zone_nsec.txt", "p_dns_zone.txt",
+		"pivot_new_resolved.txt", "http_redirect_resolved.txt", "ip_pivot_in_scope.txt")
 	if len(files) == 0 {
 		return
 	}

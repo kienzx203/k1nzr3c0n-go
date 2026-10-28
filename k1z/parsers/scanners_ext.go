@@ -135,6 +135,9 @@ func scanAfrog(st *store.Store, run *store.Run, ws string) {
 				sev = str(info["severity"])
 			}
 		}
+		if sev == "" { // some afrog versions emit a flat top-level severity
+			sev = str(m["severity"])
+		}
 		host := str(m["fulltarget"])
 		if host == "" {
 			host = str(m["target"])
@@ -415,9 +418,14 @@ func scanBuckets(st *store.Store, run *store.Run, ws string) {
 func scanCDN(st *store.Store, run *store.Run, ws string) {
 	for _, f := range globFiles(ws, "cdncheck.jsonl", "cdncheck.json") {
 		eachJSONLine(f, func(m map[string]any) {
-			name := str(m["cdn_name"])
+			// cdncheck classifies into cdn / waf / cloud independently
+			kind, name := "CDN", str(m["cdn_name"])
 			if name == "" {
-				if c, ok := m["cdn"].(map[string]any); ok { // some versions nest {cdn:{name}}
+				if n := str(m["waf_name"]); n != "" {
+					kind, name = "WAF", n
+				} else if n := str(m["cloud_name"]); n != "" {
+					kind, name = "Cloud", n
+				} else if c, ok := m["cdn"].(map[string]any); ok {
 					name = str(c["name"])
 				}
 			}
@@ -429,7 +437,7 @@ func scanCDN(st *store.Store, run *store.Run, ws string) {
 				host = str(m["input"])
 			}
 			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "cdn", Host: host,
-				IP: strp(str(m["ip"])), Name: sp("CDN: " + name)})
+				IP: strp(str(m["ip"])), Name: sp(kind + ": " + name)})
 		})
 	}
 }
@@ -451,8 +459,8 @@ func scanNetIntel(st *store.Store, run *store.Run, ws string) {
 			}
 		})
 	}
-	// fofa_ip_port.txt  host\tip\tport
-	for _, f := range globFiles(ws, "fofa_ip_port.txt") {
+	// host\tip\tport  (fofa + censys webproperty endpoints — identical layout)
+	for _, f := range globFiles(ws, "fofa_ip_port.txt", "censys_ip.txt") {
 		eachLine(f, func(l string) {
 			c := strings.Split(l, "\t")
 			if len(c) >= 2 {
@@ -461,6 +469,21 @@ func scanNetIntel(st *store.Store, run *store.Run, ws string) {
 					fd.Port = intPtr(intFromAny(strings.TrimSpace(c[2])))
 				}
 				st.InsertFinding(fd)
+			}
+		})
+	}
+	// censys_ports.txt  ip\tport\tprotocol\ttls  (every open port, in-scope IPs)
+	for _, f := range globFiles(ws, "censys_ports.txt") {
+		eachLine(f, func(l string) {
+			c := strings.Split(l, "\t")
+			if len(c) >= 2 {
+				ip := strings.TrimSpace(c[0])
+				proto := "tcp"
+				if len(c) >= 3 && strings.TrimSpace(c[2]) != "" {
+					proto = strings.TrimSpace(c[2])
+				}
+				st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "port", Host: ip, IP: sp(ip),
+					Port: intPtr(intFromAny(strings.TrimSpace(c[1]))), Protocol: sp(proto)})
 			}
 		})
 	}
