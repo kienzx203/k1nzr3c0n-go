@@ -171,12 +171,7 @@
   <h4>Tagged nodes</h4>
   <div id="tagList" class="cnt">none yet</div>
   <h4>Legend</h4>
-  <div class="row lg"><i style="background:#0969da"></i>domain</div>
-  <div class="row lg"><i style="background:#cf222e"></i>internal host / IP</div>
-  <div class="row lg"><i style="background:#1f883d"></i>public IP</div>
-  <div class="row lg"><i style="background:#8250df"></i>ASN</div>
-  <div class="row lg"><i style="background:#bf8700"></i>subnet</div>
-  <div class="row lg"><i style="background:#fb8500"></i>vhost / interesting</div>
+  <div id="legend" style="display:flex;flex-wrap:wrap;gap:4px 12px"></div>
  </div>
  <div class="panel hide" id="side"><div class="meta">click a node to inspect it</div></div>
  <div id="hint">drag = move · click = inspect · right-click = transforms · click empty = reset · scroll = zoom · ⚛ = re-run layout</div>
@@ -479,6 +474,12 @@ function openSide(v){ $('side').classList.toggle('hide',!v); }
 $('tgLeft').onclick=()=>$('left').classList.toggle('hide');
 $('tgRight').onclick=()=>$('side').classList.toggle('hide');
 
+const LEGEND=[['domain','domain'],['sub','subdomain'],['sub_int','internal host'],['vhost','vhost / interesting'],
+ ['sub_dead','dead sub'],['ip_pub','public IP'],['ip_int','internal IP'],['ip_origin','origin IP'],['asn','ASN'],
+ ['subnet','subnet'],['provider','CDN / provider'],['vuln_critical','vuln'],['bucket','bucket'],['path','notable path'],
+ ['url','URL'],['endpoint','endpoint'],['param','parameter'],['secret','secret'],['dns','DNS'],['cert','cert'],
+ ['favicon','favicon'],['intel','intel']];
+function buildLegend(){ $('legend').innerHTML=LEGEND.map(([g,l])=>'<span class="lg"><i style="background:'+(COL[g]||'#8c959f')+'"></i>'+l+'</span>').join(''); }
 document.addEventListener('click',hideCtx);
-buildFilters(); renderSlots(); fillRuns(); load();
+buildFilters(); buildLegend(); renderSlots(); fillRuns(); load();
 </script></body></html>
