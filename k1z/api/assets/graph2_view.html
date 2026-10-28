@@ -1,69 +1,130 @@
 <!doctype html><html><head><meta charset="utf-8">
 <title>Attack surface</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/graphology/0.25.4/graphology.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/graphology-library@0.8.0/dist/graphology-library.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sigma.js/2.4.0/sigma.min.js"></script>
 <style>
- :root{--bg:#fff;--fg:#1f2328;--mut:#656d76;--bd:#d0d7de;--card:#f6f8fa;--acc:#0969da;--danger:#cf222e}
- *{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);
-   font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
- #bar{position:fixed;inset:0 0 auto 0;z-index:6;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
-   padding:8px 12px;background:var(--card);border-bottom:1px solid var(--bd)}
- #bar b{color:#0a3069}.stat{color:var(--mut);font-size:12px}
- input,button,select{background:#fff;border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:5px 9px;font-size:12px}
- button{cursor:pointer}button:hover{background:#f3f4f6}button.on{background:#0969da;color:#fff;border-color:#0969da}
+ :root{
+  --bg:#f6f8fb; --surface:#ffffff; --fg:#141a21; --fg2:#59626f; --mut:#8b94a1;
+  --bd:#e4e9f0; --bd2:#eef2f7; --card:#fafcfe;
+  --acc:#2f6fed; --acc2:#2a62d6; --accink:#ffffff; --ring:0 0 0 3px #2f6fed2b;
+  --danger:#e5484d; --ok:#2f9e44; --brand:#0a3069;
+  --sh-sm:0 1px 2px rgba(16,24,40,.05); --sh:0 4px 16px rgba(16,24,40,.08); --sh-lg:0 14px 36px rgba(16,24,40,.17);
+ }
+ *{box-sizing:border-box}
+ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);
+   font:13px/1.45 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+ /* toolbar */
+ #bar{position:fixed;inset:0 0 auto 0;z-index:6;display:flex;gap:7px;align-items:center;flex-wrap:wrap;
+   height:52px;padding:0 14px;background:rgba(255,255,255,.9);backdrop-filter:saturate(1.3) blur(10px);
+   border-bottom:1px solid var(--bd);box-shadow:var(--sh-sm)}
+ #bar .brand{display:flex;align-items:center;gap:7px;font-weight:650;color:var(--brand);white-space:nowrap}
+ #bar .brand .tgt{font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--fg)}
+ .stat{color:var(--mut);font-size:11.5px;white-space:nowrap}
  .sp{flex:1}
- #main{position:fixed;inset:48px 0 0 0}
- #cy{position:absolute;inset:0;background:#fbfcfd;background-image:radial-gradient(#e7ecf1 1px,transparent 1px);background-size:22px 22px}
- .panel{position:absolute;top:0;bottom:0;width:286px;background:var(--card);overflow:auto;z-index:4;
-   padding:12px 14px;transition:transform .18s}
- #left{left:0;border-right:1px solid var(--bd)}#left.hide{transform:translateX(-100%)}
- #side{right:0;border-left:1px solid var(--bd)}#side.hide{transform:translateX(100%)}
- .panel h4{margin:14px 0 7px;font:600 11px/1 system-ui;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
- .panel h4:first-child{margin-top:0}
- .row{display:flex;align-items:center;gap:7px;margin:4px 0;font-size:12px}
- .row label{display:flex;align-items:center;gap:6px;cursor:pointer;flex:1}
- .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
- .cnt{color:var(--mut);font-size:11px}
- input[type=range]{flex:1;padding:0}
- #side h3{margin:0 0 4px;color:#0a3069;font:600 14px system-ui;word-break:break-all}
- #side .meta{color:var(--mut);font-size:11px;margin-bottom:8px}
- #side pre{white-space:pre-wrap;word-break:break-word;font:11px/1.5 ui-monospace,monospace;background:#fff;
-   border:1px solid var(--bd);border-radius:6px;padding:8px;margin:8px 0;max-height:240px;overflow:auto}
- .act{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0}.act button{padding:3px 7px;font-size:11px}
- .nb{display:flex;align-items:center;gap:6px;padding:3px 5px;border-radius:5px;cursor:pointer;font-size:11px;
-   font-family:ui-monospace,monospace}.nb:hover{background:#eaeef2}.nb span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
- .pf{background:#fff;border:1px solid var(--bd);border-radius:6px;padding:6px 8px;margin:4px 0;font:11px ui-monospace,monospace;
-   min-height:30px;display:flex;align-items:center;justify-content:space-between;gap:6px}
- .pf.pick{border-color:var(--acc);box-shadow:0 0 0 2px #0969da22}
- .pf b{color:#0a3069}.pf .x{cursor:pointer;color:var(--mut)}
- .lg{display:inline-flex;align-items:center;gap:4px;color:var(--mut);font-size:11px}.lg i{width:9px;height:9px;border-radius:50%}
- #hint{position:absolute;bottom:8px;left:296px;color:#8c959f;font-size:11px;z-index:3;pointer-events:none}
- .menu{position:relative}.menu .drop{display:none;position:absolute;top:30px;right:0;background:#fff;border:1px solid var(--bd);
-   border-radius:7px;box-shadow:0 6px 24px #0002;z-index:20;min-width:150px;overflow:hidden}
- .menu.open .drop{display:block}.drop button{display:block;width:100%;text-align:left;border:0;border-radius:0;padding:8px 12px}
- #ctx{display:none;position:fixed;z-index:30;background:#fff;border:1px solid var(--bd);border-radius:7px;box-shadow:0 6px 24px #0003;overflow:hidden;min-width:160px}
- #ctx .hd{padding:6px 12px;font:600 11px ui-monospace,monospace;color:#0a3069;border-bottom:1px solid var(--bd);background:var(--card);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
- #ctx button{display:block;width:100%;text-align:left;border:0;border-radius:0;padding:8px 12px;font-size:12px}
- #toast{display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:40;background:#0a3069;color:#fff;padding:9px 15px;border-radius:8px;font-size:12px;max-width:70%;white-space:pre-wrap;box-shadow:0 6px 24px #0004}
+ /* controls */
+ button,select{font:500 12.5px Inter,system-ui,sans-serif;color:var(--fg2);background:var(--surface);
+   border:1px solid var(--bd);border-radius:8px;height:30px;padding:0 11px;cursor:pointer;
+   display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+   transition:background .13s,border-color .13s,box-shadow .13s,color .13s}
+ button:hover{background:#f2f6fc;border-color:#d4dbe6;color:var(--fg)}
+ button:active{transform:translateY(.5px)}
+ button.on{background:linear-gradient(180deg,var(--acc),var(--acc2));color:var(--accink);border-color:var(--acc2);box-shadow:0 1px 3px #2f6fed66}
+ button.on:hover{filter:brightness(1.04);color:#fff}
+ .icon{width:30px;padding:0;justify-content:center;font-size:14px}
+ select{padding:0 8px}
+ input,select:focus,input:focus{outline:none}
+ select:focus,input:focus{border-color:var(--acc);box-shadow:var(--ring)}
+ input{font:13px Inter,system-ui,sans-serif;color:var(--fg);background:var(--surface);
+   border:1px solid var(--bd);border-radius:8px;height:30px;padding:0 11px}
+ input::placeholder{color:var(--mut)}
+ .search{position:relative;display:inline-flex;align-items:center}
+ .search svg{position:absolute;left:10px;width:14px;height:14px;color:var(--mut);pointer-events:none}
+ .search input{padding-left:30px;width:208px}
+ .seg{display:inline-flex;border:1px solid var(--bd);border-radius:9px;overflow:hidden;background:var(--surface);box-shadow:var(--sh-sm)}
+ .seg button{border:0;border-radius:0;box-shadow:none;border-left:1px solid var(--bd2)}
+ .seg button:first-child{border-left:0}
+ /* canvas */
+ #main{position:fixed;inset:52px 0 0 0}
+ #cy{position:absolute;inset:0;background:
+   radial-gradient(1100px 520px at 62% -12%,#ffffff,rgba(255,255,255,0)),
+   radial-gradient(#e9eef5 1px,transparent 1px) 0 0/24px 24px, #fbfcfe}
+ /* panels */
+ .panel{position:absolute;top:0;bottom:0;width:304px;background:var(--surface);overflow:auto;z-index:4;
+   padding:14px 16px 22px;transition:transform .22s cubic-bezier(.4,0,.2,1)}
+ #left{left:0;border-right:1px solid var(--bd);box-shadow:var(--sh)}#left.hide{transform:translateX(-100%);box-shadow:none}
+ #side{right:0;border-left:1px solid var(--bd);box-shadow:var(--sh)}#side.hide{transform:translateX(100%);box-shadow:none}
+ .panel::-webkit-scrollbar{width:10px}.panel::-webkit-scrollbar-thumb{background:#dbe2ec;border:3px solid var(--surface);border-radius:7px}
+ .panel::-webkit-scrollbar-thumb:hover{background:#c7d0dd}
+ .panel h4{display:flex;align-items:center;gap:9px;margin:18px 0 9px;font:650 10.5px/1 Inter,system-ui;
+   letter-spacing:.09em;text-transform:uppercase;color:var(--mut)}
+ .panel h4::after{content:'';flex:1;height:1px;background:var(--bd2)}
+ .panel h4:first-child{margin-top:2px}
+ .row{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12.5px}
+ .row>span:first-child{color:var(--fg2)}
+ .row label{display:flex;align-items:center;gap:7px;cursor:pointer;flex:1;color:var(--fg2)}
+ .row label:hover{color:var(--fg)}
+ input[type=checkbox]{accent-color:var(--acc);width:15px;height:15px}
+ input[type=range]{flex:1;padding:0;accent-color:var(--acc);height:4px}
+ .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 2px #fff,0 0 0 3px #0000000f}
+ .cnt{color:var(--mut);font-size:11px;line-height:1.55}
+ /* inspector */
+ #side h3{margin:0 0 5px;color:var(--brand);font:650 15px Inter,system-ui;word-break:break-all}
+ #side .meta{color:var(--mut);font-size:11px;margin-bottom:10px}
+ #side pre{white-space:pre-wrap;word-break:break-word;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
+   background:var(--card);border:1px solid var(--bd);border-radius:9px;padding:10px;margin:8px 0;max-height:240px;overflow:auto;color:var(--fg2)}
+ #side textarea{border:1px solid var(--bd);border-radius:9px;background:var(--surface);color:var(--fg);outline:none}
+ #side textarea:focus{border-color:var(--acc);box-shadow:var(--ring)}
+ #side input{width:100%}
+ .act{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.act button{height:27px;padding:0 10px;font-size:11.5px}
+ .nb{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:7px;cursor:pointer;font:11.5px ui-monospace,monospace;color:var(--fg2)}
+ .nb:hover{background:#eef4ff;color:var(--fg)}
+ .nb span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .pf{background:var(--card);border:1px solid var(--bd);border-radius:9px;padding:8px 10px;margin:5px 0;font:11.5px ui-monospace,monospace;
+   min-height:34px;display:flex;align-items:center;justify-content:space-between;gap:6px;color:var(--fg2)}
+ .pf.pick{border-color:var(--acc);box-shadow:var(--ring)}
+ .pf b{color:var(--brand)}.pf .x{cursor:pointer;color:var(--mut);padding:0 3px}.pf .x:hover{color:var(--danger)}
+ #views{display:flex;flex-wrap:wrap;gap:6px}#views button{height:28px;font-size:11.5px}
+ .lg{display:inline-flex;align-items:center;gap:6px;color:var(--fg2);font-size:11.5px}.lg i{width:10px;height:10px;border-radius:50%}
+ #hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);color:var(--fg2);font-size:11px;z-index:3;pointer-events:none;
+   background:rgba(255,255,255,.78);backdrop-filter:blur(6px);padding:6px 13px;border-radius:999px;border:1px solid var(--bd2);box-shadow:var(--sh-sm)}
+ /* menus */
+ .menu{position:relative}
+ .menu .drop{display:none;position:absolute;top:37px;right:0;background:var(--surface);border:1px solid var(--bd);
+   border-radius:12px;box-shadow:var(--sh-lg);z-index:20;min-width:186px;overflow:hidden;padding:5px}
+ .menu.open .drop{display:block}
+ .drop button,#ctx button{display:flex;width:100%;text-align:left;border:0;border-radius:7px;height:32px;padding:0 10px;background:transparent;font-size:12px}
+ .drop button:hover,#ctx button:hover{background:#f2f6fc}
+ #ctx{display:none;position:fixed;z-index:30;background:var(--surface);border:1px solid var(--bd);border-radius:12px;box-shadow:var(--sh-lg);overflow:hidden;min-width:190px;padding:5px}
+ #ctx .hd{padding:7px 10px 8px;font:650 11px ui-monospace,monospace;color:var(--brand);border-bottom:1px solid var(--bd2);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #toast{display:none;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:40;
+   background:#0f1b2d;color:#eaf0f8;padding:10px 16px;border-radius:12px;font:12px ui-monospace,monospace;max-width:70%;white-space:pre-wrap;box-shadow:var(--sh-lg)}
 </style></head><body>
 <div id="bar">
- <button id="tgLeft" title="Filters / pathfinding">☰</button>
- <b>🎯 <span id="tgt"></span></b><span class="stat" id="stat">loading…</span>
- <input id="q" placeholder="search host / ip / asn…" style="width:190px">
+ <button id="tgLeft" class="icon" title="Filters / pathfinding">☰</button>
+ <div class="brand">🎯 <span class="tgt" id="tgt"></span></div>
+ <span class="stat" id="stat">loading…</span>
  <span class="sp"></span>
- <button id="lay">⚛ layout</button>
- <button id="mode">◰ full</button>
- <button id="fit">⤢ fit</button>
- <button id="reload">↻</button>
- <div class="menu" id="exp"><button id="expBtn">⇩ export ▾</button>
+ <div class="search">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+  <input id="q" placeholder="search host / ip / asn…">
+ </div>
+ <button id="lay" title="re-run force layout">⚛ layout</button>
+ <div class="seg">
+  <button id="mode" title="toggle full / overview">◰ full</button>
+  <button id="fit" class="icon" title="fit to screen">⤢</button>
+  <button id="reload" class="icon" title="reload data">↻</button>
+ </div>
+ <div class="menu" id="exp"><button id="expBtn">⇩ export</button>
   <div class="drop">
-   <button data-x="png">PNG image</button>
-   <button data-x="csv">CSV (visible nodes)</button>
-   <button data-x="graphml">GraphML (Gephi/yEd)</button>
-   <button data-x="gexf">GEXF (Gephi)</button>
+   <button data-x="png">🖼 PNG image</button>
+   <button data-x="csv">📄 CSV · visible nodes</button>
+   <button data-x="graphml">🕸 GraphML · Gephi/yEd</button>
+   <button data-x="gexf">🕸 GEXF · Gephi</button>
   </div></div>
- <button id="tgRight" title="Inspector">ℹ</button>
+ <button id="tgRight" class="icon" title="Inspector">ℹ</button>
 </div>
 <div id="main">
  <div id="cy"></div>
