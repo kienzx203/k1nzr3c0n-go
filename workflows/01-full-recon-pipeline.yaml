@@ -1040,11 +1040,12 @@ steps:
     test -n "$ORG" -a -n "$PAT" || { printf '[censys] no CENSYS org/PAT (store ORG_ID:PAT) — skipping\n'; exit 0; }
     : > {workspace}/.cen_raw
     TOK=""
-    for page in 1 2 3 4 5; do
+    for page in $(seq 1 20); do
       BODY=$(printf '{"query":"%s","page_size":100%s}' "{target}" "${TOK:+,\"page_token\":\"$TOK\"}")
       R=$(curl -s --max-time 45 -X POST \
         "https://api.platform.censys.io/v3/global/search/query?organization_id=${ORG}" \
         -H "Authorization: Bearer ${PAT}" -H 'Content-Type: application/json' -d "$BODY" 2>/dev/null)
+      printf '%s' "$R" | jq -e 'has("status")' >/dev/null 2>&1 && break   # API error (e.g. plan page/result limit) -> stop
       printf '%s\n' "$R" >> {workspace}/.cen_raw
       TOK=$(printf '%s' "$R" | jq -r '.result.next_page_token // empty' 2>/dev/null)
       [ -z "$TOK" ] && break
