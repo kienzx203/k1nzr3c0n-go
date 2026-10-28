@@ -51,6 +51,7 @@ ARTEX_SKIP_FRONTEND=1 go build -tags embedui -o k1nzr3c0n ./cmd/artex
 step "Sync runtime assets into $BASE (scripts, workflows, wordlists, skills)"
 mkdir -p "$BASE/scripts" "$BASE/wordlists" "$BASE/skills" "$BASE/workflows"
 cp scripts/*.py       "$BASE/scripts/"   2>/dev/null && chmod +x "$BASE/scripts/"*.py 2>/dev/null || true
+cp scripts/*.sh       "$BASE/scripts/"   2>/dev/null && chmod +x "$BASE/scripts/"*.sh 2>/dev/null || true  # dns-recon.sh etc.
 cp -r workflows/*     "$BASE/workflows/" 2>/dev/null || true
 cp wordlists/*        "$BASE/wordlists/" 2>/dev/null || true
 # standard SecLists wordlists the workflows expect (copied under the exact names)

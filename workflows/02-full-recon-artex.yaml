@@ -62,7 +62,6 @@ vars:
   # (user decision — completeness over probe budget; non-HTTP ports fail fast).
   # Shared-hosting guard: cap host:port entries per host so one box with a
   # huge port surface can't flood httpx/nuclei. 50 never triggers on normal
-  # hosts (affiliate.target peaks at ~35 live web ports).
   max_ports_per_host: '50'
   rustscan_batch: '2000'       # reduced from 5000
   rustscan_timeout_ms: '3000'  # increased from 2000 — give NAT more time per connection
@@ -1039,7 +1038,6 @@ steps:
     # the 6th page returns an error), so on big targets it badly undercounts. We also
     # slice by dataset so each query gets its OWN 500-result budget, then union the
     # raw. host.dns.names is the big win (one host record carries many DNS names).
-    # Proven live: example.com 68 -> 295 subs; small targets (target) unchanged.
     for Q in "{target}" "cert.names: {target}" "host.dns.names: {target}" "web.hostname: {target}" "host.services.cert.names: {target}"; do
       TOK=""
       for page in $(seq 1 {vars.censys_max_pages}); do
@@ -1249,6 +1247,36 @@ steps:
     printf 'Google CSE subs: %s\n' "$(wc -l < {workspace}/p_google_cse.txt)"
   outputs:
     file: '{workspace}/p_google_cse.txt'
+- id: p_dns_zone
+  name: passive — DNS zone disclosure (NSEC walk / AXFR / internal-IP leak) via dns-recon.sh
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 12m
+  run: |
+    touch {workspace}/p_dns_zone.txt
+    SCRIPT={scripts_dir}/scripts/dns-recon.sh
+    [ -f "$SCRIPT" ] || SCRIPT=/opt/k1nzr3c0n-src/scripts/dns-recon.sh
+    [ -f "$SCRIPT" ] || { printf '[dns-recon] script not found — skipping\n'; exit 0; }
+    OUT={workspace}/dnsrecon
+    # NSEC zone-walk + AXFR + internal-IP classification — the DNS-disclosure layer
+    # the pipeline otherwise lacks. Skip brute (pipeline has puredns) and --svc
+    # (active HTTP). Passive/read-only DNS.
+    bash "$SCRIPT" {target} -o "$OUT" --only enum,axfr,nsec,resolve -t {vars.dnsx_threads} --quiet 2>/dev/null || true
+    [ -f "$OUT/subdomains.txt" ] && cp "$OUT/subdomains.txt" {workspace}/p_dns_zone.txt
+    for f in zone_nsec internal_hosts internal_ips internal_subnets; do
+      [ -f "$OUT/$f.txt" ] && cp "$OUT/$f.txt" {workspace}/dns_$f.txt
+    done
+    touch {workspace}/p_dns_zone.txt
+    printf 'DNS zone recon: %s subs | %s NSEC | %s internal-hosts | %s subnets\n' "$(wc -l < {workspace}/p_dns_zone.txt)" "$([ -f {workspace}/dns_zone_nsec.txt ] && wc -l < {workspace}/dns_zone_nsec.txt || echo 0)" "$([ -f {workspace}/dns_internal_hosts.txt ] && wc -l < {workspace}/dns_internal_hosts.txt || echo 0)" "$([ -f {workspace}/dns_internal_subnets.txt ] && wc -l < {workspace}/dns_internal_subnets.txt || echo 0)"
+  outputs:
+    file: '{workspace}/p_dns_zone.txt'
+    nsec: '{workspace}/dns_zone_nsec.txt'
+    internal_hosts: '{workspace}/dns_internal_hosts.txt'
+    internal_subnets: '{workspace}/dns_internal_subnets.txt'
 - id: merge_passive
   name: merge all passive sources → deduplicate + scope-filter
   depends_on:
@@ -1297,6 +1325,7 @@ steps:
   - p_dnsdumpster
   - p_criminalip
   - p_google_cse
+  - p_dns_zone
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -1347,6 +1376,7 @@ steps:
         {workspace}/p_dnsdumpster.txt \
         {workspace}/p_criminalip.txt \
         {workspace}/p_google_cse.txt \
+        {workspace}/p_dns_zone.txt \
         2>/dev/null || true
       test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
@@ -1395,7 +1425,6 @@ steps:
   timeout: 2m
   # st_subdomains already feeds merge_passive, but the REST of the ST intel
   # can hold hostnames the subdomain endpoint missed — historical cert SANs
-  # (e.g. owa.* found via st_ssl.json on target) and old DNS record
   # values. Zero network calls: pure local parse, scope-filtered to {target}.
   # Runs AFTER st_intel_retry so topped-up sections are included too; feeds
   # merge_all_subdomains (NOT merge_passive, which runs before the retry).
