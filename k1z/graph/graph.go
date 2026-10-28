@@ -130,6 +130,19 @@ func hostOfURL(u string) string {
 	return strings.ToLower(strings.SplitN(u, ":", 2)[0])
 }
 
+// gitleaksCount returns the number of entries in gitleaks_results.json (array).
+func gitleaksCount(dir string) int {
+	b, err := os.ReadFile(filepath.Join(dir, "gitleaks_results.json"))
+	if err != nil || len(b) == 0 {
+		return 0
+	}
+	var a []any
+	if json.Unmarshal(b, &a) == nil {
+		return len(a)
+	}
+	return 0
+}
+
 // shortURL returns the path+query portion of a URL (for compact path labels).
 func shortURL(u string) string {
 	s := regexp.MustCompile(`^[a-z]+://`).ReplaceAllString(u, "")
@@ -503,11 +516,12 @@ func Build(dir, target string) *Graph {
 	}
 	nParam := cnt("all_params.txt", "found_params.txt")
 	nSecret := cnt("jsubfinder_secrets.txt") + cnt("secretfinder_results.txt") +
-		cnt("trufflehog_results.jsonl") + cnt("swaggerspy_results.txt")
+		cnt("trufflehog_results.jsonl") + cnt("swaggerspy_results.txt") + gitleaksCount(dir)
+	nRelated := cnt("st_associated.txt", "st_pivot_domains.txt", "amass_intel.txt")
 
 	// ── assemble nodes/edges ───────────────────────────────────────────────────
 	if target != "" {
-		dtitle := fmt.Sprintf("%s\nURLs: %d · endpoints: %d · params: %d · secrets: %d", target, nURL, nEnd, nParam, nSecret)
+		dtitle := fmt.Sprintf("%s\nURLs: %d · endpoints: %d · params: %d · secrets: %d · related-domains: %d", target, nURL, nEnd, nParam, nSecret, nRelated)
 		g.add(&Node{ID: "dom:" + target, Label: target, Group: "domain", Title: dtitle})
 	}
 	riskOf := map[string]int{}
