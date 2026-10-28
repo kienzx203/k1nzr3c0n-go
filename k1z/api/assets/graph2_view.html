@@ -88,6 +88,23 @@
    </select></div>
   <div id="mlegend" class="cnt" style="margin:4px 0"></div>
   <div id="mtop"></div>
+  <h4>Saved views</h4>
+  <div id="views" style="display:flex;flex-wrap:wrap;gap:5px">
+   <button data-v="reset">⟳ all</button>
+   <button data-v="exposed">🌐 internet-exposed</button>
+   <button data-v="internal">🔒 internal leaks</button>
+   <button data-v="findings">⚠ findings</button>
+   <button data-v="hubs">◉ hubs</button>
+   <button data-v="choke">✂ chokepoints</button>
+  </div>
+  <div id="viewMsg" class="cnt" style="margin-top:4px"></div>
+  <h4>Compare runs (diff)</h4>
+  <div class="row"><span style="width:38px">from</span><select id="diffFrom" style="flex:1"></select></div>
+  <div class="row"><span style="width:38px">to</span><select id="diffTo" style="flex:1"></select></div>
+  <div class="row"><button id="runDiff" style="flex:1" class="on">⇄ diff</button><button id="exitDiff">exit</button></div>
+  <div id="diffMsg" class="cnt"></div>
+  <h4>Tagged nodes</h4>
+  <div id="tagList" class="cnt">none yet</div>
   <h4>Legend</h4>
   <div class="row lg"><i style="background:#0969da"></i>domain</div>
   <div class="row lg"><i style="background:#cf222e"></i>internal host / IP</div>
@@ -152,10 +169,11 @@ function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay')
 $('lay').onclick=()=>fa2Running()?stopLayout():startLayout(8000);
 
 // ── filters ─────────────────────────────────────────────────────────────
-const filter={minDeg:0,minRisk:0,hideDead:false}; FAMS.forEach(([f])=>filter[f]=true);
+const filter={minDeg:0,minRisk:0,hideDead:false,only:null}; FAMS.forEach(([f])=>filter[f]=true);
 function passFilter(id,a){
  if(a.group==='sub_dead'&&filter.hideDead)return false;
- if(!filter[famOf(a.group)])return false;
+ if(filter.only){ if(!filter.only.has(a.group))return false; }
+ else if(!filter[famOf(a.group)])return false;
  if(g.degree(id)<filter.minDeg)return false;
  if((a.risk||0)<filter.minRisk)return false;
  return true;
@@ -204,6 +222,9 @@ $('colorBy').onchange=e=>{ colorBy=e.target.value||null;
 
 // ── render + interaction ────────────────────────────────────────────────
 let renderer=null, focus=null, pathSet=null, pickMode=null, src=null, dst=null;
+let diffMode=false, diffStatus={}, annos={};
+const DIFFC={new:'#1f883d',gone:'#cf222e',changed:'#fb8500',same:'#c7ced6'};
+function setColorBy(v){ colorBy=v||null; const sel=$('colorBy'); if(sel)sel.value=v||''; }
 const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); return s;};
 function render(){
  if(renderer){renderer.refresh();return;}
@@ -212,7 +233,11 @@ function render(){
    zIndex:true,minCameraRatio:0.02,maxCameraRatio:20});
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
    if(!passFilter(n,a))return Object.assign({},d,{hidden:true});
-   let o=(colorBy&&metrics)?applyMetric(n,d):d;
+   let o=d;
+   if(diffMode){ const st=diffStatus[n]||'same';
+     o=Object.assign({},d,{color:DIFFC[st],size:st==='gone'?Math.max(2,d.size*0.75):d.size,zIndex:st==='same'?0:2}); }
+   else if(colorBy&&metrics){ o=applyMetric(n,d); }
+   if(annos[n]&&annos[n].tag)o=Object.assign({},o,{label:'🏷 '+(o.label||a.label),zIndex:(o.zIndex||1)+1});
    if(pathSet){ return pathSet.has(n)?Object.assign({},o,{zIndex:3,size:o.size*1.15}):Object.assign({},o,{color:'#e2e6ea',label:'',zIndex:0}); }
    if(focus){ return focus.has(n)?Object.assign({},o,{zIndex:2}):Object.assign({},o,{color:'#e6eaee',label:'',size:Math.max(2,o.size*0.6),zIndex:0}); }
    return o; });
@@ -244,12 +269,27 @@ function detail(id){ const a=g.getNodeAttributes(id);
  if(a.title)h+='<pre>'+esc(a.title)+'</pre>';
  if(outs.length)h+='<h4>→ out ('+outs.length+')</h4>'+outs.slice(0,120).map(neighRow).join('');
  if(ins.length)h+='<h4>← in ('+ins.length+')</h4>'+ins.slice(0,120).map(neighRow).join('');
+ const an=annos[id]||{};
+ h+='<h4>tag / note</h4><input id="tagIn" placeholder="tag (e.g. pivot, owned)" value="'+esc(an.tag||'')+'" style="width:100%;margin-bottom:5px">'+
+    '<textarea id="noteIn" placeholder="analyst note…" style="width:100%;height:56px;font:11px ui-monospace,monospace;border:1px solid var(--bd);border-radius:6px;padding:6px">'+esc(an.note||'')+'</textarea>'+
+    '<div class="act"><button data-act="saveAnno" class="on">save tag/note</button></div>';
  const side=$('side'); side.innerHTML=h; side.dataset.id=id;
  side.querySelectorAll('.nb').forEach(el=>el.onclick=()=>focusNode(el.dataset.go));
  side.querySelectorAll('.act button').forEach(b=>b.onclick=()=>{
    if(b.dataset.act==='copy'){navigator.clipboard&&navigator.clipboard.writeText(id);}
+   else if(b.dataset.act==='saveAnno'){saveAnno(id);}
    else setPick(b.dataset.act,id); });
 }
+function saveAnno(id){ const t=$('tagIn'), no=$('noteIn'); const tag=t?t.value:'', note=no?no.value:'';
+ fetch(BASE+'/annotations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,tag:tag,note:note})})
+  .then(r=>r.json()).then(()=>{ if((tag||'').trim()||(note||'').trim())annos[id]={tag:tag,note:note}; else delete annos[id];
+    renderTagList(); renderer&&renderer.refresh(); }).catch(()=>{}); }
+function loadAnnos(){ fetch(BASE+'/annotations').then(r=>r.json()).then(d=>{ annos=d.annotations||{}; renderTagList(); renderer&&renderer.refresh(); }).catch(()=>{}); }
+function renderTagList(){ const el=$('tagList'); const ids=Object.keys(annos).filter(id=>annos[id]&&((annos[id].tag||'').trim()||(annos[id].note||'').trim()));
+ if(!ids.length){el.textContent='none yet';return;}
+ el.innerHTML=ids.map(id=>{const a=g.hasNode(id)?g.getNodeAttributes(id):{rawlabel:id,color:'#8c959f'};
+   return '<div class="nb" data-go="'+esc(id)+'"><span class="dot" style="background:'+(a.color||'#8c959f')+'"></span><span>'+(annos[id].tag?'['+esc(annos[id].tag)+'] ':'')+esc(a.rawlabel||id)+'</span></div>';}).join('');
+ el.querySelectorAll('.nb').forEach(x=>x.onclick=()=>focusNode(x.dataset.go)); }
 
 // ── pathfinding ─────────────────────────────────────────────────────────
 function setPick(kind,id){ if(kind==='src'){src=id;} else {dst=id;} renderSlots(); }
@@ -295,14 +335,46 @@ function dl(blob,name){ const a=document.createElement('a'); a.download=name; a.
 let MODE='full';
 function visibleCount(){ let n=0; g.forEachNode((id,a)=>{if(passFilter(id,a))n++;}); return n; }
 function updateStat(){ $('stat').textContent=visibleCount()+' shown / '+g.order+' nodes · '+g.size+' edges · '+MODE; famCounts(); }
-function load(){ stopLayout(); $('stat').textContent='loading '+MODE+'…'; focus=null; pathSet=null; src=null; dst=null; metrics=null; $('mtop').innerHTML=''; $('mlegend').textContent=''; renderSlots(); $('pfMsg').textContent='';
+function load(){ stopLayout(); diffMode=false; diffStatus={}; $('stat').textContent='loading '+MODE+'…'; focus=null; pathSet=null; src=null; dst=null; metrics=null; $('mtop').innerHTML=''; $('mlegend').textContent=''; renderSlots(); $('pfMsg').textContent='';
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
    g.clear(); if(renderer){renderer.kill();renderer=null;}
-   add(sg); render(); startLayout(); updateStat();
+   add(sg); render(); startLayout(); updateStat(); loadAnnos();
    if(colorBy)loadMetrics(()=>renderer&&renderer.refresh());
    setTimeout(()=>renderer&&renderer.getCamera().animatedReset(),450);
  }).catch(()=>{$('stat').textContent='load failed';}); }
+
+// ── saved views ──────────────────────────────────────────────────────────
+function syncFilterUI(){ document.querySelectorAll('#filters input[data-f]').forEach(cb=>cb.checked=!!filter[cb.dataset.f]); }
+const VIEWS={
+ reset:()=>{ filter.only=null; FAMS.forEach(([f])=>filter[f]=true); filter.minDeg=0; filter.minRisk=0; filter.hideDead=false;
+   $('minDeg').value=0; $('minDegV').textContent='0'; $('minRisk').value=0; $('minRiskV').textContent='0'; $('hideDead').checked=false;
+   syncFilterUI(); setColorBy(''); return 'all nodes'; },
+ exposed:()=>{ filter.only=new Set(['domain','asn','sub','vhost','ip_pub']); setColorBy(''); return 'internet-exposed surface'; },
+ internal:()=>{ filter.only=new Set(['sub_int','ip_int','ip_origin']); setColorBy(''); return 'internal leaks (RFC1918 / origin)'; },
+ findings:()=>{ filter.only=new Set(['vuln_critical','vuln_high','vuln_medium','vuln_low','vuln_info']); setColorBy(''); return 'findings'; },
+ hubs:()=>{ filter.only=null; syncFilterUI(); setColorBy('betweenness'); return 'hubs by betweenness'; },
+ choke:()=>{ filter.only=null; syncFilterUI(); setColorBy('chokepoints'); return 'chokepoints'; }
+};
+$('views').querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ const msg=VIEWS[b.dataset.v](); $('viewMsg').textContent=msg||'';
+ if(colorBy)loadMetrics(()=>renderer&&renderer.refresh()); else renderer&&renderer.refresh(); updateStat(); });
+
+// ── run diff ───────────────────────────────────────────────────────────────
+function fillRuns(){ fetch(BASE+'/runs').then(r=>r.json()).then(d=>{ const runs=d.runs||[];
+ const opt=runs.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.label)+'</option>').join('');
+ $('diffFrom').innerHTML=opt; $('diffTo').innerHTML=opt;
+ if(runs.length>1){ $('diffTo').selectedIndex=0; $('diffFrom').selectedIndex=1; }
+ $('diffMsg').textContent=runs.length+' run'+(runs.length===1?'':'s'); }).catch(()=>{}); }
+$('runDiff').onclick=()=>{ const from=$('diffFrom').value, to=$('diffTo').value;
+ if(!from||!to){$('diffMsg').textContent='need 2 runs';return;} if(from===to){$('diffMsg').textContent='pick different runs';return;}
+ $('diffMsg').textContent='diffing…'; stopLayout(); focus=null; pathSet=null; metrics=null;
+ fetch(BASE+'/diff?from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to)).then(r=>r.json()).then(res=>{
+   g.clear(); if(renderer){renderer.kill();renderer=null;}
+   diffStatus=res.status||{}; diffMode=true; add({nodes:res.nodes,edges:res.edges}); render(); startLayout(); loadAnnos();
+   const m=res.meta||{}; $('diffMsg').innerHTML='<b style="color:#1f883d">+'+(m.new||0)+' new</b> · <b style="color:#cf222e">-'+(m.gone||0)+' gone</b> · <b style="color:#fb8500">'+(m.changed||0)+' chg</b>';
+   $('stat').textContent='diff · '+g.order+' nodes'; setTimeout(()=>renderer&&renderer.getCamera().animatedReset(),450);
+ }).catch(()=>{$('diffMsg').textContent='diff failed';}); };
+$('exitDiff').onclick=()=>{ if(diffMode)load(); };
 $('mode').onclick=()=>{ MODE=(MODE==='full')?'overview':'full'; $('mode').textContent=(MODE==='full')?'◰ full':'◱ overview'; load(); };
 $('reload').onclick=load;
 $('fit').onclick=()=>renderer&&renderer.getCamera().animatedReset();
@@ -317,5 +389,5 @@ function openSide(v){ $('side').classList.toggle('hide',!v); }
 $('tgLeft').onclick=()=>$('left').classList.toggle('hide');
 $('tgRight').onclick=()=>$('side').classList.toggle('hide');
 
-buildFilters(); renderSlots(); load();
+buildFilters(); renderSlots(); fillRuns(); load();
 </script></body></html>
