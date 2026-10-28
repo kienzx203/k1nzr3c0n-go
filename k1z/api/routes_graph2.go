@@ -95,6 +95,12 @@ func (s *Server) handleGraph2Overview(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleGraph2Full(w http.ResponseWriter, r *http.Request) {
+	if g := s.graphFor(w, r); g != nil {
+		writeJSON(w, 200, g.Full())
+	}
+}
+
 func (s *Server) handleGraph2Neighbors(w http.ResponseWriter, r *http.Request) {
 	if g := s.graphFor(w, r); g != nil {
 		writeJSON(w, 200, g.Neighbors(r.URL.Query().Get("id")))
@@ -132,6 +138,7 @@ func (s *Server) handleGraph2View(w http.ResponseWriter, r *http.Request) {
 const graph2Shell = `<!doctype html><html><head><meta charset="utf-8">
 <title>Attack surface</title><meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/graphology/0.25.4/graphology.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/graphology-library@0.8.0/dist/graphology-library.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sigma.js/2.4.0/sigma.min.js"></script>
 <style>
  :root{--bg:#fff;--fg:#1f2328;--mut:#656d76;--bd:#d0d7de;--card:#f6f8fa;--acc:#0969da}
@@ -154,6 +161,7 @@ const graph2Shell = `<!doctype html><html><head><meta charset="utf-8">
 <div id="bar">
  <b>🎯 <span id="tgt"></span></b><span class="stat" id="stat">loading…</span>
  <input id="q" placeholder="search host / ip / asn…" style="width:200px">
+ <button id="lay">⚛ layout</button><button id="mode">◱ overview</button>
  <button id="fit">⤢ fit</button><button id="reload">↻</button>
  <span class="lg"><i style="background:#cf222e"></i>internal</span>
  <span class="lg"><i style="background:#1f883d"></i>IP</span>
@@ -161,8 +169,8 @@ const graph2Shell = `<!doctype html><html><head><meta charset="utf-8">
  <span class="lg"><i style="background:#bf8700"></i>subnet</span>
  <span class="lg"><i style="background:#fb8500"></i>interesting</span>
 </div>
-<div id="main"><div id="cy"></div><div id="side">click a node to expand + see details</div></div>
-<div id="hint">click node = expand (fetch neighbors) + detail · drag = pan · scroll = zoom</div>
+<div id="main"><div id="cy"></div><div id="side">click a node = isolate its neighbourhood + details · drag a node to move it</div></div>
+<div id="hint">drag node = move · click node = focus neighbourhood · click empty = reset · drag empty = pan · scroll = zoom · ⚛ = re-run layout</div>
 <script>
 const TARGET="__TARGET__";
 const BASE="/api/v1/targets/"+encodeURIComponent(TARGET)+"/graph2";
@@ -178,46 +186,76 @@ function sizeOf(n){let s={0:14,1:10,2:6,3:4,4:7}[tierOf(n.group)]||4; if(n.count
 function add(sg){
  (sg.nodes||[]).forEach(n=>{ if(g.hasNode(n.id))return;
    g.addNode(n.id,{label:(n.label||n.id)+(n.count?'  ('+n.count+')':''),group:n.group,title:n.title||'',
-     risk:n.risk||0,color:COL[n.group]||'#8c959f',size:sizeOf(n),x:Math.random(),y:Math.random()}); });
+     risk:n.risk||0,color:COL[n.group]||'#8c959f',size:sizeOf(n),
+     x:Math.cos(Math.random()*6.283)*(1+Math.random()*9),y:Math.sin(Math.random()*6.283)*(1+Math.random()*9)}); });
  (sg.edges||[]).forEach(e=>{ if(g.hasNode(e.from)&&g.hasNode(e.to)&&!g.hasEdge(e.from,e.to)){
-   try{g.addEdge(e.from,e.to,{label:e.label,size:0.6,color:(e.label&&'critical high medium low'.indexOf(e.label)>-1)?'#cf222e':'#d0d7de'});}catch(x){} } });
- relayout();
+   try{g.addEdge(e.from,e.to,{label:e.label,size:0.6,color:(e.label&&'critical high medium low'.indexOf(e.label)>-1)?'#cf222e':'#d9dee3'});}catch(x){} } });
 }
-function relayout(){ // radial by tier
+function relayout(){ // fallback radial when the layout worker is unavailable
  const byT={}; g.forEachNode((id,a)=>{const t=tierOf(a.group);(byT[t]=byT[t]||[]).push(id);});
- Object.keys(byT).forEach(t=>{const ids=byT[t],R=t*2.2,n=ids.length;
-   ids.forEach((id,i)=>{const ang=(i/Math.max(1,n))*2*Math.PI; g.setNodeAttribute(id,'x',(t==0?0:R*Math.cos(ang)));
-     g.setNodeAttribute(id,'y',(t==0?0:R*Math.sin(ang)));});});
+ Object.keys(byT).forEach(t=>{const ids=byT[t],R=t*5+0.1,n=ids.length;
+   ids.forEach((id,i)=>{const ang=(i/Math.max(1,n))*6.283; g.setNodeAttribute(id,'x',R*Math.cos(ang));
+     g.setNodeAttribute(id,'y',R*Math.sin(ang));});});
 }
-let renderer=null;
-function render(){ // create once; afterwards just refresh so camera/zoom survive expands
- if(!renderer){
-   renderer=new Sigma(g,document.getElementById('cy'),{
-     defaultEdgeColor:'#d0d7de',labelColor:{color:'#24292f'},labelSize:11,labelWeight:'500',
-     labelRenderedSizeThreshold:7,renderEdgeLabels:false,zIndex:true,minCameraRatio:0.05,maxCameraRatio:12});
-   renderer.on('clickNode',({node})=>expand(node));
- } else { renderer.refresh(); }
+// ── layout: ForceAtlas2 in a web worker (smooth, self-arranging) ──────────
+const LIB=window.graphologyLibrary; let fa2=null, fa2to=null;
+const layBtn=document.getElementById('lay');
+function fa2Running(){return !!(fa2&&fa2.isRunning&&fa2.isRunning());}
+function startLayout(ms){
+ if(!LIB||!LIB.FA2Layout){relayout(); if(renderer)renderer.refresh(); return;}
+ if(g.order<2)return;
+ try{
+  if(fa2){fa2.kill();fa2=null;}
+  const st=LIB.layoutForceAtlas2.inferSettings(g);
+  st.slowDown=1+Math.log(g.order+2); st.barnesHutOptimize=g.order>600; st.gravity=0.7; st.scalingRatio=14; st.adjustSizes=true;
+  fa2=new LIB.FA2Layout(g,{settings:st}); fa2.start(); layBtn.textContent='⚛ stop';
+  clearTimeout(fa2to); fa2to=setTimeout(stopLayout, ms||(g.order>1500?13000:6000));
+ }catch(err){ fa2=null; relayout(); if(renderer)renderer.refresh(); }
 }
-function expand(id){
- const a=g.getNodeAttributes(id);
- document.getElementById('side').innerHTML='<h3>'+a.label+'</h3>'+(a.group||'')+(a.risk?'  · risk '+a.risk:'')+'\n\n'+(a.title||'').replace(/\n/g,'\n');
- fetch(BASE+'/neighbors?id='+encodeURIComponent(id)).then(r=>r.json()).then(sg=>{add(sg);render();}).catch(()=>{});
+function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); layBtn.textContent='⚛ layout'; }
+layBtn.onclick=()=>{ if(fa2Running())stopLayout(); else startLayout(8000); };
+// ── render + interaction ──────────────────────────────────────────────────
+let renderer=null, focus=null;
+function hood(id){const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); return s;}
+function detail(id){ const a=g.getNodeAttributes(id);
+ document.getElementById('side').innerHTML='<h3>'+a.label+'</h3>'+(a.group||'')+(a.risk?'  · risk '+a.risk:'')+'  · deg '+g.degree(id)+'\n\n'+(a.title||'').replace(/\n/g,'\n'); }
+function focusTo(id){ const p=renderer.getNodeDisplayData(id); if(p)renderer.getCamera().animate({x:p.x,y:p.y,ratio:0.3},{duration:450}); }
+function render(){
+ if(renderer){renderer.refresh();return;}
+ renderer=new Sigma(g,document.getElementById('cy'),{
+   defaultEdgeColor:'#d9dee3',labelColor:{color:'#24292f'},labelSize:11,labelWeight:'600',
+   labelRenderedSizeThreshold:6,labelDensity:0.7,labelGridCellSize:110,renderEdgeLabels:false,
+   zIndex:true,minCameraRatio:0.02,maxCameraRatio:20});
+ renderer.setSetting('nodeReducer',(n,d)=>{ if(focus&&!focus.has(n))return Object.assign({},d,{color:'#e6eaee',label:'',size:Math.max(2,d.size*0.6),zIndex:0}); if(focus)return Object.assign({},d,{zIndex:2}); return d; });
+ renderer.setSetting('edgeReducer',(e,d)=>{ if(focus){const x=g.extremities(e); if(!focus.has(x[0])||!focus.has(x[1]))return Object.assign({},d,{hidden:true});} return d; });
+ renderer.on('clickNode',({node})=>{ focus=hood(node); renderer.refresh(); detail(node); });
+ renderer.on('clickStage',()=>{ if(focus){focus=null;renderer.refresh();} });
+ let drag=null;
+ renderer.on('downNode',e=>{ drag=e.node; g.setNodeAttribute(drag,'highlighted',true); fa2&&(fa2._wasrun=fa2Running()); if(fa2Running())fa2.stop(); });
+ renderer.getMouseCaptor().on('mousemovebody',e=>{ if(!drag)return; const p=renderer.viewportToGraph(e); g.setNodeAttribute(drag,'x',p.x); g.setNodeAttribute(drag,'y',p.y); e.preventSigmaDefault(); e.original.preventDefault(); e.original.stopPropagation(); });
+ const end=()=>{ if(drag){g.removeNodeAttribute(drag,'highlighted'); if(fa2&&fa2._wasrun)startLayout(4000);} drag=null; };
+ renderer.getMouseCaptor().on('mouseup',end);
 }
-function loadOverview(){
- document.getElementById('stat').textContent='loading…';
- fetch(BASE+'/overview?hostCap=150').then(r=>r.json()).then(sg=>{
-   g.clear(); add(sg); render(); if(renderer)renderer.getCamera().animatedReset();
-   const m=sg.meta||{}; document.getElementById('stat').textContent=(m.shown||g.order)+' of '+(m.total||'?')+' nodes · click to expand';
+// ── data loading ────────────────────────────────────────────────────────
+let MODE='full'; const modeBtn=document.getElementById('mode');
+function setStat(sg){const m=sg.meta||{}; document.getElementById('stat').textContent=(m.shown||g.order)+' / '+(m.total||g.order)+' nodes · '+g.size+' edges · '+MODE;}
+function load(){
+ stopLayout(); document.getElementById('stat').textContent='loading '+MODE+'…'; focus=null;
+ const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
+ fetch(url).then(r=>r.json()).then(sg=>{
+   g.clear(); if(renderer){renderer.kill();renderer=null;}
+   add(sg); render(); setStat(sg); startLayout();
+   setTimeout(()=>renderer&&renderer.getCamera().animatedReset(),450);
  }).catch(e=>{document.getElementById('stat').textContent='load failed';});
 }
-document.getElementById('q').addEventListener('change',e=>{const q=e.target.value.trim();if(!q)return;
- fetch(BASE+'/search?q='+encodeURIComponent(q)+'&limit=30').then(r=>r.json()).then(d=>{
-   (d.nodes||[]).forEach(n=>add({nodes:[n],edges:[]}));
-   render();
-   const first=(d.nodes||[])[0]; if(first&&g.hasNode(first.id)){const a=g.getNodeAttributes(first.id);
-     renderer.getCamera().animate({x:a.x,y:a.y,ratio:0.4},{duration:400});}
- });});
+modeBtn.onclick=()=>{ MODE=(MODE==='full')?'overview':'full'; modeBtn.textContent=(MODE==='full')?'◰ full':'◱ overview'; load(); };
+document.getElementById('q').addEventListener('change',e=>{const q=(e.target.value||'').trim().toLowerCase(); if(!q||!renderer)return;
+ const hit=[]; g.forEachNode((id,a)=>{ if((a.label||'').toLowerCase().indexOf(q)>-1||id.toLowerCase().indexOf(q)>-1)hit.push(id); });
+ if(hit.length){ focus=new Set(); hit.forEach(id=>hood(id).forEach(x=>focus.add(x))); renderer.refresh(); focusTo(hit[0]); detail(hit[0]); }
+ else { fetch(BASE+'/search?q='+encodeURIComponent(q)+'&limit=30').then(r=>r.json()).then(d=>{ (d.nodes||[]).forEach(n=>add({nodes:[n],edges:[]})); render(); startLayout(4000); }); }
+});
 document.getElementById('fit').onclick=()=>renderer&&renderer.getCamera().animatedReset();
-document.getElementById('reload').onclick=loadOverview;
-loadOverview();
+document.getElementById('reload').onclick=load;
+modeBtn.textContent='◰ full';
+load();
 </script></body></html>`

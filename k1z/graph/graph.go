@@ -527,6 +527,15 @@ func (g *Graph) Overview(hostCap int) SubGraph {
 		"hosts": len(hl), "hostCap": hostCap})
 }
 
+// Full returns the entire graph — every node and edge.
+func (g *Graph) Full() SubGraph {
+	keep := make(map[string]bool, len(g.Nodes))
+	for id := range g.Nodes {
+		keep[id] = true
+	}
+	return g.slice(keep, map[string]any{"total": len(g.Nodes), "shown": len(g.Nodes), "edgeCount": len(g.Edges)})
+}
+
 // Neighbors returns a node and its immediate neighbours.
 func (g *Graph) Neighbors(id string) SubGraph {
 	keep := map[string]bool{id: true}
