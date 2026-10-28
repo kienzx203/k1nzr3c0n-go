@@ -1040,16 +1040,23 @@ steps:
     ORG="${CENSYS_API_ID:-}"; PAT="${CENSYS_API_SECRET:-}"
     test -n "$ORG" -a -n "$PAT" || { printf '[censys] no CENSYS org/PAT (store ORG_ID:PAT) — skipping\n'; exit 0; }
     : > {workspace}/.cen_raw
-    TOK=""
-    for page in $(seq 1 {vars.censys_max_pages}); do
-      BODY=$(printf '{"query":"%s","page_size":100%s}' "{target}" "${TOK:+,\"page_token\":\"$TOK\"}")
-      R=$(curl -s --max-time 45 -X POST \
-        "https://api.platform.censys.io/v3/global/search/query?organization_id=${ORG}" \
-        -H "Authorization: Bearer ${PAT}" -H 'Content-Type: application/json' -d "$BODY" 2>/dev/null)
-      printf '%s' "$R" | jq -e 'has("status")' >/dev/null 2>&1 && break   # API error (e.g. plan page/result limit) -> stop
-      printf '%s\n' "$R" >> {workspace}/.cen_raw
-      TOK=$(printf '%s' "$R" | jq -r '.result.next_page_token // empty' 2>/dev/null)
-      [ -z "$TOK" ] && break
+    # Multi-query UNION. A single free-text query CAPS at ~500 results (plan limit:
+    # the 6th page returns an error), so on big targets it badly undercounts. We also
+    # slice by dataset so each query gets its OWN 500-result budget, then union the
+    # raw. host.dns.names is the big win (one host record carries many DNS names).
+    # Proven live: example.com 68 -> 295 subs; small targets (target) unchanged.
+    for Q in "{target}" "cert.names: {target}" "host.dns.names: {target}" "web.hostname: {target}" "host.services.cert.names: {target}"; do
+      TOK=""
+      for page in $(seq 1 {vars.censys_max_pages}); do
+        BODY=$(jq -nc --arg q "$Q" --arg t "$TOK" '{query:$q,page_size:100} + (if $t=="" then {} else {page_token:$t} end)')
+        R=$(curl -s --max-time 45 -X POST \
+          "https://api.platform.censys.io/v3/global/search/query?organization_id=${ORG}" \
+          -H "Authorization: Bearer ${PAT}" -H 'Content-Type: application/json' -d "$BODY" 2>/dev/null)
+        printf '%s' "$R" | jq -e 'has("status")' >/dev/null 2>&1 && break   # API error / 500-cap -> next query
+        printf '%s\n' "$R" >> {workspace}/.cen_raw
+        TOK=$(printf '%s' "$R" | jq -r '.result.next_page_token // empty' 2>/dev/null)
+        [ -z "$TOK" ] && break
+      done
     done
     # (1) hostnames -> subdomains (feeds merge_passive)
     grep -oE '[a-zA-Z0-9._-]+\.{target}' {workspace}/.cen_raw 2>/dev/null \
