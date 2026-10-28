@@ -19,26 +19,23 @@ import (
 )
 
 // ParseWorkspace re-parses every scanner for the run's workspace. Serialized
-// per run: incremental mid-run parses and the completion parse may race.
-func ParseWorkspace(st *store.Store, run *store.Run, b *bus.Bus) error {
-	parseMu.Lock()
-	if _, busy := parseRunning[run.ID]; busy {
-		parseMu.Unlock()
+// per run via a per-run lock. `force` (completion / manual re-parse) WAITS for
+// any in-flight parse then runs; incremental parses (force=false) skip if one
+// is already running — so the authoritative final parse is never dropped.
+func ParseWorkspace(st *store.Store, run *store.Run, b *bus.Bus, force bool) error {
+	if run.Workspace == "" { // check before deleting anything
 		return nil
 	}
-	parseRunning[run.ID] = true
-	parseMu.Unlock()
-	defer func() {
-		parseMu.Lock()
-		delete(parseRunning, run.ID)
-		parseMu.Unlock()
-	}()
+	ml := runLock(run.ID)
+	if force {
+		ml.Lock()
+	} else if !ml.TryLock() {
+		return nil // an incremental parse is in flight; the forced completion parse will run
+	}
+	defer ml.Unlock()
 
 	_ = st.DeleteFindingsByRun(run.ID)
 	ws := run.Workspace
-	if ws == "" {
-		return nil
-	}
 	scanNuclei(st, run, ws)
 	scanAfrog(st, run, ws)
 	scanHTTPX(st, run, ws)
@@ -118,9 +115,21 @@ func ingestAssetGraph(st *store.Store, run *store.Run) {
 }
 
 var (
-	parseMu      sync.Mutex
-	parseRunning = map[string]bool{}
+	parseMu    sync.Mutex
+	parseLocks = map[string]*sync.Mutex{}
 )
+
+// runLock returns the per-run parse mutex (created on first use).
+func runLock(id string) *sync.Mutex {
+	parseMu.Lock()
+	defer parseMu.Unlock()
+	m := parseLocks[id]
+	if m == nil {
+		m = &sync.Mutex{}
+		parseLocks[id] = m
+	}
+	return m
+}
 
 func firstExisting(ws string, names ...string) string {
 	for _, n := range names {
@@ -374,7 +383,7 @@ func scanSubdomains(st *store.Store, run *store.Run, ws string) {
 		"subdomains_all.txt", "passive_merged.txt", "tlsx_new_subs.txt", "js_subs.txt", "jsubfinder_subs.txt",
 		"st_intel_subs.txt", "reverse_dns_subs.txt", "ptr_subs.txt", "dns_records_subs.txt",
 		"vhost_new_hosts.txt", "favicon_in_scope.txt", "dns_svc_new_hosts.txt", "dns_zone_nsec.txt", "p_dns_zone.txt",
-		"pivot_new_resolved.txt", "http_redirect_resolved.txt", "ip_pivot_in_scope.txt")
+		"pivot_new_resolved.txt", "http_redirect_resolved.txt", "ip_pivot_in_scope.txt", "gap_live_pass3.txt", "gap_live_auth.txt")
 	if len(files) == 0 {
 		return
 	}
@@ -493,22 +502,26 @@ func tplHost(f *store.Finding) string {
 
 // ── line iteration helpers ───────────────────────────────────────────────────
 
+// eachJSONLine/eachLine use bufio.Reader (not Scanner) so a single multi-MB
+// line (httpx response bodies, nuclei stored responses) doesn't trip the
+// scanner token limit and silently drop the rest of the file.
 func eachJSONLine(path string, fn func(map[string]any)) {
 	f, err := os.Open(path)
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
-			continue
+	r := bufio.NewReader(f)
+	for {
+		raw, err := r.ReadString('\n')
+		if line := strings.TrimSpace(raw); line != "" {
+			var m map[string]any
+			if json.Unmarshal([]byte(line), &m) == nil {
+				fn(m)
+			}
 		}
-		var m map[string]any
-		if json.Unmarshal([]byte(line), &m) == nil {
-			fn(m)
+		if err != nil {
+			break
 		}
 	}
 }
@@ -519,10 +532,15 @@ func eachLine(path string, fn func(string)) {
 		return
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
-	for sc.Scan() {
-		fn(sc.Text())
+	r := bufio.NewReader(f)
+	for {
+		raw, err := r.ReadString('\n')
+		if len(raw) > 0 {
+			fn(strings.TrimRight(raw, "\r\n"))
+		}
+		if err != nil {
+			break
+		}
 	}
 }
 

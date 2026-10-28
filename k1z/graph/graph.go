@@ -884,7 +884,8 @@ func (g *Graph) Overview(hostCap int) SubGraph {
 	keep := map[string]bool{}
 	for id, n := range g.Nodes {
 		switch {
-		case n.Group == "domain" || n.Group == "asn" || n.Group == "subnet" || strings.HasPrefix(n.Group, "vuln"):
+		case n.Group == "domain" || n.Group == "asn" || n.Group == "subnet" ||
+			n.Group == "bucket" || n.Group == "provider" || strings.HasPrefix(n.Group, "vuln"):
 			keep[id] = true
 		}
 	}

@@ -730,17 +730,20 @@ func (s *Store) ListToolVersions() (map[string]ToolVersion, error) {
 // capStr truncates to n bytes on a valid-UTF8 boundary (Postgres rejects both
 // over-length VARCHAR values and invalid UTF-8, so we must do both).
 func capStr(str string, n int) string {
-	if len(str) <= n {
-		return str
+	if len(str) > n {
+		str = str[:n]
 	}
-	return strings.ToValidUTF8(str[:n], "")
+	return strings.ToValidUTF8(str, "") // always sanitize: PG rejects invalid UTF-8
 }
 
 func capStrPtr(p *string, n int) *string {
-	if p == nil || len(*p) <= n {
+	if p == nil {
 		return p
 	}
 	t := capStr(*p, n)
+	if t == *p {
+		return p
+	}
 	return &t
 }
 
@@ -768,6 +771,10 @@ func (s *Store) InsertFinding(f *Finding) error {
 	f.TemplateID = capStrPtr(f.TemplateID, 256)
 	f.IP = capStrPtr(f.IP, 64)
 	f.Screenshot = capStrPtr(f.Screenshot, 1024)
+	// TEXT columns: no width limit but still must be valid UTF-8 for Postgres
+	f.Evidence = capStrPtr(f.Evidence, 1<<20)
+	f.Description = capStrPtr(f.Description, 1<<20)
+	f.Notes = capStrPtr(f.Notes, 1<<20)
 	id, err := s.db.insertReturningID(`INSERT INTO findings (run_id, kind, severity, host, notes, tags, ip, port,
 		status_code, protocol, name, template_id, url, title, tech, evidence, description, status,
 		screenshot, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,

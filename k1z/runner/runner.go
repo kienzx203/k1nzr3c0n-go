@@ -444,7 +444,7 @@ func rParse(r *Runner, runID string) {
 	if err != nil {
 		return
 	}
-	_ = parsers.ParseWorkspace(r.St, run, r.Bus)
+	_ = parsers.ParseWorkspace(r.St, run, r.Bus, false)
 }
 
 // flipSteps rewrites steps with from-status into to-status in steps_json.
@@ -596,14 +596,14 @@ func (r *Runner) ExecuteRun(runID string) {
 		_ = r.finishRun(runID, "cancelled", nil, nil)
 		r.flipSteps(runID, "running", "cancelled")
 		r.publishDone(runID, "cancelled", elapsed, nil)
-		_ = parsers.ParseWorkspace(r.St, run, r.Bus) // partial results still parsed
+		_ = parsers.ParseWorkspace(r.St, run, r.Bus, true) // partial results still parsed
 		fireRunFinished(run.ID)
 	case statusErr == nil:
 		zero := 0
 		_ = r.finishRun(runID, "completed", nil, &zero)
 		r.flipSteps(runID, "running", "ok")
 		r.publishDone(runID, "completed", elapsed, &zero)
-		_ = parsers.ParseWorkspace(r.St, run, r.Bus)
+		_ = parsers.ParseWorkspace(r.St, run, r.Bus, true)
 		go notify.RunFinished(r.St, run, "completed")
 		go r.maybeAutoTriage(run)
 		fireRunFinished(run.ID) // push the brief back to the task that launched it (if registered)
@@ -616,7 +616,7 @@ func (r *Runner) ExecuteRun(runID string) {
 		_ = r.finishRun(runID, "failed", &msg, &rc)
 		r.flipSteps(runID, "running", "failed")
 		r.publishDone(runID, "failed", elapsed, &rc)
-		_ = parsers.ParseWorkspace(r.St, run, r.Bus)
+		_ = parsers.ParseWorkspace(r.St, run, r.Bus, true)
 		go notify.RunFinished(r.St, run, "failed")
 		fireRunFinished(run.ID) // partial findings from a failed run must still reach the task
 	}

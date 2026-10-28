@@ -196,9 +196,9 @@ const COL={domain:'#0969da',sub:'#54aeff',sub_dead:'#afb8c1',vhost:'#fb8500',sub
  bucket:'#9a6700',path:'#6f42c1'};
 const TIER={domain:0,asn:1,subnet:1,ip_pub:2,ip_int:2,ip_origin:2,provider:2,vhost:3,sub:3,sub_int:3,sub_dead:3,bucket:3,path:4};
 const FAM={domain:'domain',sub:'subdomain',sub_int:'subdomain',sub_dead:'subdomain',vhost:'subdomain',
- ip_pub:'ip',ip_int:'ip',ip_origin:'ip',asn:'asn',subnet:'subnet',provider:'provider'};
+ ip_pub:'ip',ip_int:'ip',ip_origin:'ip',asn:'asn',subnet:'subnet',provider:'provider',bucket:'bucket',path:'path'};
 const FAMS=[['domain','#0969da'],['subdomain','#54aeff'],['ip','#1f883d'],['asn','#8250df'],
- ['subnet','#bf8700'],['provider','#1b7c83'],['vuln','#cf222e'],['other','#8c959f']];
+ ['subnet','#bf8700'],['provider','#1b7c83'],['bucket','#9a6700'],['path','#6f42c1'],['vuln','#cf222e'],['other','#8c959f']];
 const famOf=grp=>!grp?'other':(grp.indexOf('vuln')===0?'vuln':(FAM[grp]||'other'));
 const tierOf=grp=>grp&&grp.indexOf('vuln')===0?4:(TIER[grp]!==undefined?TIER[grp]:3);
 function sizeOf(n){let s={0:14,1:10,2:6,3:4,4:7}[tierOf(n.group)]||4;

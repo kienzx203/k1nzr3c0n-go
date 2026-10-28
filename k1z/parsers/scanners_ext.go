@@ -98,6 +98,14 @@ func parseJSONArray(path string, fn func(map[string]any)) {
 	}
 }
 
+func firstField(s string) string {
+	f := strings.Fields(s)
+	if len(f) == 0 {
+		return ""
+	}
+	return f[0]
+}
+
 func firstURLTok(line string) string {
 	for _, t := range strings.Fields(line) {
 		if strings.HasPrefix(t, "http://") || strings.HasPrefix(t, "https://") {
@@ -110,7 +118,7 @@ func firstURLTok(line string) string {
 func trunc(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if len(s) > n {
-		return s[:n]
+		return strings.ToValidUTF8(s[:n], "") // rune-safe: Postgres rejects invalid UTF-8
 	}
 	return s
 }
@@ -225,7 +233,7 @@ func scanURLs(st *store.Store, run *store.Run, ws string) {
 	}
 	for _, f := range globFiles(ws, "katana_urls.txt", "hakrawler_urls.txt", "cariddi_urls.txt",
 		"gau_urls.txt", "gauplus_urls.txt", "waymore_urls.txt", "waybackurls_urls.txt",
-		"urlfinder_urls.txt", "all_urls.txt", "live_urls.txt", "js_urls.txt") {
+		"urlfinder_urls.txt", "all_urls.txt", "live_urls.txt", "js_urls.txt", "paramspider_urls.txt", "st_pivot_live_urls.txt") {
 		eachLine(f, emit)
 	}
 }
@@ -583,7 +591,7 @@ func scanNetIntel(st *store.Store, run *store.Run, ws string) {
 	// shared-hosting IPs (many vhosts on one IP)
 	for _, f := range globFiles(ws, "ip_groups/shared_hosting.txt") {
 		eachLine(f, func(l string) {
-			ip := strings.TrimSpace(strings.Fields(l+" ")[0])
+			ip := strings.TrimSpace(firstField(l))
 			if ip != "" {
 				st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "net", Host: ip, IP: sp(ip), Name: sp("shared-hosting IP " + ip)})
 			}
@@ -632,7 +640,7 @@ func scanServices(st *store.Store, run *store.Run, ws string) {
 			ls := strings.TrimSpace(l)
 			if strings.HasPrefix(ls, "Nmap scan report for ") {
 				host = strings.TrimSpace(strings.TrimPrefix(ls, "Nmap scan report for "))
-				host = strings.Trim(strings.Fields(host+" ")[0], "()")
+				host = strings.Trim(firstField(host), "()")
 				return
 			}
 			// "80/tcp open http nginx 1.18"
@@ -678,7 +686,7 @@ func scanDNSRecords(st *store.Store, run *store.Run, ws string) {
 				return
 			}
 			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "dns",
-				Host: strings.ToLower(strings.Fields(l+" ")[0]), Name: sp(trunc(l, 200))})
+				Host: strings.ToLower(firstField(l)), Name: sp(trunc(l, 200))})
 		})
 	}
 }
@@ -690,7 +698,7 @@ func scanCerts(st *store.Store, run *store.Run, ws string) {
 				return
 			}
 			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "cert",
-				Host: strings.ToLower(strings.Fields(l+" ")[0]), Name: sp(trunc(l, 200))})
+				Host: strings.ToLower(firstField(l)), Name: sp(trunc(l, 200))})
 		})
 	}
 	for _, f := range globFiles(ws, "st_ssl.json") {

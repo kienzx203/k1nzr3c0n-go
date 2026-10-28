@@ -17,5 +17,5 @@ func hexB(b []byte) string { return hex.EncodeToString(b) }
 
 // reparseRunner re-runs the findings parsers for one run (used by reparse + ws).
 func reparseRunner(s *Server, run *store.Run) error {
-	return parsers.ParseWorkspace(s.St, run, s.Bus)
+	return parsers.ParseWorkspace(s.St, run, s.Bus, true)
 }
