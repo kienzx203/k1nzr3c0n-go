@@ -45,10 +45,11 @@ var graphMergeFiles = []string{
 	"trufflehog_results.jsonl", "gitleaks_results.json", "swaggerspy_results.txt",
 	// gf attack-candidates (subdir preserved by the merge), related-domain intel
 	"gf/*.txt", "st_associated.txt", "st_pivot_domains.txt", "amass_intel.txt",
-	// service/cert/favicon/dns-record detail + shared-hosting (DB has these; keep
-	// them available to the graph too)
-	"nmap_service.txt", "rustscan_full.txt", "tlsx_raw.txt", "favicon_hashes.txt",
-	"dns_records_raw.txt", "ip_groups/shared_hosting.txt",
+	// service-version scans (graph reads these for port badges on IPs)
+	"nmap_service.txt", "rustscan_full.txt",
+	// NOTE: tlsx_raw / favicon_hashes / dns_records_raw / ip_groups/shared_hosting
+	// are DB-only (graph has no reader) — intentionally NOT merged, to keep the
+	// list == what graph.Build actually consumes.
 }
 
 func safeTargetDir(t string) string {
@@ -108,19 +109,7 @@ func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, gh)
 		return
 	}
-	os.MkdirAll(merged, 0o755)
-	for _, f := range graphMergeFiles {
-		var buf []byte
-		for _, ws := range wss {
-			if b, e := os.ReadFile(filepath.Join(ws, f)); e == nil && len(b) > 0 {
-				buf = append(buf, b...)
-				if b[len(b)-1] != '\n' {
-					buf = append(buf, '\n')
-				}
-			}
-		}
-		_ = os.WriteFile(filepath.Join(merged, f), buf, 0o644)
-	}
+	mergeRunFiles(wss, merged)
 	script := graphScript()
 	if !fileExists(script) {
 		writeDetail(w, 500, "recon-graph.py not found (deploy scripts/)")

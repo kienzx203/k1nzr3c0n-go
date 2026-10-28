@@ -140,7 +140,8 @@ func gitleaksCount(dir string) int {
 	if json.Unmarshal(b, &a) == nil {
 		return len(a)
 	}
-	return 0
+	// multi-run merge concatenates arrays → invalid JSON; count by RuleID
+	return strings.Count(string(b), "\"RuleID\"")
 }
 
 // globAll returns the deduped union of files matching any pattern under dir.
@@ -330,6 +331,48 @@ func Build(dir, target string) *Graph {
 	for _, f := range globAll(dir, "naabu*.jsonl", "naabu*.json", "st_pivot_naabu.jsonl", "ports.jsonl") {
 		jsonl(f, naabuH)
 	}
+	// nmap/rustscan service scan (normal -oN output) → open ports on hosts/ips
+	for _, f := range globAll(dir, "nmap_service.txt", "rustscan_full.txt") {
+		var curIP, curHost string
+		for _, ln := range lines(f) {
+			ls := strings.TrimSpace(ln)
+			if strings.HasPrefix(ls, "Nmap scan report for ") {
+				rest := strings.TrimSpace(strings.TrimPrefix(ls, "Nmap scan report for "))
+				curHost, curIP = "", ""
+				if i := strings.Index(rest, "("); i >= 0 {
+					curHost = strings.ToLower(strings.TrimSpace(rest[:i]))
+					curIP = strings.Trim(strings.TrimSpace(rest[i:]), "()")
+				} else if reIP.MatchString(rest) {
+					curIP = rest
+				} else {
+					curHost = strings.ToLower(rest)
+				}
+				if reHost.MatchString(curHost) {
+					hosts[curHost] = true
+					if curIP != "" {
+						addIP(curHost, curIP)
+					}
+				}
+				continue
+			}
+			ff := strings.Fields(ls)
+			if len(ff) >= 2 && strings.Contains(ff[0], "/") && ff[1] == "open" {
+				port := strings.SplitN(ff[0], "/", 2)[0]
+				if curIP != "" {
+					if ipPorts[curIP] == nil {
+						ipPorts[curIP] = map[string]struct{}{}
+					}
+					ipPorts[curIP][port] = struct{}{}
+				}
+				if curHost != "" {
+					if hostPorts[curHost] == nil {
+						hostPorts[curHost] = map[string]struct{}{}
+					}
+					hostPorts[curHost][port] = struct{}{}
+				}
+			}
+		}
+	}
 	nucleiHandler := func(m map[string]any) {
 		info, _ := m["info"].(map[string]any)
 		name := ""
@@ -362,7 +405,7 @@ func Build(dir, target string) *Graph {
 	// nuclei writes nuclei*.jsonl (not .json); afrog writes afrog.json(l). Glob so
 	// every scan file is read regardless of the exact step name.
 	nfiles := map[string]bool{}
-	for _, pat := range []string{"nuclei*.jsonl", "nuclei*.json", "afrog.json", "afrog.jsonl"} {
+	for _, pat := range []string{"nuclei*.jsonl", "nuclei*.json"} {
 		ms, _ := filepath.Glob(filepath.Join(dir, pat))
 		for _, f := range ms {
 			nfiles[f] = true
@@ -370,6 +413,76 @@ func Build(dir, target string) *Graph {
 	}
 	for f := range nfiles {
 		jsonl(f, nucleiHandler)
+	}
+	// afrog writes a (pretty-printed) JSON array with pocinfo/fulltarget fields —
+	// not JSONL and not nuclei-shaped, so it needs its own reader.
+	for _, f := range globAll(dir, "afrog.json", "afrog.jsonl") {
+		b, e := os.ReadFile(f)
+		if e != nil || len(b) == 0 {
+			continue
+		}
+		var arr []map[string]any
+		if json.Unmarshal(b, &arr) != nil {
+			arr = nil
+			for _, ln := range lines(f) {
+				var m map[string]any
+				if json.Unmarshal([]byte(ln), &m) == nil {
+					arr = append(arr, m)
+				}
+			}
+		}
+		for _, m := range arr {
+			name, sev := "", ""
+			if poc, ok := m["pocinfo"].(map[string]any); ok {
+				if in, ok := poc["info"].(map[string]any); ok {
+					name, sev = str(in["name"]), str(in["severity"])
+				}
+				if name == "" {
+					name = str(poc["infoname"])
+				}
+				if name == "" {
+					name = str(poc["id"])
+				}
+				if sev == "" {
+					sev = str(poc["severity"])
+				}
+			}
+			if info, ok := m["info"].(map[string]any); ok {
+				if name == "" {
+					name = str(info["name"])
+				}
+				if sev == "" {
+					sev = str(info["severity"])
+				}
+			}
+			for _, k := range []string{"poc-id", "id", "name"} {
+				if name == "" {
+					name = str(m[k])
+				}
+			}
+			if sev == "" {
+				sev = str(m["severity"])
+			}
+			tgt := str(m["fulltarget"])
+			if tgt == "" {
+				tgt = str(m["target"])
+			}
+			if tgt == "" {
+				tgt = str(m["url"])
+			}
+			h := strings.ToLower(hostOfURL(tgt))
+			if h == "" {
+				h = strings.ToLower(str(m["host"]))
+			}
+			if name == "" {
+				name = "afrog finding"
+			}
+			sev = strings.ToLower(sev)
+			if _, ok := sevW[sev]; !ok {
+				sev = "info"
+			}
+			findings = append(findings, finding{h, name, sev, tgt})
+		}
 	}
 	for _, ln := range lines(firstExisting(dir, "takeover_findings.txt")) {
 		h := hostOfURL(ln)
@@ -565,7 +678,7 @@ func Build(dir, target string) *Graph {
 	nParam := cnt("all_params.txt", "found_params.txt")
 	nSecret := cnt("jsubfinder_secrets.txt") + cnt("secretfinder_results.txt") +
 		cnt("trufflehog_results.jsonl") + cnt("swaggerspy_results.txt") + gitleaksCount(dir)
-	nRelated := cnt("st_associated.txt", "st_pivot_domains.txt", "amass_intel.txt")
+	nRelated := cnt("st_associated.txt") + cnt("st_pivot_domains.txt") + cnt("amass_intel.txt")
 
 	// ── assemble nodes/edges ───────────────────────────────────────────────────
 	if target != "" {

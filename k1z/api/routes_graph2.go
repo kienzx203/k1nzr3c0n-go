@@ -63,9 +63,18 @@ func (s *Server) targetGraph(target string) (*graph.Graph, int, error) {
 		return c.g, 200, nil
 	}
 	merged := filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(target))
+	mergeRunFiles(wss, merged)
+	g := graph.Build(merged, target)
+	graph2Cache[target] = &cachedGraph{g: g, builtAt: time.Now()}
+	return g, 200, nil
+}
+
+// mergeRunFiles concatenates each graphMergeFiles entry across run workspaces
+// into `merged`, expanding glob patterns and preserving subdirs (gf/, ip_groups/).
+// Shared by the graph2 engine and the legacy python renderer so they don't
+// pollute the shared targetgraphs dir with literal "*"-named junk files.
+func mergeRunFiles(wss []string, merged string) {
 	os.MkdirAll(merged, 0o755)
-	// concatenate each merge file across runs, preserving basename; patterns
-	// (e.g. nuclei*.jsonl) are expanded per workspace.
 	agg := map[string][]byte{}
 	for _, pat := range graphMergeFiles {
 		for _, ws := range wss {
@@ -80,7 +89,7 @@ func (s *Server) targetGraph(target string) (*graph.Graph, int, error) {
 				if e != nil || len(b) == 0 {
 					continue
 				}
-				rel, re := filepath.Rel(ws, p) // preserve subdirs (gf/, ip_groups/)
+				rel, re := filepath.Rel(ws, p)
 				if re != nil || strings.HasPrefix(rel, "..") {
 					rel = filepath.Base(p)
 				}
@@ -96,9 +105,6 @@ func (s *Server) targetGraph(target string) (*graph.Graph, int, error) {
 		_ = os.MkdirAll(filepath.Dir(dst), 0o755)
 		_ = os.WriteFile(dst, buf, 0o644)
 	}
-	g := graph.Build(merged, target)
-	graph2Cache[target] = &cachedGraph{g: g, builtAt: time.Now()}
-	return g, 200, nil
 }
 
 func (s *Server) graphFor(w http.ResponseWriter, r *http.Request) *graph.Graph {

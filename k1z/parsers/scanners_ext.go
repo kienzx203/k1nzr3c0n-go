@@ -119,34 +119,14 @@ func trunc(s string, n int) string {
 
 func scanAfrog(st *store.Store, run *store.Run, ws string) {
 	handle := func(m map[string]any) {
-		name, sev := "", ""
-		if poc, ok := m["pocinfo"].(map[string]any); ok {
-			name = str(poc["infoname"])
-			if name == "" {
-				name = str(poc["id"])
-			}
-			sev = str(poc["severity"])
-		}
-		if info, ok := m["info"].(map[string]any); ok {
-			if name == "" {
-				name = str(info["name"])
-			}
-			if sev == "" {
-				sev = str(info["severity"])
-			}
-		}
-		if sev == "" { // some afrog versions emit a flat top-level severity
-			sev = str(m["severity"])
-		}
-		host := str(m["fulltarget"])
+		name, sev := afrogFields(m)
+		url := afrogTarget(m)
+		host := hostOfURL(url)
 		if host == "" {
-			host = str(m["target"])
-		}
-		if name == "" {
-			name = "afrog finding"
+			host = strings.ToLower(str(m["host"]))
 		}
 		st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "vuln", Severity: severity(sev),
-			Host: hostOfURL(host), Name: sp(name), URL: strp(host)})
+			Host: host, Name: sp(name), URL: strp(url)})
 	}
 	for _, f := range globFiles(ws, "afrog.jsonl") {
 		eachJSONLine(f, handle)
@@ -161,6 +141,55 @@ func scanAfrog(st *store.Store, run *store.Run, ws string) {
 			eachJSONLine(f, handle)
 		}
 	}
+}
+
+// afrogFields extracts (name, severity) across afrog's divergent json schemas:
+// nested pocinfo.info / flat info / flat top-level {name,severity} / poc-id|id.
+func afrogFields(m map[string]any) (string, string) {
+	name, sev := "", ""
+	if poc, ok := m["pocinfo"].(map[string]any); ok {
+		if in, ok := poc["info"].(map[string]any); ok {
+			name, sev = str(in["name"]), str(in["severity"])
+		}
+		if name == "" {
+			name = str(poc["infoname"])
+		}
+		if name == "" {
+			name = str(poc["id"])
+		}
+		if sev == "" {
+			sev = str(poc["severity"])
+		}
+	}
+	if info, ok := m["info"].(map[string]any); ok {
+		if name == "" {
+			name = str(info["name"])
+		}
+		if sev == "" {
+			sev = str(info["severity"])
+		}
+	}
+	for _, k := range []string{"poc-id", "id", "name"} {
+		if name == "" {
+			name = str(m[k])
+		}
+	}
+	if sev == "" {
+		sev = str(m["severity"])
+	}
+	if name == "" {
+		name = "afrog finding"
+	}
+	return name, sev
+}
+
+func afrogTarget(m map[string]any) string {
+	for _, k := range []string{"fulltarget", "target", "url"} {
+		if v := str(m[k]); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // ── URLs (crawlers + archives) ───────────────────────────────────────────────
@@ -279,14 +308,31 @@ func scanSecrets(st *store.Store, run *store.Run, ws string) {
 			add("secret: "+str(m["RuleID"]), str(m["Secret"]), "")
 		})
 	}
-	for _, f := range globFiles(ws, "secretfinder_results.txt", "jsubfinder_secrets.txt", "swaggerspy_results.txt") {
+	// swaggerspy: only "[*] ..." secret lines (not "[*] Found ...", not "URL: ...")
+	for _, f := range globFiles(ws, "swaggerspy_results.txt") {
 		eachLine(f, func(l string) {
-			if l = strings.TrimSpace(l); l != "" {
-				add(l, "", hostOfURL(firstURLTok(l)))
+			l = strings.TrimSpace(stripANSI(l))
+			if strings.HasPrefix(l, "[*]") && !strings.Contains(l, "Found") {
+				add(strings.TrimSpace(strings.TrimPrefix(l, "[*]")), "", "")
 			}
 		})
 	}
+	// secretfinder / jsubfinder: strip ANSI, skip banners/empties, attribute to
+	// the URL in the line when present.
+	for _, f := range globFiles(ws, "secretfinder_results.txt", "jsubfinder_secrets.txt") {
+		eachLine(f, func(l string) {
+			l = strings.TrimSpace(stripANSI(l))
+			if l == "" || strings.HasPrefix(l, "#") || strings.Contains(l, "SecretFinder") || strings.Contains(l, "github.com/") {
+				return
+			}
+			add(l, "", hostOfURL(firstURLTok(l)))
+		})
+	}
 }
+
+var reANSI = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string { return reANSI.ReplaceAllString(s, "") }
 
 // ── parameters ───────────────────────────────────────────────────────────────
 
@@ -406,7 +452,7 @@ func scanBuckets(st *store.Store, run *store.Run, ws string) {
 					name = str(m["bucket"])
 				}
 			}
-			if name == "" || exists == 0 { // 0 = does not exist
+			if name == "" || exists != 1 { // keep only confirmed-exists (1); drop 0/2
 				return
 			}
 			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "bucket", Host: run.Target,
@@ -455,7 +501,7 @@ func scanNetIntel(st *store.Store, run *store.Run, ws string) {
 					prefix = strings.TrimSpace(c[3])
 				}
 				st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "asn", Host: c[0], IP: sp(c[0]),
-					Name: sp(strings.TrimSpace("AS" + c[1] + " " + c[2])), Description: strp(prefix)})
+					Name: sp(strings.TrimSpace(c[1] + " " + c[2])), Description: strp(prefix)})
 			}
 		})
 	}
