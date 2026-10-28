@@ -52,6 +52,13 @@
  .search{position:relative;display:inline-flex;align-items:center}
  .search svg{position:absolute;left:10px;width:14px;height:14px;color:var(--mut);pointer-events:none}
  .search input{padding-left:30px;width:208px}
+ #qsug{display:none;position:absolute;top:34px;left:0;right:0;background:var(--surface);border:1px solid var(--bd);
+   border-radius:9px;box-shadow:var(--sh-lg);z-index:30;max-height:300px;overflow:auto;padding:4px}
+ #qsug.open{display:block}
+ #qsug .s{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;cursor:pointer;
+   font:11.5px ui-monospace,monospace;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #qsug .s:hover,#qsug .s.sel{background:rgba(127,139,153,.16);color:var(--fg)}
+ #qsug .s small{color:var(--mut);margin-left:auto}
  .seg{display:inline-flex;border:1px solid var(--bd);border-radius:9px;overflow:hidden;background:var(--surface);box-shadow:var(--sh-sm)}
  .seg button{border:0;border-radius:0;box-shadow:none;border-left:1px solid var(--bd2)}
  .seg button:first-child{border-left:0}
@@ -129,7 +136,8 @@
  <span class="sp"></span>
  <div class="search">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-  <input id="q" placeholder="search host / ip / asn…">
+  <input id="q" placeholder="search host / ip / asn…  (press /)" autocomplete="off">
+  <div id="qsug"></div>
  </div>
  <button id="lay" title="re-run force layout">⚛ layout</button>
  <div class="seg">
@@ -150,6 +158,10 @@
 <div id="main">
  <div id="cy"></div>
  <div class="panel" id="left">
+  <h4>Display</h4>
+  <div class="row"><label><input type="checkbox" id="optLabels" checked> labels</label>
+   <label><input type="checkbox" id="optEdges" checked> edges</label></div>
+  <div class="row"><span style="width:62px">node size</span><input type="range" id="optSize" min="50" max="250" value="100"><span class="cnt" id="optSizeV">1.0×</span></div>
   <h4>Filters</h4>
   <div id="filters"></div>
   <div class="row"><span style="width:62px">min deg</span><input type="range" id="minDeg" min="0" max="15" value="0"><span class="cnt" id="minDegV">0</span></div>
@@ -203,7 +215,7 @@
   <div id="zlvl">100%</div>
  </div>
  <div id="spin" class="spin" style="display:none"></div>
- <div id="hint">hover = spotlight · drag = move · click = inspect · right-click = transforms · scroll = zoom</div>
+ <div id="hint">hover = spotlight · click = inspect · right-click = transforms · keys: / search · F fit · O full/overview · D dark · L labels · G edges · Esc clear</div>
 </div>
 <div id="ctx"></div><div id="toast"></div>
 <script>
@@ -318,6 +330,7 @@ $('colorBy').onchange=e=>{ colorBy=e.target.value||null;
 // ── render + interaction ────────────────────────────────────────────────
 let renderer=null, focus=null, pathSet=null, pickMode=null, src=null, dst=null, hover=null, hoverNode=null;
 let theme='light', DIM='#e6eaee', DIM2='#eef1f4', EDGECOL='#dbe1e8', LABELCOL='#1f2328';
+let showEdges=true, nodeScale=1;
 try{ theme=localStorage.getItem('g2theme')||'light'; }catch(e){}
 function applyTheme(){
  document.documentElement.setAttribute('data-theme',theme);
@@ -353,7 +366,7 @@ function render(){
    renderEdgeLabels:false,zIndex:true,minCameraRatio:0.015,maxCameraRatio:22});
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
    if(!passFilter(n,a))return Object.assign({},d,{hidden:true});
-   let o=d;
+   let o=nodeScale!==1?Object.assign({},d,{size:d.size*nodeScale}):d;
    if(diffMode){ const st=diffStatus[n]||'same';
      o=Object.assign({},d,{color:DIFFC[st],size:st==='gone'?Math.max(2,d.size*0.75):d.size,zIndex:st==='same'?0:2}); }
    else if(colorBy&&metrics){ o=applyMetric(n,d); }
@@ -364,6 +377,7 @@ function render(){
      else { return Object.assign({},o,{color:DIM2,label:'',size:Math.max(1.5,o.size*0.5),zIndex:0}); } }
    return o; });
  renderer.setSetting('edgeReducer',(e,d)=>{ const x=g.extremities(e);
+   if(!showEdges)return Object.assign({},d,{hidden:true});
    if(!passFilter(x[0],g.getNodeAttributes(x[0]))||!passFilter(x[1],g.getNodeAttributes(x[1])))return Object.assign({},d,{hidden:true});
    if(pathSet){ return (pathSet.has(x[0])&&pathSet.has(x[1]))?Object.assign({},d,{color:'#cf222e',size:2.4,zIndex:3}):Object.assign({},d,{hidden:true}); }
    if(focus&&(!focus.has(x[0])||!focus.has(x[1])))return Object.assign({},d,{hidden:true});
@@ -480,6 +494,40 @@ $('theme').onclick=()=>{ theme=theme==='dark'?'light':'dark'; try{localStorage.s
 $('mini').onclick=e=>{ if(!renderer)return; const cv=$('mini'),t=cv._t; if(!t)return; const r=cv.getBoundingClientRect();
  const gx=t.mnx+((e.clientX-r.left)*(cv.width/r.width)-t.ox)/t.sc, gy=t.mny+((e.clientY-r.top)*(cv.height/r.height)-t.oy)/t.sc;
  try{ const fg=renderer.viewportToFramedGraph(renderer.graphToViewport({x:gx,y:gy})); renderer.getCamera().animate({x:fg.x,y:fg.y},{duration:350}); }catch(x){} };
+// display controls
+$('optLabels').onchange=e=>{ renderer&&renderer.setSetting('renderLabels',e.target.checked); renderer&&renderer.refresh(); };
+$('optEdges').onchange=e=>{ showEdges=e.target.checked; renderer&&renderer.refresh(); };
+$('optSize').oninput=e=>{ nodeScale=(+e.target.value)/100; $('optSizeV').textContent=nodeScale.toFixed(1)+'×'; renderer&&renderer.refresh(); };
+// search autocomplete
+let sugSel=-1;
+$('q').addEventListener('input',e=>{ const q=(e.target.value||'').trim().toLowerCase(); const box=$('qsug');
+ if(!q||!renderer){ box.classList.remove('open'); return; }
+ const hits=[]; g.forEachNode((id,a)=>{ if(hits.length<60&&((a.rawlabel||'').toLowerCase().indexOf(q)>-1||id.toLowerCase().indexOf(q)>-1))hits.push([id,a]); });
+ hits.sort((a,b)=>(b[1].risk||0)-(a[1].risk||0)); const top=hits.slice(0,10); sugSel=-1;
+ if(!top.length){ box.classList.remove('open'); return; }
+ box.innerHTML=top.map(([id,a])=>'<div class="s" data-go="'+esc(id)+'"><span class="dot" style="background:'+(a.color||'#8c959f')+'"></span><span>'+esc(a.rawlabel||id)+'</span><small>'+esc(a.group||'')+'</small></div>').join('');
+ box.classList.add('open');
+ box.querySelectorAll('.s').forEach(el=>el.onclick=()=>{ box.classList.remove('open'); $('q').value=g.getNodeAttributes(el.dataset.go).rawlabel||el.dataset.go; focusNode(el.dataset.go); }); });
+$('q').addEventListener('keydown',e=>{ const box=$('qsug'); if(!box.classList.contains('open'))return; const items=box.querySelectorAll('.s');
+ if(e.key==='ArrowDown'){ e.preventDefault(); sugSel=Math.min(items.length-1,sugSel+1); }
+ else if(e.key==='ArrowUp'){ e.preventDefault(); sugSel=Math.max(0,sugSel-1); }
+ else if(e.key==='Enter'&&sugSel>=0&&items[sugSel]){ e.preventDefault(); items[sugSel].click(); return; }
+ else if(e.key==='Escape'){ box.classList.remove('open'); return; } else return;
+ items.forEach((it,i)=>it.classList.toggle('sel',i===sugSel)); });
+document.addEventListener('click',e=>{ if(!e.target.closest('.search'))$('qsug').classList.remove('open'); });
+// keyboard shortcuts
+document.addEventListener('keydown',e=>{ const tag=e.target.tagName;
+ if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'){ if(e.key==='Escape')e.target.blur(); return; }
+ if(e.metaKey||e.ctrlKey||e.altKey)return;
+ switch(e.key){
+  case 'f': case 'F': renderer&&renderer.getCamera().animatedReset({duration:300}); break;
+  case 'o': case 'O': $('mode').click(); break;
+  case 'd': case 'D': $('theme').click(); break;
+  case 'l': case 'L': $('optLabels').checked=!$('optLabels').checked; $('optLabels').onchange({target:$('optLabels')}); break;
+  case 'g': case 'G': $('optEdges').checked=!$('optEdges').checked; $('optEdges').onchange({target:$('optEdges')}); break;
+  case '/': e.preventDefault(); $('q').focus(); break;
+  case 'Escape': focus=null;pathSet=null;hover=null; renderer&&renderer.refresh(); break;
+ } });
 
 // ── saved views ──────────────────────────────────────────────────────────
 function syncFilterUI(){ document.querySelectorAll('#filters input[data-f]').forEach(cb=>cb.checked=!!filter[cb.dataset.f]); }
