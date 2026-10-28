@@ -4,10 +4,39 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/Autumn-27/artex/k1z/store"
 )
+
+var reStatusTok = regexp.MustCompile(`(?i)status:\s*(\d{3})`)
+
+// parseDirsearch: "200   305B  http://host/path" → (url, status)
+func parseDirsearch(l string) (string, int) {
+	ff := strings.Fields(l)
+	if len(ff) == 0 {
+		return "", 0
+	}
+	code, _ := strconv.Atoi(ff[0])
+	return firstURLTok(l), code
+}
+
+// parseGobuster: "/admin (Status: 200) [Size: 1234]" → (url, status)
+func parseGobuster(l, target string) (string, int) {
+	code := 0
+	if m := reStatusTok.FindStringSubmatch(l); m != nil {
+		code, _ = strconv.Atoi(m[1])
+	}
+	u := firstURLTok(l)
+	if u == "" {
+		if ff := strings.Fields(l); len(ff) > 0 && strings.HasPrefix(ff[0], "/") {
+			u = "https://" + target + ff[0]
+		}
+	}
+	return u, code
+}
 
 // This file extends ingestion so EVERY workspace tool output reaches the DB.
 // New finding kinds: url, endpoint, secret, param, cert, asn, net, cdn, bucket,
@@ -187,6 +216,9 @@ func scanEndpoints(st *store.Store, run *store.Run, ws string) {
 		if u == "" || seen[u] {
 			return
 		}
+		if code == 404 { // drop not-found noise from content discovery
+			return
+		}
 		seen[u] = true
 		if n >= rowCap {
 			return
@@ -198,6 +230,24 @@ func scanEndpoints(st *store.Store, run *store.Run, ws string) {
 		}
 		st.InsertFinding(fd)
 	}
+	// status-bearing content discovery FIRST so the status variant wins dedup
+	for _, f := range globFiles(ws, "ffuf_paths.json") {
+		parseJSONArray(f, func(m map[string]any) { emit(str(m["url"]), intFromAny(m["status"])) })
+	}
+	for _, f := range globFiles(ws, "feroxbuster.json") {
+		eachJSONLine(f, func(m map[string]any) {
+			if t := str(m["type"]); t == "" || t == "response" {
+				emit(str(m["url"]), intFromAny(m["status"]))
+			}
+		})
+	}
+	for _, f := range globFiles(ws, "dirsearch.txt") {
+		eachLine(f, func(l string) { u, c := parseDirsearch(l); if u != "" { emit(u, c) } })
+	}
+	for _, f := range globFiles(ws, "gobuster_dir.txt") {
+		eachLine(f, func(l string) { u, c := parseGobuster(l, run.Target); if u != "" { emit(u, c) } })
+	}
+	// crawl / JS / linkfinder endpoints (no status)
 	for _, f := range globFiles(ws, "linkfinder_endpoints.txt", "jsapiscan_results.txt",
 		"all_endpoints.txt", "nuclei_urls.txt") {
 		eachLine(f, func(l string) {
@@ -207,21 +257,6 @@ func scanEndpoints(st *store.Store, run *store.Run, ws string) {
 				emit("https://"+run.Target+l, 0)
 			}
 		})
-	}
-	// dir-brute text (dirsearch / gobuster): pull the URL token from each line
-	for _, f := range globFiles(ws, "dirsearch.txt", "gobuster_dir.txt") {
-		eachLine(f, func(l string) {
-			if u := firstURLTok(l); u != "" {
-				emit(u, 0)
-			}
-		})
-	}
-	// ffuf paths + feroxbuster (JSON/JSONL)
-	for _, f := range globFiles(ws, "ffuf_paths.json") {
-		parseJSONArray(f, func(m map[string]any) { emit(str(m["url"]), intFromAny(m["status"])) })
-	}
-	for _, f := range globFiles(ws, "feroxbuster.json") {
-		eachJSONLine(f, func(m map[string]any) { emit(str(m["url"]), intFromAny(m["status"])) })
 	}
 }
 
