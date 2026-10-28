@@ -64,17 +64,32 @@ func (s *Server) targetGraph(target string) (*graph.Graph, int, error) {
 	}
 	merged := filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(target))
 	os.MkdirAll(merged, 0o755)
-	for _, f := range graphMergeFiles {
-		var buf []byte
+	// concatenate each merge file across runs, preserving basename; patterns
+	// (e.g. nuclei*.jsonl) are expanded per workspace.
+	agg := map[string][]byte{}
+	for _, pat := range graphMergeFiles {
 		for _, ws := range wss {
-			if b, e := os.ReadFile(filepath.Join(ws, f)); e == nil && len(b) > 0 {
-				buf = append(buf, b...)
+			var paths []string
+			if strings.ContainsAny(pat, "*?[") {
+				paths, _ = filepath.Glob(filepath.Join(ws, pat))
+			} else {
+				paths = []string{filepath.Join(ws, pat)}
+			}
+			for _, p := range paths {
+				b, e := os.ReadFile(p)
+				if e != nil || len(b) == 0 {
+					continue
+				}
+				base := filepath.Base(p)
+				agg[base] = append(agg[base], b...)
 				if b[len(b)-1] != '\n' {
-					buf = append(buf, '\n')
+					agg[base] = append(agg[base], '\n')
 				}
 			}
 		}
-		_ = os.WriteFile(filepath.Join(merged, f), buf, 0o644)
+	}
+	for base, buf := range agg {
+		_ = os.WriteFile(filepath.Join(merged, base), buf, 0o644)
 	}
 	g := graph.Build(merged, target)
 	graph2Cache[target] = &cachedGraph{g: g, builtAt: time.Now()}

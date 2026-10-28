@@ -7,6 +7,7 @@ package graph
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -266,36 +267,46 @@ func Build(dir, target string) *Graph {
 			ipPorts[ip][strconv.Itoa(port)] = struct{}{}
 		}
 	})
-	for _, fn := range []string{"nuclei.json", "nuclei_results.json", "nuclei_hosts.json", "nuclei_misconfig.json", "afrog.json"} {
-		jsonl(firstExisting(dir, fn), func(m map[string]any) {
-			info, _ := m["info"].(map[string]any)
-			name := ""
-			sev := "info"
-			if info != nil {
-				name = str(info["name"])
-				if s := str(info["severity"]); s != "" {
-					sev = s
-				}
+	nucleiHandler := func(m map[string]any) {
+		info, _ := m["info"].(map[string]any)
+		name := ""
+		sev := "info"
+		if info != nil {
+			name = str(info["name"])
+			if s := str(info["severity"]); s != "" {
+				sev = s
 			}
-			if name == "" {
-				name = str(m["template-id"])
-			}
-			if name == "" {
-				name = "finding"
-			}
-			matched := str(m["matched-at"])
-			h := strings.ToLower(str(m["host"]))
-			if h == "" {
-				h = hostOfURL(matched)
-			}
-			if h == "" {
-				h = str(m["ip"])
-			}
-			if _, ok := sevW[sev]; !ok && sev != "info" {
-				sev = "info"
-			}
-			findings = append(findings, finding{h, name, strings.ToLower(sev), matched})
-		})
+		}
+		if name == "" {
+			name = str(m["template-id"])
+		}
+		if name == "" {
+			name = "finding"
+		}
+		matched := str(m["matched-at"])
+		h := strings.ToLower(str(m["host"]))
+		if h == "" {
+			h = hostOfURL(matched)
+		}
+		if h == "" {
+			h = str(m["ip"])
+		}
+		if _, ok := sevW[sev]; !ok && sev != "info" {
+			sev = "info"
+		}
+		findings = append(findings, finding{h, name, strings.ToLower(sev), matched})
+	}
+	// nuclei writes nuclei*.jsonl (not .json); afrog writes afrog.json(l). Glob so
+	// every scan file is read regardless of the exact step name.
+	nfiles := map[string]bool{}
+	for _, pat := range []string{"nuclei*.jsonl", "nuclei*.json", "afrog.json", "afrog.jsonl"} {
+		ms, _ := filepath.Glob(filepath.Join(dir, pat))
+		for _, f := range ms {
+			nfiles[f] = true
+		}
+	}
+	for f := range nfiles {
+		jsonl(f, nucleiHandler)
 	}
 	for _, ln := range lines(firstExisting(dir, "takeover_findings.txt")) {
 		h := hostOfURL(ln)
@@ -332,9 +343,105 @@ func Build(dir, target string) *Graph {
 		}
 	}
 
+	// ── extended surface coverage (permutation/tlsx/pivot/vhost/favicon/js/ptr) ──
+	for _, p := range []string{"subdomains_all_resolved.txt", "subdomains_all.txt", "subdomains_tlsx_resolved.txt",
+		"tlsx_new_subs.txt", "js_subs.txt", "jsubfinder_subs.txt", "st_intel_subs.txt", "reverse_dns_subs.txt",
+		"ptr_subs.txt", "dns_records_subs.txt", "http_redirect_subs.txt", "recursive_parents.txt"} {
+		for _, h := range lines(firstExisting(dir, p)) {
+			h = strings.ToLower(strings.Trim(h, "."))
+			if reHost.MatchString(h) {
+				hosts[h] = true
+			}
+		}
+	}
+	// hosts found via vhost/favicon/pivot = non-standard (interesting) surface
+	for _, p := range []string{"vhost_new_hosts.txt", "favicon_in_scope.txt", "pivot_new_resolved.txt",
+		"http_redirect_resolved.txt", "dns_svc_new_hosts.txt"} {
+		for _, ln := range lines(firstExisting(dir, p)) {
+			f := strings.Fields(ln)
+			if len(f) == 0 {
+				continue
+			}
+			h := strings.ToLower(strings.Trim(f[0], "."))
+			if reHost.MatchString(h) {
+				hosts[h] = true
+				interesting[h] = true
+			}
+		}
+	}
+	// PTR: "ip [host ...]" or "ip\thost" → link host↔ip
+	for _, p := range []string{"ptr_resolved.txt", "dns_ptr.txt"} {
+		for _, ln := range lines(firstExisting(dir, p)) {
+			var ip string
+			var hs []string
+			for _, tok := range strings.Fields(ln) {
+				tok = strings.Trim(tok, "[],.")
+				if reIP.MatchString(tok) {
+					ip = tok
+				} else if l := strings.ToLower(tok); reHost.MatchString(l) {
+					hs = append(hs, l)
+				}
+			}
+			if ip != "" {
+				for _, h := range hs {
+					hosts[h] = true
+					addIP(h, ip)
+				}
+			}
+		}
+	}
+	// org/ASN CIDR ranges → subnet nodes
+	for _, p := range []string{"asn_ipv4_cidrs.txt", "amass_intel_cidrs.txt", "censys_prefixes.txt"} {
+		for _, ln := range lines(firstExisting(dir, p)) {
+			if f := strings.Fields(ln); len(f) > 0 && strings.Contains(f[0], "/") {
+				subnets[f[0]] = true
+			}
+		}
+	}
+	// CDN classification: host/ip → provider name
+	cdnOf := map[string]string{}
+	jsonl(firstExisting(dir, "cdncheck.jsonl", "cdncheck.json"), func(m map[string]any) {
+		name := str(m["cdn_name"])
+		if name == "" {
+			name = str(m["cdn"])
+		}
+		if name == "" || name == "false" || name == "true" {
+			return
+		}
+		if h := strings.ToLower(str(m["host"])); reHost.MatchString(h) {
+			cdnOf[h] = name
+		}
+		if ip := str(m["ip"]); reIP.MatchString(ip) {
+			cdnOf[ip] = name
+		}
+		if in := strings.ToLower(str(m["input"])); reHost.MatchString(in) || reIP.MatchString(in) {
+			cdnOf[in] = name
+		}
+	})
+	// cloud buckets (s3scanner)
+	type bkt struct{ name, info string }
+	var buckets []bkt
+	jsonl(firstExisting(dir, "s3scanner.json", "s3scanner.jsonl"), func(m map[string]any) {
+		name := str(m["name"])
+		if name == "" {
+			name = str(m["bucket"])
+		}
+		if name != "" {
+			buckets = append(buckets, bkt{name, strings.TrimSpace(str(m["region"]) + " " + str(m["provider"]))})
+		}
+	})
+	// high-cardinality surface (URLs/endpoints/params/secrets) → counts on the domain
+	cnt := func(names ...string) int { return len(lines(firstExisting(dir, names...))) }
+	nURL := cnt("all_urls.txt", "live_urls.txt")
+	nEnd := cnt("all_endpoints.txt", "linkfinder_endpoints.txt")
+	nParam := cnt("all_params.txt", "found_params.txt")
+	nSecret := cnt("jsubfinder_secrets.txt") + cnt("secretfinder_results.txt") +
+		cnt("trufflehog_results.jsonl") + cnt("swaggerspy_results.txt")
+
 	// ── assemble nodes/edges ───────────────────────────────────────────────────
 	if target != "" {
-		g.add(&Node{ID: "dom:" + target, Label: target, Group: "domain"})
+		dtitle := fmt.Sprintf("%s\nURLs: %d · endpoints: %d · params: %d · secrets: %d", target, nURL, nEnd, nParam, nSecret)
+		g.add(&Node{ID: "dom:" + target, Label: target, Group: "domain", Title: dtitle})
 	}
 	riskOf := map[string]int{}
 	for _, f := range findings {
@@ -441,6 +548,28 @@ func Build(dir, target string) *Graph {
 			g.link("ip:"+f.host, fid, sev)
 		}
 	}
+	// CDN providers: host/ip → provider node
+	for key, name := range cdnOf {
+		var anchor string
+		if _, ok := g.Nodes["h:"+key]; ok {
+			anchor = "h:" + key
+		} else if _, ok := g.Nodes["ip:"+key]; ok {
+			anchor = "ip:" + key
+		}
+		if anchor != "" {
+			g.add(&Node{ID: "cdn:" + name, Label: name, Group: "provider", Title: "CDN: " + name})
+			g.link(anchor, "cdn:"+name, "CDN")
+		}
+	}
+	// cloud buckets → attached to the domain
+	for _, b := range buckets {
+		bid := "bkt:" + b.name
+		g.add(&Node{ID: bid, Label: b.name, Group: "bucket", Title: "bucket: " + b.name + "\n" + b.info})
+		if target != "" {
+			g.link("dom:"+target, bid, "bucket")
+		}
+	}
+
 	// connected backbone: domain → subnet/ASN clusters, so the graph is one
 	// component and attack-paths (domain → internal host) resolve.
 	if target != "" {

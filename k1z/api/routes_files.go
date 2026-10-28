@@ -20,11 +20,29 @@ import (
 // graphMergeFiles are the per-run workspace files the target graph unions across
 // all of a target's runs (recon-graph.py dedupes internally).
 var graphMergeFiles = []string{
-	"subdomains.txt", "subdomains_resolved_resp.txt", "resolved.txt", "dns_resolved.txt",
-	"httpx.json", "naabu.json", "nuclei.json", "nuclei_hosts.json", "nuclei_misconfig.json",
-	"censys_hosts.txt", "censys_ip.txt", "fofa_ip_port.txt", "internal_hosts.txt", "dns_internal_hosts.txt",
-	"internal_subnets.txt", "dns_internal_subnets.txt", "interesting.txt", "origin_ips.txt",
-	"ptr.txt", "dns_ptr.txt", "dns_zone_nsec.txt", "p_dns_zone.txt", "takeover_findings.txt", "cdncheck.json",
+	// host name sources
+	"subdomains.txt", "subdomains_resolved.txt", "subdomains_all_resolved.txt", "subdomains_all.txt",
+	"passive_merged.txt", "subdomains_resolved_resp.txt", "subdomains_tlsx_resolved.txt", "tlsx_new_subs.txt",
+	"js_subs.txt", "jsubfinder_subs.txt", "st_intel_subs.txt", "reverse_dns_subs.txt", "ptr_subs.txt",
+	"dns_records_subs.txt", "http_redirect_subs.txt", "recursive_parents.txt",
+	// edge/interesting surface
+	"vhost_new_hosts.txt", "favicon_in_scope.txt", "pivot_new_resolved.txt", "http_redirect_resolved.txt",
+	"dns_svc_new_hosts.txt", "interesting.txt",
+	// resolve / ip
+	"resolved.txt", "dns_resolved.txt", "ptr_resolved.txt", "ptr.txt", "dns_ptr.txt",
+	// http / ports / vulns (nuclei*.jsonl + afrog globbed)
+	"httpx.json", "httpx.jsonl", "httpx_probe.jsonl", "pivot_httpx_probe.jsonl", "st_pivot_httpx.jsonl",
+	"naabu.json", "naabu.jsonl", "naabu_asn.jsonl", "st_pivot_naabu.jsonl",
+	"nuclei*.jsonl", "nuclei*.json", "afrog.json", "afrog.jsonl", "takeover_findings.txt", "s3scanner.json", "s3scanner.jsonl",
+	// intel: censys / fofa / asn / internal / origin / cdn
+	"censys_hosts.txt", "censys_ip.txt", "censys_prefixes.txt", "fofa_ip_port.txt",
+	"asn_ipv4_cidrs.txt", "amass_intel_cidrs.txt", "internal_hosts.txt", "dns_internal_hosts.txt",
+	"internal_subnets.txt", "dns_internal_subnets.txt", "origin_ips.txt", "cdncheck.jsonl", "cdncheck.json",
+	"dns_zone_nsec.txt", "p_dns_zone.txt",
+	// high-cardinality counts (urls/endpoints/params/secrets)
+	"all_urls.txt", "live_urls.txt", "all_endpoints.txt", "linkfinder_endpoints.txt",
+	"all_params.txt", "found_params.txt", "jsubfinder_secrets.txt", "secretfinder_results.txt",
+	"trufflehog_results.jsonl", "swaggerspy_results.txt",
 }
 
 func safeTargetDir(t string) string {
