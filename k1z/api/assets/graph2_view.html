@@ -1,0 +1,277 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>Attack surface</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/graphology/0.25.4/graphology.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/graphology-library@0.8.0/dist/graphology-library.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sigma.js/2.4.0/sigma.min.js"></script>
+<style>
+ :root{--bg:#fff;--fg:#1f2328;--mut:#656d76;--bd:#d0d7de;--card:#f6f8fa;--acc:#0969da;--danger:#cf222e}
+ *{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);
+   font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+ #bar{position:fixed;inset:0 0 auto 0;z-index:6;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+   padding:8px 12px;background:var(--card);border-bottom:1px solid var(--bd)}
+ #bar b{color:#0a3069}.stat{color:var(--mut);font-size:12px}
+ input,button,select{background:#fff;border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:5px 9px;font-size:12px}
+ button{cursor:pointer}button:hover{background:#f3f4f6}button.on{background:#0969da;color:#fff;border-color:#0969da}
+ .sp{flex:1}
+ #main{position:fixed;inset:48px 0 0 0}
+ #cy{position:absolute;inset:0;background:#fbfcfd;background-image:radial-gradient(#e7ecf1 1px,transparent 1px);background-size:22px 22px}
+ .panel{position:absolute;top:0;bottom:0;width:286px;background:var(--card);overflow:auto;z-index:4;
+   padding:12px 14px;transition:transform .18s}
+ #left{left:0;border-right:1px solid var(--bd)}#left.hide{transform:translateX(-100%)}
+ #side{right:0;border-left:1px solid var(--bd)}#side.hide{transform:translateX(100%)}
+ .panel h4{margin:14px 0 7px;font:600 11px/1 system-ui;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+ .panel h4:first-child{margin-top:0}
+ .row{display:flex;align-items:center;gap:7px;margin:4px 0;font-size:12px}
+ .row label{display:flex;align-items:center;gap:6px;cursor:pointer;flex:1}
+ .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+ .cnt{color:var(--mut);font-size:11px}
+ input[type=range]{flex:1;padding:0}
+ #side h3{margin:0 0 4px;color:#0a3069;font:600 14px system-ui;word-break:break-all}
+ #side .meta{color:var(--mut);font-size:11px;margin-bottom:8px}
+ #side pre{white-space:pre-wrap;word-break:break-word;font:11px/1.5 ui-monospace,monospace;background:#fff;
+   border:1px solid var(--bd);border-radius:6px;padding:8px;margin:8px 0;max-height:240px;overflow:auto}
+ .act{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0}.act button{padding:3px 7px;font-size:11px}
+ .nb{display:flex;align-items:center;gap:6px;padding:3px 5px;border-radius:5px;cursor:pointer;font-size:11px;
+   font-family:ui-monospace,monospace}.nb:hover{background:#eaeef2}.nb span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .pf{background:#fff;border:1px solid var(--bd);border-radius:6px;padding:6px 8px;margin:4px 0;font:11px ui-monospace,monospace;
+   min-height:30px;display:flex;align-items:center;justify-content:space-between;gap:6px}
+ .pf.pick{border-color:var(--acc);box-shadow:0 0 0 2px #0969da22}
+ .pf b{color:#0a3069}.pf .x{cursor:pointer;color:var(--mut)}
+ .lg{display:inline-flex;align-items:center;gap:4px;color:var(--mut);font-size:11px}.lg i{width:9px;height:9px;border-radius:50%}
+ #hint{position:absolute;bottom:8px;left:296px;color:#8c959f;font-size:11px;z-index:3;pointer-events:none}
+ .menu{position:relative}.menu .drop{display:none;position:absolute;top:30px;right:0;background:#fff;border:1px solid var(--bd);
+   border-radius:7px;box-shadow:0 6px 24px #0002;z-index:20;min-width:150px;overflow:hidden}
+ .menu.open .drop{display:block}.drop button{display:block;width:100%;text-align:left;border:0;border-radius:0;padding:8px 12px}
+</style></head><body>
+<div id="bar">
+ <button id="tgLeft" title="Filters / pathfinding">☰</button>
+ <b>🎯 <span id="tgt"></span></b><span class="stat" id="stat">loading…</span>
+ <input id="q" placeholder="search host / ip / asn…" style="width:190px">
+ <span class="sp"></span>
+ <button id="lay">⚛ layout</button>
+ <button id="mode">◰ full</button>
+ <button id="fit">⤢ fit</button>
+ <button id="reload">↻</button>
+ <div class="menu" id="exp"><button id="expBtn">⇩ export ▾</button>
+  <div class="drop">
+   <button data-x="png">PNG image</button>
+   <button data-x="csv">CSV (visible nodes)</button>
+   <button data-x="graphml">GraphML (Gephi/yEd)</button>
+   <button data-x="gexf">GEXF (Gephi)</button>
+  </div></div>
+ <button id="tgRight" title="Inspector">ℹ</button>
+</div>
+<div id="main">
+ <div id="cy"></div>
+ <div class="panel" id="left">
+  <h4>Filters</h4>
+  <div id="filters"></div>
+  <div class="row"><span style="width:62px">min deg</span><input type="range" id="minDeg" min="0" max="15" value="0"><span class="cnt" id="minDegV">0</span></div>
+  <div class="row"><span style="width:62px">min risk</span><input type="range" id="minRisk" min="0" max="10" value="0"><span class="cnt" id="minRiskV">0</span></div>
+  <div class="row"><label><input type="checkbox" id="hideDead"> hide dead subdomains</label></div>
+  <h4>Pathfinding</h4>
+  <div class="row"><button id="pickSrc" style="flex:1">set source</button></div>
+  <div class="pf" id="pfSrc"><span>— pick a source node —</span></div>
+  <div class="row"><button id="pickDst" style="flex:1">set target</button></div>
+  <div class="pf" id="pfDst"><span>— pick a target node —</span></div>
+  <div class="row"><button id="findPath" style="flex:1" class="on">⚡ find path</button><button id="clearPath">clear</button></div>
+  <div id="pfMsg" class="cnt"></div>
+  <h4>Legend</h4>
+  <div class="row lg"><i style="background:#0969da"></i>domain</div>
+  <div class="row lg"><i style="background:#cf222e"></i>internal host / IP</div>
+  <div class="row lg"><i style="background:#1f883d"></i>public IP</div>
+  <div class="row lg"><i style="background:#8250df"></i>ASN</div>
+  <div class="row lg"><i style="background:#bf8700"></i>subnet</div>
+  <div class="row lg"><i style="background:#fb8500"></i>vhost / interesting</div>
+ </div>
+ <div class="panel hide" id="side"><div class="meta">click a node to inspect it</div></div>
+ <div id="hint">drag node = move · click = inspect + focus · click empty = reset · scroll = zoom · ⚛ = re-run layout</div>
+</div>
+<script>
+const TARGET="__TARGET__";
+const BASE="/api/v1/targets/"+encodeURIComponent(TARGET)+"/graph2";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+$('tgt').textContent=TARGET;
+const GraphCtor=(window.graphology&&(window.graphology.Graph||window.graphology))||window.Graph;
+const g=new GraphCtor();
+const COL={domain:'#0969da',sub:'#54aeff',sub_dead:'#afb8c1',vhost:'#fb8500',sub_int:'#cf222e',
+ ip_pub:'#1f883d',ip_int:'#e5484d',ip_origin:'#2da44e',asn:'#8250df',subnet:'#bf8700',provider:'#1b7c83',
+ vuln_critical:'#cf222e',vuln_high:'#bc4c00',vuln_medium:'#bf8700',vuln_low:'#1f883d',vuln_info:'#6e7781'};
+const TIER={domain:0,asn:1,subnet:1,ip_pub:2,ip_int:2,ip_origin:2,provider:2,vhost:3,sub:3,sub_int:3,sub_dead:3};
+const FAM={domain:'domain',sub:'subdomain',sub_int:'subdomain',sub_dead:'subdomain',vhost:'subdomain',
+ ip_pub:'ip',ip_int:'ip',ip_origin:'ip',asn:'asn',subnet:'subnet',provider:'provider'};
+const FAMS=[['domain','#0969da'],['subdomain','#54aeff'],['ip','#1f883d'],['asn','#8250df'],
+ ['subnet','#bf8700'],['provider','#1b7c83'],['vuln','#cf222e'],['other','#8c959f']];
+const famOf=grp=>!grp?'other':(grp.indexOf('vuln')===0?'vuln':(FAM[grp]||'other'));
+const tierOf=grp=>grp&&grp.indexOf('vuln')===0?4:(TIER[grp]!==undefined?TIER[grp]:3);
+function sizeOf(n){let s={0:14,1:10,2:6,3:4,4:7}[tierOf(n.group)]||4;
+ if(n.count)s+=Math.min(8,Math.log2(n.count+1)); if(n.risk)s+=Math.min(8,n.risk); return s;}
+
+// ── graph building ──────────────────────────────────────────────────────
+function add(sg){
+ (sg.nodes||[]).forEach(n=>{ if(g.hasNode(n.id))return;
+   g.addNode(n.id,{label:(n.label||n.id)+(n.count?'  ('+n.count+')':''),rawlabel:n.label||n.id,group:n.group,
+     title:n.title||'',risk:n.risk||0,count:n.count||0,color:COL[n.group]||'#8c959f',size:sizeOf(n),
+     x:Math.cos(Math.random()*6.283)*(1+Math.random()*9),y:Math.sin(Math.random()*6.283)*(1+Math.random()*9)}); });
+ (sg.edges||[]).forEach(e=>{ if(g.hasNode(e.from)&&g.hasNode(e.to)&&!g.hasEdge(e.from,e.to)){
+   try{g.addEdge(e.from,e.to,{label:e.label,size:0.6,
+     color:(e.label&&'critical high medium low'.indexOf(e.label)>-1)?'#cf222e':'#d9dee3'});}catch(x){} } });
+}
+function relayout(){ const byT={}; g.forEachNode((id,a)=>{const t=tierOf(a.group);(byT[t]=byT[t]||[]).push(id);});
+ Object.keys(byT).forEach(t=>{const ids=byT[t],R=t*5+0.1,n=ids.length;
+   ids.forEach((id,i)=>{const ang=(i/Math.max(1,n))*6.283;
+     g.setNodeAttribute(id,'x',R*Math.cos(ang)); g.setNodeAttribute(id,'y',R*Math.sin(ang));});});}
+
+// ── ForceAtlas2 web-worker layout ───────────────────────────────────────
+const LIB=window.graphologyLibrary; let fa2=null,fa2to=null;
+const fa2Running=()=>!!(fa2&&fa2.isRunning&&fa2.isRunning());
+function startLayout(ms){
+ if(!LIB||!LIB.FA2Layout){relayout(); renderer&&renderer.refresh(); return;}
+ if(g.order<2)return;
+ try{ if(fa2){fa2.kill();fa2=null;}
+  const st=LIB.layoutForceAtlas2.inferSettings(g);
+  st.slowDown=1+Math.log(g.order+2);st.barnesHutOptimize=g.order>600;st.gravity=0.7;st.scalingRatio=14;st.adjustSizes=true;
+  fa2=new LIB.FA2Layout(g,{settings:st}); fa2.start(); $('lay').textContent='⚛ stop'; $('lay').classList.add('on');
+  clearTimeout(fa2to); fa2to=setTimeout(stopLayout, ms||(g.order>1500?13000:6000));
+ }catch(e){ fa2=null; relayout(); renderer&&renderer.refresh(); }
+}
+function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay').textContent='⚛ layout'; $('lay').classList.remove('on'); }
+$('lay').onclick=()=>fa2Running()?stopLayout():startLayout(8000);
+
+// ── filters ─────────────────────────────────────────────────────────────
+const filter={minDeg:0,minRisk:0,hideDead:false}; FAMS.forEach(([f])=>filter[f]=true);
+function passFilter(id,a){
+ if(a.group==='sub_dead'&&filter.hideDead)return false;
+ if(!filter[famOf(a.group)])return false;
+ if(g.degree(id)<filter.minDeg)return false;
+ if((a.risk||0)<filter.minRisk)return false;
+ return true;
+}
+function buildFilters(){ const box=$('filters'); box.innerHTML='';
+ FAMS.forEach(([f,c])=>{ const r=document.createElement('div'); r.className='row';
+   r.innerHTML='<label><input type="checkbox" checked data-f="'+f+'"><span class="dot" style="background:'+c+'"></span>'+f+'</label><span class="cnt" id="fc_'+f+'"></span>';
+   box.appendChild(r); });
+ box.querySelectorAll('input[data-f]').forEach(cb=>cb.onchange=()=>{filter[cb.dataset.f]=cb.checked; renderer&&renderer.refresh(); updateStat();});
+}
+function famCounts(){ const c={}; FAMS.forEach(([f])=>c[f]=0); g.forEachNode((id,a)=>{c[famOf(a.group)]=(c[famOf(a.group)]||0)+1;});
+ FAMS.forEach(([f])=>{const el=$('fc_'+f); if(el)el.textContent=c[f]||0;}); }
+$('minDeg').oninput=e=>{filter.minDeg=+e.target.value; $('minDegV').textContent=e.target.value; renderer&&renderer.refresh(); updateStat();};
+$('minRisk').oninput=e=>{filter.minRisk=+e.target.value; $('minRiskV').textContent=e.target.value; renderer&&renderer.refresh(); updateStat();};
+$('hideDead').onchange=e=>{filter.hideDead=e.target.checked; renderer&&renderer.refresh(); updateStat();};
+
+// ── render + interaction ────────────────────────────────────────────────
+let renderer=null, focus=null, pathSet=null, pickMode=null, src=null, dst=null;
+const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); return s;};
+function render(){
+ if(renderer){renderer.refresh();return;}
+ renderer=new Sigma(g,$('cy'),{defaultEdgeColor:'#d9dee3',labelColor:{color:'#24292f'},labelSize:11,labelWeight:'600',
+   labelRenderedSizeThreshold:6,labelDensity:0.7,labelGridCellSize:110,renderEdgeLabels:false,
+   zIndex:true,minCameraRatio:0.02,maxCameraRatio:20});
+ renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
+   if(!passFilter(n,a))return Object.assign({},d,{hidden:true});
+   if(pathSet){ return pathSet.has(n)?Object.assign({},d,{zIndex:3,size:d.size*1.15}):Object.assign({},d,{color:'#e2e6ea',label:'',zIndex:0}); }
+   if(focus){ return focus.has(n)?Object.assign({},d,{zIndex:2}):Object.assign({},d,{color:'#e6eaee',label:'',size:Math.max(2,d.size*0.6),zIndex:0}); }
+   return d; });
+ renderer.setSetting('edgeReducer',(e,d)=>{ const x=g.extremities(e);
+   if(!passFilter(x[0],g.getNodeAttributes(x[0]))||!passFilter(x[1],g.getNodeAttributes(x[1])))return Object.assign({},d,{hidden:true});
+   if(pathSet){ return (pathSet.has(x[0])&&pathSet.has(x[1]))?Object.assign({},d,{color:'#cf222e',size:2.4,zIndex:3}):Object.assign({},d,{hidden:true}); }
+   if(focus&&(!focus.has(x[0])||!focus.has(x[1])))return Object.assign({},d,{hidden:true});
+   return d; });
+ renderer.on('clickNode',({node})=>{
+   if(pickMode){ assignPick(node); return; }
+   pathSet=null; focus=hood(node); renderer.refresh(); detail(node); });
+ renderer.on('clickStage',()=>{ if(focus||pathSet){focus=null;pathSet=null;renderer.refresh();} });
+ let drag=null;
+ renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node; g.setNodeAttribute(drag,'highlighted',true); fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
+ renderer.getMouseCaptor().on('mousemovebody',e=>{ if(!drag)return; const p=renderer.viewportToGraph(e);
+   g.setNodeAttribute(drag,'x',p.x); g.setNodeAttribute(drag,'y',p.y); e.preventSigmaDefault(); e.original.preventDefault(); e.original.stopPropagation(); });
+ renderer.getMouseCaptor().on('mouseup',()=>{ if(drag){g.removeNodeAttribute(drag,'highlighted'); if(fa2&&fa2._w)startLayout(4000);} drag=null; });
+}
+function focusTo(id){ const p=renderer.getNodeDisplayData(id); if(p)renderer.getCamera().animate({x:p.x,y:p.y,ratio:0.3},{duration:450}); }
+function focusNode(id){ if(!g.hasNode(id))return; pathSet=null; focus=hood(id); renderer.refresh(); focusTo(id); detail(id); openSide(true); }
+
+// ── inspector ───────────────────────────────────────────────────────────
+function neighRow(id){ const a=g.getNodeAttributes(id);
+ return '<div class="nb" data-go="'+esc(id)+'"><span class="dot" style="background:'+(a.color||'#8c959f')+'"></span><span>'+esc(a.rawlabel||id)+'</span></div>'; }
+function detail(id){ const a=g.getNodeAttributes(id);
+ const outs=[],ins=[]; g.forEachOutNeighbor(id,nb=>outs.push(nb)); g.forEachInNeighbor(id,nb=>ins.push(nb));
+ let h='<h3>'+esc(a.rawlabel||id)+'</h3><div class="meta">'+esc(a.group||'')+' · risk '+(a.risk||0)+' · degree '+g.degree(id)+(a.count?' · '+a.count+' members':'')+'</div>';
+ h+='<div class="act"><button data-act="src">as source</button><button data-act="dst">as target</button><button data-act="copy">copy id</button></div>';
+ if(a.title)h+='<pre>'+esc(a.title)+'</pre>';
+ if(outs.length)h+='<h4>→ out ('+outs.length+')</h4>'+outs.slice(0,120).map(neighRow).join('');
+ if(ins.length)h+='<h4>← in ('+ins.length+')</h4>'+ins.slice(0,120).map(neighRow).join('');
+ const side=$('side'); side.innerHTML=h; side.dataset.id=id;
+ side.querySelectorAll('.nb').forEach(el=>el.onclick=()=>focusNode(el.dataset.go));
+ side.querySelectorAll('.act button').forEach(b=>b.onclick=()=>{
+   if(b.dataset.act==='copy'){navigator.clipboard&&navigator.clipboard.writeText(id);}
+   else setPick(b.dataset.act,id); });
+}
+
+// ── pathfinding ─────────────────────────────────────────────────────────
+function setPick(kind,id){ if(kind==='src'){src=id;} else {dst=id;} renderSlots(); }
+function assignPick(id){ setPick(pickMode,id); pickMode=null; $('pickSrc').classList.remove('on'); $('pickDst').classList.remove('on');
+ $('pfSrc').classList.remove('pick'); $('pfDst').classList.remove('pick'); }
+function slotHTML(id){ if(!id||!g.hasNode(id))return '<span>— none —</span>'; const a=g.getNodeAttributes(id);
+ return '<b>'+esc(a.rawlabel||id)+'</b><span class="x" title="clear">✕</span>'; }
+function renderSlots(){ $('pfSrc').innerHTML=slotHTML(src); $('pfDst').innerHTML=slotHTML(dst);
+ const xs=$('pfSrc').querySelector('.x'); if(xs)xs.onclick=()=>{src=null;renderSlots();};
+ const xd=$('pfDst').querySelector('.x'); if(xd)xd.onclick=()=>{dst=null;renderSlots();}; }
+$('pickSrc').onclick=()=>{pickMode='src'; $('pickSrc').classList.add('on'); $('pickDst').classList.remove('on'); $('pfSrc').classList.add('pick'); $('pfDst').classList.remove('pick'); openLeft(true);};
+$('pickDst').onclick=()=>{pickMode='dst'; $('pickDst').classList.add('on'); $('pickSrc').classList.remove('on'); $('pfDst').classList.add('pick'); $('pfSrc').classList.remove('pick');};
+$('clearPath').onclick=()=>{pathSet=null; $('pfMsg').textContent=''; renderer&&renderer.refresh();};
+$('findPath').onclick=()=>{ if(!src||!dst){$('pfMsg').textContent='pick a source and a target first';return;}
+ $('pfMsg').textContent='searching…'; focus=null;
+ fetch(BASE+'/path?from='+encodeURIComponent(src)+'&to='+encodeURIComponent(dst)).then(r=>r.json()).then(sg=>{
+   add(sg); const ids=(sg.nodes||[]).map(n=>n.id); const ok=sg.meta&&sg.meta.path;
+   if(!ok||!ids.length){pathSet=null; $('pfMsg').textContent='no path found'; renderer&&renderer.refresh(); return;}
+   pathSet=new Set(ids); $('pfMsg').textContent='path: '+ids.length+' nodes'; renderer&&renderer.refresh();
+   const p=renderer.getNodeDisplayData(ids[Math.floor(ids.length/2)]); if(p)renderer.getCamera().animate({x:p.x,y:p.y,ratio:0.5},{duration:500});
+ }).catch(()=>{$('pfMsg').textContent='path lookup failed';}); };
+
+// ── export ──────────────────────────────────────────────────────────────
+$('expBtn').onclick=e=>{e.stopPropagation(); $('exp').classList.toggle('open');};
+document.addEventListener('click',()=>$('exp').classList.remove('open'));
+$('exp').querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{ const x=b.dataset.x;
+ if(x==='graphml'||x==='gexf'){ window.open(BASE+'/export?fmt='+x,'_blank'); return; }
+ if(x==='csv'){ exportCSV(); return; } if(x==='png'){ exportPNG(); return; } });
+function exportCSV(){ const rows=[['id','label','group','risk','degree']];
+ g.forEachNode((id,a)=>{ if(passFilter(id,a))rows.push([id,a.rawlabel||a.label,a.group,a.risk||0,g.degree(id)]); });
+ const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+ dl(new Blob([csv],{type:'text/csv'}), TARGET+'-nodes.csv'); }
+function exportPNG(){ if(!renderer)return; const cv=renderer.getCanvases(), cont=$('cy');
+ const W=cont.offsetWidth*(window.devicePixelRatio||1), H=cont.offsetHeight*(window.devicePixelRatio||1);
+ const out=document.createElement('canvas'); out.width=W; out.height=H; const ctx=out.getContext('2d');
+ ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
+ ['edges','nodes','edgeLabels','labels'].forEach(k=>{ if(cv[k])try{ctx.drawImage(cv[k],0,0,W,H);}catch(e){} });
+ out.toBlob(b=>b&&dl(b,TARGET+'-graph.png')); }
+function dl(blob,name){ const a=document.createElement('a'); a.download=name; a.href=URL.createObjectURL(blob); a.click();
+ setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
+
+// ── data loading + HUD ──────────────────────────────────────────────────
+let MODE='full';
+function visibleCount(){ let n=0; g.forEachNode((id,a)=>{if(passFilter(id,a))n++;}); return n; }
+function updateStat(){ $('stat').textContent=visibleCount()+' shown / '+g.order+' nodes · '+g.size+' edges · '+MODE; famCounts(); }
+function load(){ stopLayout(); $('stat').textContent='loading '+MODE+'…'; focus=null; pathSet=null; src=null; dst=null; renderSlots(); $('pfMsg').textContent='';
+ const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
+ fetch(url).then(r=>r.json()).then(sg=>{
+   g.clear(); if(renderer){renderer.kill();renderer=null;}
+   add(sg); render(); startLayout(); updateStat();
+   setTimeout(()=>renderer&&renderer.getCamera().animatedReset(),450);
+ }).catch(()=>{$('stat').textContent='load failed';}); }
+$('mode').onclick=()=>{ MODE=(MODE==='full')?'overview':'full'; $('mode').textContent=(MODE==='full')?'◰ full':'◱ overview'; load(); };
+$('reload').onclick=load;
+$('fit').onclick=()=>renderer&&renderer.getCamera().animatedReset();
+$('q').addEventListener('change',e=>{ const q=(e.target.value||'').trim().toLowerCase(); if(!q||!renderer)return;
+ const hit=[]; g.forEachNode((id,a)=>{ if((a.rawlabel||'').toLowerCase().indexOf(q)>-1||id.toLowerCase().indexOf(q)>-1)hit.push(id); });
+ if(hit.length){ pathSet=null; focus=new Set(); hit.forEach(id=>hood(id).forEach(x=>focus.add(x))); renderer.refresh(); focusTo(hit[0]); detail(hit[0]); openSide(true); }
+ else { fetch(BASE+'/search?q='+encodeURIComponent(q)+'&limit=30').then(r=>r.json()).then(d=>{ (d.nodes||[]).forEach(n=>add({nodes:[n],edges:[]})); render(); startLayout(4000); updateStat(); }); } });
+
+// ── panels ──────────────────────────────────────────────────────────────
+function openLeft(v){ $('left').classList.toggle('hide',!v); }
+function openSide(v){ $('side').classList.toggle('hide',!v); }
+$('tgLeft').onclick=()=>$('left').classList.toggle('hide');
+$('tgRight').onclick=()=>$('side').classList.toggle('hide');
+
+buildFilters(); renderSlots(); load();
+</script></body></html>
