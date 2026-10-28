@@ -12,7 +12,8 @@
 #   resolve   resolve every discovered host -> IP (NSEC/AXFR names carry no IP);
 #             flags hosts pointing to internal RFC1918 IPs (split-horizon leak)
 #   ptr       reverse DNS on discovered IPs + /24 neighbours
-#   classify  flag RFC1918/internal IPs leaked in public DNS + split-horizon
+#   classify  flag RFC1918/internal IPs leaked in public DNS + split-horizon,
+#             and derive internal /24 ranges from them (internal_subnets.txt)
 #
 # Usage:
 #   ./dns-recon.sh <domain> [-w wordlist] [-o outdir] [-t threads]
@@ -20,8 +21,9 @@
 #                  [--no-builtin] [--quiet]
 #   -w merges the file with the built-in words (deduped); --no-builtin = file only
 #
-# Output: <outdir>/  subdomains.txt  ips.txt  internal_ips.txt  records.txt
-#                    zone_nsec.txt  ptr.txt  interesting.txt  summary.txt
+# Output: <outdir>/  subdomains.txt  ips.txt  internal_ips.txt  internal_subnets.txt
+#                    internal_hosts.txt  resolved.txt  zone_nsec.txt  ptr.txt
+#                    records.txt  interesting.txt  summary.txt
 #
 # Authorized testing only. Zone walking / brute-force touch the target's DNS.
 set -uo pipefail
@@ -322,7 +324,16 @@ classify() {
   grep -iE 'docker|registr|harbor|nexus|argo|rancher|k8s|kube|openshift|vault|etcd|consul|gitlab|gitea|jenkins|bamboo|drone|teamcity|sonar|nessus|grafana|prometheus|kibana|elastic|logstash|graylog|splunk|redis|mongo|postgres|mysql|clickhouse|minio|rabbitmq|kafka|keycloak|ldap|sso|vpn|bastion|jump|admin|portainer|traefik|kong|apisix|ingress|internal|intranet|pentest|sectest|ssrf|rce|backup|dump|staging|\bstg\b|\btest\b|\bdev\b|\buat\b|poc|sandbox|phpmyadmin|pgadmin|adminer' "$OUT/subdomains.txt" 2>/dev/null | sort -u > "$OUT/interesting.txt" || true
 
   local ni; ni=$(wc -l < "$OUT/internal_ips.txt" 2>/dev/null || echo 0)
-  [ "${ni:-0}" -gt 0 ] && { bad "$ni RFC1918/internal IPs LEAKED in public DNS -> internal_ips.txt"; sed 's/^/    /' "$OUT/internal_ips.txt" | head -20; }
+  : > "$OUT/internal_subnets.txt"
+  if [ "${ni:-0}" -gt 0 ]; then
+    bad "$ni RFC1918/internal IPs LEAKED in public DNS -> internal_ips.txt"
+    sed 's/^/    /' "$OUT/internal_ips.txt" | head -20
+    # derive internal /24 ranges (inferred from the leaked IPs — not a confirmed mask)
+    awk -F. 'NF>=3{print $1"."$2"."$3".0/24"}' "$OUT/internal_ips.txt" | sort | uniq -c | sort -rn \
+      | awk '{printf "%-20s %s IPs\n", $2, $1}' > "$OUT/internal_subnets.txt"
+    warn "internal /24 ranges (inferred) -> internal_subnets.txt"
+    sed 's/^/    /' "$OUT/internal_subnets.txt"
+  fi
   # split-horizon hint: hosts that resolve on auth NS but not on public resolver
   local hi; hi=$(wc -l < "$OUT/interesting.txt" 2>/dev/null || echo 0)
   [ "${hi:-0}" -gt 0 ] && warn "$hi high-value hosts -> interesting.txt"
@@ -332,6 +343,7 @@ classify() {
     echo "subdomains:    $(wc -l < "$OUT/subdomains.txt")"
     echo "unique IPs:    $(wc -l < "$OUT/ips.txt")"
     echo "internal IPs:  $ni"
+    echo "internal nets: $([ -f "$OUT/internal_subnets.txt" ] && wc -l < "$OUT/internal_subnets.txt" || echo 0)"
     echo "internal hosts:$([ -f "$OUT/internal_hosts.txt" ] && wc -l < "$OUT/internal_hosts.txt" || echo 0)"
     echo "interesting:   $hi"
     echo "zone (NSEC):   $([ -f "$OUT/zone_nsec.txt" ] && wc -l < "$OUT/zone_nsec.txt" || echo 0)"
