@@ -142,7 +142,6 @@
  <button id="lay" title="re-run force layout">⚛ layout</button>
  <div class="seg">
   <button id="mode" title="toggle full / overview">◰ full</button>
-  <button id="fit" class="icon" title="fit to screen">⤢</button>
   <button id="reload" class="icon" title="reload data">↻</button>
  </div>
  <div class="menu" id="exp"><button id="expBtn">⇩ export</button>
@@ -157,10 +156,13 @@
 </div>
 <div id="main">
  <div id="cy"></div>
+ <canvas id="ov" style="position:absolute;inset:0;z-index:2;pointer-events:none"></canvas>
  <div class="panel" id="left">
   <h4>Display</h4>
   <div class="row"><label><input type="checkbox" id="optLabels" checked> labels</label>
    <label><input type="checkbox" id="optEdges" checked> edges</label></div>
+  <div class="row"><label><input type="checkbox" id="optHulls" checked> cluster hulls</label>
+   <label><input type="checkbox" id="optGlyphs" checked> icons</label></div>
   <div class="row"><span style="width:62px">node size</span><input type="range" id="optSize" min="50" max="250" value="100"><span class="cnt" id="optSizeV">1.0×</span></div>
   <h4>Filters</h4>
   <div id="filters"></div>
@@ -355,6 +357,32 @@ function drawMini(){
    ctx.strokeRect(ox+(Math.min(tl.x,br.x)-mnx)*sc,oy+(Math.min(tl.y,br.y)-mny)*sc,Math.abs(br.x-tl.x)*sc,Math.abs(br.y-tl.y)*sc); }catch(e){}
  cv._t={mnx,mny,sc,ox,oy};
 }
+// ── overlay: cluster hulls + type glyphs (Linkurious/Gephi look) ──────────
+let showHulls=true, showGlyphs=true, ovT=0;
+function hexA(h,a){ if(h[0]!=='#'||h.length<7)return 'rgba(140,149,161,'+a+')';
+ return 'rgba('+parseInt(h.slice(1,3),16)+','+parseInt(h.slice(3,5),16)+','+parseInt(h.slice(5,7),16)+','+a+')'; }
+function convexHull(p){ if(p.length<3)return p; p=p.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+ const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]); const lo=[],hi=[];
+ for(const pt of p){ while(lo.length>=2&&cr(lo[lo.length-2],lo[lo.length-1],pt)<=0)lo.pop(); lo.push(pt); }
+ for(let i=p.length-1;i>=0;i--){ const pt=p[i]; while(hi.length>=2&&cr(hi[hi.length-2],hi[hi.length-1],pt)<=0)hi.pop(); hi.push(pt); }
+ lo.pop(); hi.pop(); return lo.concat(hi); }
+const GLYPH={domain:'🌐',asn:'🗂',subnet:'▦',bucket:'🪣',secret:'🔑',provider:'☁',vuln_critical:'⚠',vuln_high:'⚠'};
+function drawOverlay(){
+ const ov=$('ov'),cont=$('cy'); if(!ov||!renderer)return;
+ const now=Date.now(); if(now-ovT<90)return; ovT=now;
+ const dpr=window.devicePixelRatio||1,W=cont.offsetWidth,H=cont.offsetHeight;
+ if(ov.width!==Math.round(W*dpr)){ov.width=W*dpr;ov.height=H*dpr;ov.style.width=W+'px';ov.style.height=H+'px';}
+ const ctx=ov.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+ if(showHulls){ g.forEachNode((id,a)=>{ if(a.group!=='asn'&&a.group!=='subnet')return;
+   const pts=[]; g.forEachNeighbor(id,(nb,na)=>{ if(na.group&&na.group.indexOf('ip')===0){ const p=renderer.graphToViewport({x:na.x,y:na.y}); pts.push([p.x,p.y]); } });
+   if(pts.length<3)return; const hull=convexHull(pts); if(hull.length<3)return;
+   ctx.beginPath(); hull.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.closePath();
+   const c=a.color||'#8c959f'; ctx.fillStyle=hexA(c,0.07); ctx.strokeStyle=hexA(c,0.32); ctx.lineWidth=1.3; ctx.fill(); ctx.stroke(); }); }
+ if(showGlyphs){ ctx.textAlign='center'; ctx.textBaseline='middle';
+   g.forEachNode((id,a)=>{ const gl=GLYPH[a.group]; if(!gl)return; const p=renderer.graphToViewport({x:a.x,y:a.y});
+     if(p.x<-20||p.x>W+20||p.y<-20||p.y>H+20)return; const dd=renderer.getNodeDisplayData(id); const r=dd?dd.size:6;
+     ctx.font=Math.max(9,Math.min(17,r*1.2))+'px system-ui'; ctx.fillText(gl,p.x,p.y); }); }
+}
 let diffMode=false, diffStatus={}, annos={};
 const DIFFC={new:'#1f883d',gone:'#cf222e',changed:'#fb8500',same:'#c7ced6'};
 function setColorBy(v){ colorBy=v||null; const sel=$('colorBy'); if(sel)sel.value=v||''; }
@@ -393,7 +421,7 @@ function render(){
  renderer.on('enterNode',({node})=>{ if(pickMode||drag)return; hoverNode=node; hover=hood(node); $('cy').style.cursor='pointer'; renderer.refresh(); });
  renderer.on('leaveNode',()=>{ if(hover){hover=null;hoverNode=null; $('cy').style.cursor='default'; renderer.refresh();} });
  renderer.getCamera().on('updated',()=>{ const z=$('zlvl'); if(z)z.textContent=Math.round(100/renderer.getCamera().ratio)+'%'; drawMini(); });
- renderer.on('afterRender',drawMini);
+ renderer.on('afterRender',()=>{drawMini();drawOverlay();});
  let drag=null;
  renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node; g.setNodeAttribute(drag,'highlighted',true); fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
  renderer.getMouseCaptor().on('mousemovebody',e=>{ if(!drag)return; const p=renderer.viewportToGraph(e);
@@ -498,6 +526,8 @@ $('mini').onclick=e=>{ if(!renderer)return; const cv=$('mini'),t=cv._t; if(!t)re
 $('optLabels').onchange=e=>{ renderer&&renderer.setSetting('renderLabels',e.target.checked); renderer&&renderer.refresh(); };
 $('optEdges').onchange=e=>{ showEdges=e.target.checked; renderer&&renderer.refresh(); };
 $('optSize').oninput=e=>{ nodeScale=(+e.target.value)/100; $('optSizeV').textContent=nodeScale.toFixed(1)+'×'; renderer&&renderer.refresh(); };
+$('optHulls').onchange=e=>{ showHulls=e.target.checked; ovT=0; drawOverlay(); };
+$('optGlyphs').onchange=e=>{ showGlyphs=e.target.checked; ovT=0; drawOverlay(); };
 // search autocomplete
 let sugSel=-1;
 $('q').addEventListener('input',e=>{ const q=(e.target.value||'').trim().toLowerCase(); const box=$('qsug');
@@ -562,7 +592,6 @@ $('runDiff').onclick=()=>{ const from=$('diffFrom').value, to=$('diffTo').value;
 $('exitDiff').onclick=()=>{ if(diffMode)load(); };
 $('mode').onclick=()=>{ MODE=(MODE==='full')?'overview':'full'; $('mode').textContent=(MODE==='full')?'◰ full':'◱ overview'; load(); };
 $('reload').onclick=load;
-$('fit').onclick=()=>renderer&&renderer.getCamera().animatedReset();
 $('q').addEventListener('change',e=>{ const q=(e.target.value||'').trim().toLowerCase(); if(!q||!renderer)return;
  const hit=[]; g.forEachNode((id,a)=>{ if((a.rawlabel||'').toLowerCase().indexOf(q)>-1||id.toLowerCase().indexOf(q)>-1)hit.push(id); });
  if(hit.length){ pathSet=null; focus=new Set(); hit.forEach(id=>hood(id).forEach(x=>focus.add(x))); renderer.refresh(); focusTo(hit[0]); detail(hit[0]); openSide(true); }
