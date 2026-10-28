@@ -42,6 +42,10 @@
  .menu{position:relative}.menu .drop{display:none;position:absolute;top:30px;right:0;background:#fff;border:1px solid var(--bd);
    border-radius:7px;box-shadow:0 6px 24px #0002;z-index:20;min-width:150px;overflow:hidden}
  .menu.open .drop{display:block}.drop button{display:block;width:100%;text-align:left;border:0;border-radius:0;padding:8px 12px}
+ #ctx{display:none;position:fixed;z-index:30;background:#fff;border:1px solid var(--bd);border-radius:7px;box-shadow:0 6px 24px #0003;overflow:hidden;min-width:160px}
+ #ctx .hd{padding:6px 12px;font:600 11px ui-monospace,monospace;color:#0a3069;border-bottom:1px solid var(--bd);background:var(--card);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #ctx button{display:block;width:100%;text-align:left;border:0;border-radius:0;padding:8px 12px;font-size:12px}
+ #toast{display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:40;background:#0a3069;color:#fff;padding:9px 15px;border-radius:8px;font-size:12px;max-width:70%;white-space:pre-wrap;box-shadow:0 6px 24px #0004}
 </style></head><body>
 <div id="bar">
  <button id="tgLeft" title="Filters / pathfinding">☰</button>
@@ -114,8 +118,9 @@
   <div class="row lg"><i style="background:#fb8500"></i>vhost / interesting</div>
  </div>
  <div class="panel hide" id="side"><div class="meta">click a node to inspect it</div></div>
- <div id="hint">drag node = move · click = inspect + focus · click empty = reset · scroll = zoom · ⚛ = re-run layout</div>
+ <div id="hint">drag = move · click = inspect · right-click = transforms · click empty = reset · scroll = zoom · ⚛ = re-run layout</div>
 </div>
+<div id="ctx"></div><div id="toast"></div>
 <script>
 const TARGET="__TARGET__";
 const BASE="/api/v1/targets/"+encodeURIComponent(TARGET)+"/graph2";
@@ -250,6 +255,7 @@ function render(){
    if(pickMode){ assignPick(node); return; }
    pathSet=null; focus=hood(node); renderer.refresh(); detail(node); });
  renderer.on('clickStage',()=>{ if(focus||pathSet){focus=null;pathSet=null;renderer.refresh();} });
+ renderer.on('rightClickNode',e=>{ const o=e.event&&e.event.original; if(o)o.preventDefault(); showCtx(o?o.clientX:e.event.x,o?o.clientY:e.event.y,e.node); });
  let drag=null;
  renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node; g.setNodeAttribute(drag,'highlighted',true); fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
  renderer.getMouseCaptor().on('mousemovebody',e=>{ if(!drag)return; const p=renderer.viewportToGraph(e);
@@ -383,11 +389,30 @@ $('q').addEventListener('change',e=>{ const q=(e.target.value||'').trim().toLowe
  if(hit.length){ pathSet=null; focus=new Set(); hit.forEach(id=>hood(id).forEach(x=>focus.add(x))); renderer.refresh(); focusTo(hit[0]); detail(hit[0]); openSide(true); }
  else { fetch(BASE+'/search?q='+encodeURIComponent(q)+'&limit=30').then(r=>r.json()).then(d=>{ (d.nodes||[]).forEach(n=>add({nodes:[n],edges:[]})); render(); startLayout(4000); updateStat(); }); } });
 
+// ── enrichment transforms (right-click) ─────────────────────────────────
+let toastTo=null;
+function toast(msg,ms){ const t=$('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(toastTo); toastTo=setTimeout(()=>t.style.display='none',ms||3500); }
+function showCtx(x,y,id){ const a=g.getNodeAttributes(id); const isIP=(a.group||'').indexOf('ip')===0;
+ const items=isIP?[['ptr','↩ reverse DNS (PTR)']]:[['dns','→ resolve A / AAAA'],['ns','NS records'],['mx','MX records'],['txt','TXT records']];
+ const ctx=$('ctx'); ctx.innerHTML='<div class="hd">'+esc(a.rawlabel||id)+'</div>'+items.map(([k,l])=>'<button data-k="'+k+'">'+l+'</button>').join('');
+ ctx.style.left=Math.min(x,innerWidth-180)+'px'; ctx.style.top=Math.min(y,innerHeight-160)+'px'; ctx.style.display='block';
+ ctx.querySelectorAll('button').forEach(b=>b.onclick=ev=>{ ev.stopPropagation(); hideCtx(); enrich(id,b.dataset.k); }); }
+function hideCtx(){ $('ctx').style.display='none'; }
+function enrich(id,kind){ toast('transform '+kind+'…',8000);
+ fetch(BASE+'/enrich?id='+encodeURIComponent(id)+'&kind='+kind).then(r=>r.json()).then(sg=>{
+   if(kind==='txt'){ const t=(sg.meta&&sg.meta.txt)||[]; toast('TXT '+(sg.meta&&sg.meta.on||'')+':\n'+(t.join('\n')||'(none)'),9000); return; }
+   const before=g.order; add(sg||{}); const added=g.order-before;
+   render(); if(added)startLayout(4000); focus=hood(id); renderer&&renderer.refresh(); updateStat();
+   toast(kind+': +'+added+' node'+(added===1?'':'s')+(added?'':' (nothing resolved)'),3500);
+ }).catch(()=>toast('transform failed',3000)); }
+$('cy').addEventListener('contextmenu',ev=>ev.preventDefault());
+
 // ── panels ──────────────────────────────────────────────────────────────
 function openLeft(v){ $('left').classList.toggle('hide',!v); }
 function openSide(v){ $('side').classList.toggle('hide',!v); }
 $('tgLeft').onclick=()=>$('left').classList.toggle('hide');
 $('tgRight').onclick=()=>$('side').classList.toggle('hide');
 
+document.addEventListener('click',hideCtx);
 buildFilters(); renderSlots(); fillRuns(); load();
 </script></body></html>
