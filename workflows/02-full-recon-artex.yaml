@@ -1018,7 +1018,7 @@ steps:
   outputs:
     file: '{workspace}/p_leakix.txt'
 - id: p_censys
-  name: passive — Censys Search API direct (cert SANs -> subs; hosts -> origin IPs; id:secret Basic auth)
+  name: passive — Censys Platform API (store key as ORG_ID:PAT) -> subs + host/ip/port
   depends_on:
   - setup_subfinder_keys
   when: '{vars.run_passive}'
@@ -1028,23 +1028,32 @@ steps:
   timeout: 4m
   run: |
     touch {workspace}/p_censys.txt {workspace}/censys_ip.txt
-    CID="${CENSYS_API_ID:-}"; CSEC="${CENSYS_API_SECRET:-}"
-    test -n "$CID" -a -n "$CSEC" || { printf '[censys] no CENSYS_API_ID/SECRET — skipping\n'; exit 0; }
-    # subdomains from certificate SANs (legacy Search API v2; 401 = key is Platform PAT, step soft-skips)
-    curl -s --max-time 90 -u "${CID}:${CSEC}" -G \
-      --data-urlencode 'q=names: {target}' --data-urlencode 'per_page=100' \
-      "https://search.censys.io/api/v2/certificates/search" 2>/dev/null \
-      | jq -r '.result.hits[]?.names[]? // empty' 2>/dev/null \
+    # Censys Platform API. Store the key in /keys (Censys field) as "ORG_ID:PAT" ->
+    # CENSYS_API_ID=org id, CENSYS_API_SECRET=PAT. Legacy Search API (id:secret) was
+    # shut down 2026-09-30; Platform search needs a PAID org id (free = UI only).
+    ORG="${CENSYS_API_ID:-}"; PAT="${CENSYS_API_SECRET:-}"
+    test -n "$ORG" -a -n "$PAT" || { printf '[censys] no CENSYS org/PAT (store ORG_ID:PAT) — skipping\n'; exit 0; }
+    : > {workspace}/.cen_raw
+    TOK=""
+    for page in 1 2 3 4 5; do
+      BODY=$(printf '{"query":"%s","page_size":100%s}' "{target}" "${TOK:+,\"page_token\":\"$TOK\"}")
+      R=$(curl -s --max-time 45 -X POST \
+        "https://api.platform.censys.io/v3/global/search/query?organization_id=${ORG}" \
+        -H "Authorization: Bearer ${PAT}" -H 'Content-Type: application/json' -d "$BODY" 2>/dev/null)
+      printf '%s\n' "$R" >> {workspace}/.cen_raw
+      TOK=$(printf '%s' "$R" | jq -r '.result.next_page_token // empty' 2>/dev/null)
+      [ -z "$TOK" ] && break
+    done
+    # (1) hostnames -> subdomains (feeds merge_passive)
+    grep -oE '[a-zA-Z0-9._-]+\.{target}' {workspace}/.cen_raw 2>/dev/null \
       | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
       | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_censys.txt || true
-    # candidate ORIGIN IPs (hosts presenting the cert) -> censys_ip.txt (side output, not merged)
-    curl -s --max-time 90 -u "${CID}:${CSEC}" -G \
-      --data-urlencode 'q=services.tls.certificates.leaf_data.names: {target} or {target}' \
-      --data-urlencode 'per_page=100' \
-      "https://search.censys.io/api/v2/hosts/search" 2>/dev/null \
-      | jq -r '.result.hits[]?.ip // empty' 2>/dev/null | sort -u > {workspace}/censys_ip.txt || true
+    # (2) host/ip/port -> censys_ip.txt (origin IP + service map; side output like fofa_ip_port.txt)
+    jq -r '.result.hits[]? | (.webproperty_v1.resource // .host_v1.resource // empty) | select(type=="object") | "\(.hostname // "-")\t\(.ip // "-")\t\(.port // "-")"' {workspace}/.cen_raw 2>/dev/null \
+      | grep -vE '^-\t-\t-$' | sort -u > {workspace}/censys_ip.txt || true
+    rm -f {workspace}/.cen_raw
     touch {workspace}/p_censys.txt {workspace}/censys_ip.txt
-    printf 'Censys: %s subs | %s origin IPs\n' "$(wc -l < {workspace}/p_censys.txt)" "$(wc -l < {workspace}/censys_ip.txt)"
+    printf 'Censys Platform: %s subs | %s host/ip/port rows\n' "$(wc -l < {workspace}/p_censys.txt)" "$(wc -l < {workspace}/censys_ip.txt)"
   outputs:
     file: '{workspace}/p_censys.txt'
     ip: '{workspace}/censys_ip.txt'
@@ -1670,6 +1679,7 @@ steps:
       printf -- '- `subdomains_all.txt` \xe2\x80\x94 raw candidate union (passive + permutation)\n'
       printf -- '- `tlsx_all_subs.txt` \xe2\x80\x94 subdomains from TLS cert SANs\n'
       printf -- '- `fofa_ip_port.txt` \xe2\x80\x94 FOFA host<TAB>ip<TAB>port (use the IP for hosts that do not resolve publicly; ports = service surface)\n'
+      printf -- '- `censys_ip.txt` \xe2\x80\x94 Censys host<TAB>ip<TAB>port (origin IP + service map; same use as fofa_ip_port)\n'
       printf -- '- `asn_ipv4_cidrs.txt` \xe2\x80\x94 org ASN/CIDR ranges (if run_asn)\n'
     } > {workspace}/report/summary.md
     printf '\n=== DISCOVERY COMPLETE: %s subdomains ===\n' "$COUNT"
