@@ -13,6 +13,23 @@ import (
 
 var reStatusTok = regexp.MustCompile(`(?i)status:\s*(\d{3})`)
 
+// goodDiscoStatus keeps only content-discovery results worth storing: success,
+// redirect, or auth-protected. Drops 400 (malformed wordlist paths), 404, 429
+// and 5xx — the bulk of dir-brute noise on SPAs / catch-all servers.
+func goodDiscoStatus(code int) bool {
+	if code == 0 {
+		return true // unknown (crawl / JS endpoint) — keep
+	}
+	if code >= 200 && code < 400 {
+		return true
+	}
+	switch code {
+	case 401, 403, 405, 406:
+		return true
+	}
+	return false
+}
+
 // parseDirsearch extracts (url, status) from a dirsearch --format=plain line,
 // finding the HTTP status as a standalone 3-digit token (layout varies).
 func parseDirsearch(l string) (string, int) {
@@ -265,10 +282,12 @@ func scanEndpoints(st *store.Store, run *store.Run, ws string) {
 		if u == "" || seen[u] {
 			return
 		}
-		if code == 404 { // drop not-found noise from content discovery
+		if !goodDiscoStatus(code) { // drop 400/404/429/5xx dir-brute noise
+			seen[u] = true          // remember so a status-less rollup can't re-add it
 			return
 		}
 		if strings.HasPrefix(u, "http") && !inTargetScope(run.Target, hostOfURL(u)) {
+			seen[u] = true
 			return // third-party endpoint
 		}
 		seen[u] = true
