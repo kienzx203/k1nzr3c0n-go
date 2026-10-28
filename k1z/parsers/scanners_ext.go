@@ -390,6 +390,15 @@ func scanNetIntel(st *store.Store, run *store.Run, ws string) {
 			}
 		})
 	}
+	// shared-hosting IPs (many vhosts on one IP)
+	for _, f := range globFiles(ws, "ip_groups/shared_hosting.txt") {
+		eachLine(f, func(l string) {
+			ip := strings.TrimSpace(strings.Fields(l+" ")[0])
+			if ip != "" {
+				st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "net", Host: ip, IP: sp(ip), Name: sp("shared-hosting IP " + ip)})
+			}
+		})
+	}
 	// internal hosts (RFC1918 / leaked) → subdomain tagged internal
 	for _, f := range globFiles(ws, "internal_hosts.txt", "dns_internal_hosts.txt") {
 		eachLine(f, func(l string) {
@@ -473,7 +482,7 @@ func scanGF(st *store.Store, run *store.Run, ws string) {
 // ── DNS records / certs / favicons ───────────────────────────────────────────
 
 func scanDNSRecords(st *store.Store, run *store.Run, ws string) {
-	for _, f := range globFiles(ws, "dns_records_raw.txt", "dns_records_subs_raw.txt") {
+	for _, f := range globFiles(ws, "dns_records_raw.txt", "dns_records_subs_raw.txt", "st_dns_records.txt") {
 		eachLine(f, func(l string) {
 			if l = strings.TrimSpace(l); l == "" {
 				return
@@ -522,11 +531,22 @@ func scanFavicon(st *store.Store, run *store.Run, ws string) {
 
 func scanIntel(st *store.Store, run *store.Run, ws string) {
 	for _, f := range globFiles(ws, "st_whois.json", "st_domain_info.json") {
-		b, err := os.ReadFile(f)
-		if err != nil || len(b) == 0 {
-			return
+		if b, e := os.ReadFile(f); e == nil && len(b) > 0 {
+			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "intel", Host: run.Target,
+				Name: sp("whois/domain-info: " + filepath.Base(f)), Evidence: sp(trunc(string(b), 2000))})
 		}
-		st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "intel", Host: run.Target,
-			Name: sp("whois/domain-info: " + filepath.Base(f)), Evidence: sp(trunc(string(b), 2000))})
+	}
+	// related / associated / org-pivot domains (scope-expansion intel)
+	for _, f := range globFiles(ws, "st_associated.txt", "st_pivot_domains.txt", "amass_intel.txt") {
+		eachLine(f, func(l string) {
+			d := strings.ToLower(strings.Trim(strings.TrimSpace(l), "."))
+			if fld := strings.Fields(d); len(fld) > 0 {
+				d = fld[0]
+			}
+			if d == "" || !strings.Contains(d, ".") {
+				return
+			}
+			st.InsertFinding(&store.Finding{RunID: run.ID, Kind: "intel", Host: d, Name: sp("related domain: " + d)})
+		})
 	}
 }
