@@ -47,9 +47,11 @@ var graphMergeFiles = []string{
 	"gf/*.txt", "st_associated.txt", "st_pivot_domains.txt", "amass_intel.txt",
 	// service-version scans (graph reads these for port badges on IPs)
 	"nmap_service.txt", "rustscan_full.txt",
-	// NOTE: tlsx_raw / favicon_hashes / dns_records_raw / ip_groups/shared_hosting
-	// are DB-only (graph has no reader) — intentionally NOT merged, to keep the
-	// list == what graph.Build actually consumes.
+	// cert / favicon / raw-dns sources — graph.Build's detail() DOES read these
+	// (cert + favicon + extra dns nodes); they must be merged or the aggregate
+	// target graph silently renders zero cert/favicon nodes and partial dns.
+	"tlsx_raw.txt", "favicon_hashes.txt", "dns_records_raw.txt", "st_dns_records.txt",
+	// NOTE: ip_groups/shared_hosting is DB-only (graph has no reader) — not merged.
 }
 
 func safeTargetDir(t string) string {

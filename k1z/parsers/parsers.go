@@ -321,11 +321,22 @@ func hostOfURL(u string) string {
 	if u == "" {
 		return ""
 	}
-	pu, err := url.Parse(u)
-	if err != nil {
-		return u
+	// Real URLs: url.Parse handles scheme/port/userinfo/IPv6 correctly.
+	if pu, err := url.Parse(u); err == nil && pu.Hostname() != "" {
+		return strings.ToLower(pu.Hostname())
 	}
-	return pu.Hostname()
+	// Bare host, host:port, or scheme-less input (e.g. the target "example.com"
+	// or an IP literal): url.Parse yields no Hostname, so strip scheme/path/port
+	// by hand. Without this the target apex is "" and the scope filter is inert.
+	s := u
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	s = strings.SplitN(s, "/", 2)[0]
+	if !strings.Contains(s, "]") { // keep bracketed IPv6 literals intact
+		s = strings.SplitN(s, ":", 2)[0]
+	}
+	return strings.ToLower(s)
 }
 
 // ── naabu ────────────────────────────────────────────────────────────────────

@@ -130,7 +130,7 @@
    background:#0f1b2d;color:#eaf0f8;padding:10px 16px;border-radius:12px;font:12px ui-monospace,monospace;max-width:70%;white-space:pre-wrap;box-shadow:var(--sh-lg)}
 </style></head><body>
 <div id="bar">
- <button id="tgLeft" class="icon" title="Filters / pathfinding">☰</button>
+ <button id="tgLeft" class="icon" title="Filters / nodes">☰</button>
  <div class="brand">🎯 <span class="tgt" id="tgt"></span></div>
  <span class="stat" id="stat">loading…</span>
  <span class="sp"></span>
@@ -169,23 +169,10 @@
   <div class="row"><span style="width:62px">min deg</span><input type="range" id="minDeg" min="0" max="15" value="0"><span class="cnt" id="minDegV">0</span></div>
   <div class="row"><span style="width:62px">min risk</span><input type="range" id="minRisk" min="0" max="10" value="0"><span class="cnt" id="minRiskV">0</span></div>
   <div class="row"><label><input type="checkbox" id="hideDead"> hide dead subdomains</label></div>
-  <h4>Pathfinding</h4>
-  <div class="row"><button id="pickSrc" style="flex:1">set source</button></div>
-  <div class="pf" id="pfSrc"><span>— pick a source node —</span></div>
-  <div class="row"><button id="pickDst" style="flex:1">set target</button></div>
-  <div class="pf" id="pfDst"><span>— pick a target node —</span></div>
-  <div class="row"><button id="findPath" style="flex:1" class="on">⚡ find path</button><button id="clearPath">clear</button></div>
-  <div id="pfMsg" class="cnt"></div>
+  <h4>All nodes <span id="allN" class="cnt" style="font-weight:400"></span></h4>
+  <input id="allq" placeholder="filter all nodes…  (click one to view it + its neighbours)" autocomplete="off" style="width:100%;box-sizing:border-box;margin-bottom:5px">
+  <div id="allList" style="max-height:220px;overflow:auto"></div>
   <h4>Analysis</h4>
-  <div class="row"><span style="width:62px">color by</span>
-   <select id="colorBy" style="flex:1">
-    <option value="">plain</option>
-    <option value="community">community</option>
-    <option value="degree">degree</option>
-    <option value="pagerank">PageRank</option>
-    <option value="betweenness">betweenness (chokepoints)</option>
-    <option value="chokepoints">chokepoints only</option>
-   </select></div>
   <div id="mlegend" class="cnt" style="margin:4px 0"></div>
   <div id="mtop"></div>
   <h4>Saved views</h4>
@@ -197,6 +184,8 @@
    <button data-v="hubs">◉ hubs</button>
    <button data-v="choke">✂ chokepoints</button>
   </div>
+  <div class="row" style="margin-top:6px"><button id="saveView" style="flex:1">💾 save current view</button></div>
+  <div id="customViews" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px"></div>
   <div id="viewMsg" class="cnt" style="margin-top:4px"></div>
   <h4>Tagged nodes</h4>
   <div id="tagList" class="cnt">none yet</div>
@@ -321,8 +310,8 @@ function renderTop(meta){
  h+=top.map(id=>{const a=g.getNodeAttributes(id);return '<div class="nb" data-go="'+esc(id)+'"><span class="dot" style="background:'+(metrics[id].cut?'#cf222e':(a.color||'#8c959f'))+'"></span><span>'+esc(a.rawlabel||id)+'</span></div>';}).join('');
  const el=$('mtop'); el.innerHTML=h; el.querySelectorAll('.nb').forEach(x=>x.onclick=()=>focusNode(x.dataset.go));
 }
-$('colorBy').onchange=e=>{ colorBy=e.target.value||null;
- if(colorBy){ loadMetrics(()=>renderer&&renderer.refresh()); } else { renderer&&renderer.refresh(); } };
+// colour-by selector removed — nodes use their plain type colours by default;
+// the "hubs" / "chokepoints" saved views still recolour by metric on demand.
 
 // ── render + interaction ────────────────────────────────────────────────
 let renderer=null, focus=null, pathSet=null, pickMode=null, src=null, dst=null, hover=null, hoverNode=null;
@@ -405,7 +394,6 @@ function render(){
      return Object.assign({},d,{color:'#7d8793',size:(d.size||0.6)+0.5,zIndex:3}); }
    return d; });
  renderer.on('clickNode',({node})=>{
-   if(pickMode){ assignPick(node); return; }
    pathSet=null; focus=hood(node); renderer.refresh(); detail(node); });
  renderer.on('clickStage',()=>{ if(focus||pathSet){focus=null;pathSet=null;renderer.refresh();} });
  renderer.on('rightClickNode',e=>{ const o=e.event&&e.event.original; if(o)o.preventDefault(); showCtx(o?o.clientX:e.event.x,o?o.clientY:e.event.y,e.node); });
@@ -415,13 +403,22 @@ function render(){
  renderer.getCamera().on('updated',()=>{ const z=$('zlvl'); if(z)z.textContent=Math.round(100/renderer.getCamera().ratio)+'%'; drawMini(); });
  renderer.on('afterRender',()=>{drawMini();drawOverlay();});
  let drag=null;
- let dragMove=false;
- renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node; dragMove=g.degree(drag)<=150; // hub nodes move alone (avoid dragging the whole graph)
+ let dragSet=null;
+ renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node;
+   // move the whole sub-cluster below the node (children, grandchildren, … all tiers).
+   // Expand only to same-or-deeper tier so it doesn't climb the backbone; no hub
+   // guard and no node cap — the entire subtree follows.
+   dragSet=new Set([drag]);
+   { const bt=tierOf(g.getNodeAttribute(drag,'group')); let fr=[drag];
+     while(fr.length){ const nx=[];
+       fr.forEach(nd=>g.forEachNeighbor(nd,nb=>{ if(dragSet.has(nb))return;
+         if(tierOf(g.getNodeAttribute(nb,'group'))>=bt){ dragSet.add(nb); nx.push(nb); } }));
+       fr=nx; } }
    g.setNodeAttribute(drag,'highlighted',true); fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
  renderer.getMouseCaptor().on('mousemovebody',e=>{ if(!drag)return; const p=renderer.viewportToGraph(e);
    const dx=p.x-g.getNodeAttribute(drag,'x'), dy=p.y-g.getNodeAttribute(drag,'y');
    g.setNodeAttribute(drag,'x',p.x); g.setNodeAttribute(drag,'y',p.y);
-   if(dragMove)g.forEachNeighbor(drag,nb=>{ g.setNodeAttribute(nb,'x',g.getNodeAttribute(nb,'x')+dx); g.setNodeAttribute(nb,'y',g.getNodeAttribute(nb,'y')+dy); });
+   if(dragSet)dragSet.forEach(nb=>{ if(nb!==drag){ g.setNodeAttribute(nb,'x',g.getNodeAttribute(nb,'x')+dx); g.setNodeAttribute(nb,'y',g.getNodeAttribute(nb,'y')+dy); } });
    e.preventSigmaDefault(); e.original.preventDefault(); e.original.stopPropagation(); });
  renderer.getMouseCaptor().on('mouseup',()=>{ if(drag){g.removeNodeAttribute(drag,'highlighted'); if(fa2&&fa2._w)startLayout(4000);} drag=null; });
 }
@@ -434,7 +431,7 @@ function neighRow(id){ const a=g.getNodeAttributes(id);
 function detail(id){ const a=g.getNodeAttributes(id);
  const outs=[],ins=[]; g.forEachOutNeighbor(id,nb=>outs.push(nb)); g.forEachInNeighbor(id,nb=>ins.push(nb));
  let h='<h3>'+esc(a.rawlabel||id)+'</h3><div class="meta">'+esc(a.group||'')+' · risk '+(a.risk||0)+' · degree '+g.degree(id)+(a.count?' · '+a.count+' members':'')+'</div>';
- h+='<div class="act"><button data-act="src">as source</button><button data-act="dst">as target</button><button data-act="copy">copy id</button></div>';
+ h+='<div class="act"><button data-act="copy">copy id</button></div>';
  if(a.title)h+='<pre>'+esc(a.title)+'</pre>';
  if(outs.length)h+='<h4>→ out ('+outs.length+')</h4>'+outs.slice(0,120).map(neighRow).join('');
  if(ins.length)h+='<h4>← in ('+ins.length+')</h4>'+ins.slice(0,120).map(neighRow).join('');
@@ -446,8 +443,7 @@ function detail(id){ const a=g.getNodeAttributes(id);
  side.querySelectorAll('.nb').forEach(el=>el.onclick=()=>focusNode(el.dataset.go));
  side.querySelectorAll('.act button').forEach(b=>b.onclick=()=>{
    if(b.dataset.act==='copy'){navigator.clipboard&&navigator.clipboard.writeText(id);}
-   else if(b.dataset.act==='saveAnno'){saveAnno(id);}
-   else setPick(b.dataset.act,id); });
+   else if(b.dataset.act==='saveAnno'){saveAnno(id);} });
 }
 function saveAnno(id){ const t=$('tagIn'), no=$('noteIn'); const tag=t?t.value:'', note=no?no.value:'';
  fetch(BASE+'/annotations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,tag:tag,note:note})})
@@ -460,26 +456,38 @@ function renderTagList(){ const el=$('tagList'); const ids=Object.keys(annos).fi
    return '<div class="nb" data-go="'+esc(id)+'"><span class="dot" style="background:'+(a.color||'#8c959f')+'"></span><span>'+(annos[id].tag?'['+esc(annos[id].tag)+'] ':'')+esc(a.rawlabel||id)+'</span></div>';}).join('');
  el.querySelectorAll('.nb').forEach(x=>x.onclick=()=>focusNode(x.dataset.go)); }
 
-// ── pathfinding ─────────────────────────────────────────────────────────
-function setPick(kind,id){ if(kind==='src'){src=id;} else {dst=id;} renderSlots(); }
-function assignPick(id){ setPick(pickMode,id); pickMode=null; $('pickSrc').classList.remove('on'); $('pickDst').classList.remove('on');
- $('pfSrc').classList.remove('pick'); $('pfDst').classList.remove('pick'); }
-function slotHTML(id){ if(!id||!g.hasNode(id))return '<span>— none —</span>'; const a=g.getNodeAttributes(id);
- return '<b>'+esc(a.rawlabel||id)+'</b><span class="x" title="clear">✕</span>'; }
-function renderSlots(){ $('pfSrc').innerHTML=slotHTML(src); $('pfDst').innerHTML=slotHTML(dst);
- const xs=$('pfSrc').querySelector('.x'); if(xs)xs.onclick=()=>{src=null;renderSlots();};
- const xd=$('pfDst').querySelector('.x'); if(xd)xd.onclick=()=>{dst=null;renderSlots();}; }
-$('pickSrc').onclick=()=>{pickMode='src'; $('pickSrc').classList.add('on'); $('pickDst').classList.remove('on'); $('pfSrc').classList.add('pick'); $('pfDst').classList.remove('pick'); openLeft(true);};
-$('pickDst').onclick=()=>{pickMode='dst'; $('pickDst').classList.add('on'); $('pickSrc').classList.remove('on'); $('pfDst').classList.add('pick'); $('pfSrc').classList.remove('pick');};
-$('clearPath').onclick=()=>{pathSet=null; $('pfMsg').textContent=''; renderer&&renderer.refresh();};
-$('findPath').onclick=()=>{ if(!src||!dst){$('pfMsg').textContent='pick a source and a target first';return;}
- $('pfMsg').textContent='searching…'; focus=null;
- fetch(BASE+'/path?from='+encodeURIComponent(src)+'&to='+encodeURIComponent(dst)).then(r=>r.json()).then(sg=>{
-   add(sg); const ids=(sg.nodes||[]).map(n=>n.id); const ok=sg.meta&&sg.meta.path;
-   if(!ok||!ids.length){pathSet=null; $('pfMsg').textContent='no path found'; renderer&&renderer.refresh(); return;}
-   pathSet=new Set(ids); $('pfMsg').textContent='path: '+ids.length+' nodes'; renderer&&renderer.refresh();
-   const p=renderer.getNodeDisplayData(ids[Math.floor(ids.length/2)]); if(p)renderer.getCamera().animate({x:p.x,y:p.y,ratio:0.5},{duration:500});
- }).catch(()=>{$('pfMsg').textContent='path lookup failed';}); };
+// ── all-nodes browser ─────────────────────────────────────────────────────
+// Lists every node in the current graph; click one to focus it + its
+// neighbours on the canvas (same as clicking the node). Filter box narrows it.
+function buildAllList(){ const box=$('allList'); if(!box)return;
+ const q=(($('allq')&&$('allq').value)||'').trim().toLowerCase();
+ const arr=[]; g.forEachNode((id,a)=>{
+   if(q&&(a.rawlabel||'').toLowerCase().indexOf(q)<0&&id.toLowerCase().indexOf(q)<0)return; arr.push([id,a]); });
+ arr.sort((x,y)=>(y[1].risk||0)-(x[1].risk||0)||g.degree(y[0])-g.degree(x[0]));
+ if($('allN'))$('allN').textContent='('+arr.length+(q?' match':'')+')';
+ const cap=400, shown=arr.slice(0,cap);
+ box.innerHTML=shown.map(([id,a])=>'<div class="nb" data-go="'+esc(id)+'"><span class="dot" style="background:'+(a.color||'#8c959f')+'"></span><span>'+esc(a.rawlabel||id)+'</span><small>'+esc(a.group||'')+'</small></div>').join('')
+   +(arr.length>cap?'<div class="cnt" style="padding:4px 2px">+'+(arr.length-cap)+' more — type in the filter to narrow…</div>':'');
+ box.querySelectorAll('.nb').forEach(x=>x.onclick=()=>focusNode(x.dataset.go)); }
+if($('allq'))$('allq').addEventListener('input',buildAllList);
+
+// ── custom saved views (snapshot the current filter/colour state) ──────────
+const VKEY='g2views:'+TARGET;
+function loadCustomViews(){ try{ return JSON.parse(localStorage.getItem(VKEY)||'{}'); }catch(e){ return {}; } }
+function saveCustomViews(o){ try{ localStorage.setItem(VKEY,JSON.stringify(o)); }catch(e){} }
+function snapFilter(){ const s={}; Object.keys(filter).forEach(k=>{ s[k]= k==='only' ? (filter.only?Array.from(filter.only):null) : filter[k]; }); s.colorBy=colorBy||''; return s; }
+function applySnap(s){ Object.keys(filter).forEach(k=>{ if(k==='only')filter.only=s.only?new Set(s.only):null; else if(k in s)filter[k]=s[k]; });
+ $('minDeg').value=filter.minDeg; $('minDegV').textContent=filter.minDeg; $('minRisk').value=filter.minRisk; $('minRiskV').textContent=filter.minRisk; $('hideDead').checked=!!filter.hideDead;
+ syncFilterUI(); setColorBy(s.colorBy||'');
+ if(colorBy)loadMetrics(()=>renderer&&renderer.refresh()); else renderer&&renderer.refresh(); updateStat(); }
+function renderCustomViews(){ const box=$('customViews'); if(!box)return; const o=loadCustomViews();
+ box.innerHTML=Object.keys(o).map(n=>'<button class="cv" data-cv="'+esc(n)+'" title="click = apply · right-click = delete">★ '+esc(n)+'</button>').join('');
+ box.querySelectorAll('.cv').forEach(b=>{
+   b.onclick=()=>{ applySnap(loadCustomViews()[b.dataset.cv]||{}); $('viewMsg').textContent='view: '+b.dataset.cv; };
+   b.oncontextmenu=ev=>{ ev.preventDefault(); const o=loadCustomViews(); delete o[b.dataset.cv]; saveCustomViews(o); renderCustomViews(); $('viewMsg').textContent='deleted "'+b.dataset.cv+'"'; }; }); }
+if($('saveView'))$('saveView').onclick=()=>{ const n=(prompt('Save current view as:')||'').trim(); if(!n)return;
+ const o=loadCustomViews(); o[n]=snapFilter(); saveCustomViews(o); renderCustomViews(); $('viewMsg').textContent='saved "'+n+'"'; };
+renderCustomViews();
 
 // ── export ──────────────────────────────────────────────────────────────
 $('expBtn').onclick=e=>{e.stopPropagation(); $('exp').classList.toggle('open');};
@@ -504,11 +512,11 @@ function dl(blob,name){ const a=document.createElement('a'); a.download=name; a.
 let MODE='full';
 function visibleCount(){ let n=0; g.forEachNode((id,a)=>{if(passFilter(id,a))n++;}); return n; }
 function updateStat(){ $('stat').textContent=visibleCount()+' shown / '+g.order+' nodes · '+g.size+' edges · '+MODE; famCounts(); }
-function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE+'…'; $('spin').style.display='block'; focus=null; pathSet=null; src=null; dst=null; metrics=null; $('mtop').innerHTML=''; $('mlegend').textContent=''; renderSlots(); $('pfMsg').textContent='';
+function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE+'…'; $('spin').style.display='block'; focus=null; pathSet=null; metrics=null; $('mtop').innerHTML=''; $('mlegend').textContent='';
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
    g.clear(); if(renderer){renderer.kill();renderer=null;}
-   add(sg); render(); startLayout(); updateStat(); loadAnnos();
+   add(sg); render(); startLayout(); updateStat(); loadAnnos(); buildAllList();
    if(colorBy)loadMetrics(()=>renderer&&renderer.refresh());
    setTimeout(()=>{$('spin').style.display='none'; renderer&&renderer.getCamera().animatedReset();},450);
  }).catch(()=>{$('spin').style.display='none'; $('stat').textContent='load failed';}); }
@@ -574,10 +582,19 @@ $('views').querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ const msg=VIE
 // ── run diff ───────────────────────────────────────────────────────────────
 $('mode').onclick=()=>{ MODE=(MODE==='full')?'overview':'full'; $('mode').textContent=(MODE==='full')?'◰ full':'◱ overview'; load(); };
 $('reload').onclick=load;
+// full search: pull EVERY matching node from the server (not just the ones
+// already on the canvas), add the missing ones, then highlight all matches.
+function localHits(q){ const h=[]; g.forEachNode((id,a)=>{ if((a.rawlabel||'').toLowerCase().indexOf(q)>-1||id.toLowerCase().indexOf(q)>-1)h.push(id); }); return h; }
+function highlightHits(hit){ if(!hit.length)return false; pathSet=null; focus=new Set();
+ hit.forEach(id=>hood(id).forEach(x=>focus.add(x))); renderer&&renderer.refresh(); focusTo(hit[0]); detail(hit[0]); openSide(true); return true; }
 $('q').addEventListener('change',e=>{ const q=(e.target.value||'').trim().toLowerCase(); if(!q||!renderer)return;
- const hit=[]; g.forEachNode((id,a)=>{ if((a.rawlabel||'').toLowerCase().indexOf(q)>-1||id.toLowerCase().indexOf(q)>-1)hit.push(id); });
- if(hit.length){ pathSet=null; focus=new Set(); hit.forEach(id=>hood(id).forEach(x=>focus.add(x))); renderer.refresh(); focusTo(hit[0]); detail(hit[0]); openSide(true); }
- else { fetch(BASE+'/search?q='+encodeURIComponent(q)+'&limit=30').then(r=>r.json()).then(d=>{ (d.nodes||[]).forEach(n=>add({nodes:[n],edges:[]})); render(); startLayout(4000); updateStat(); }); } });
+ fetch(BASE+'/search?q='+encodeURIComponent(q)+'&limit=0').then(r=>r.json()).then(d=>{ // limit=0 → server returns EVERY match (no cap)
+   let added=0; (d.nodes||[]).forEach(n=>{ if(!g.hasNode(n.id)){ add({nodes:[n],edges:[]}); added++; } });
+   if(added){ render(); startLayout(3000); }
+   const hit=localHits(q); buildAllList(); updateStat();
+   if(highlightHits(hit)) toast(hit.length+' node'+(hit.length===1?'':'s')+' match "'+q+'"'+(added?' (+'+added+' loaded)':''),3000);
+   else $('stat').textContent='no match for "'+q+'"';
+ }).catch(()=>{ highlightHits(localHits(q)); }); });
 
 // ── enrichment transforms (right-click) ─────────────────────────────────
 let toastTo=null;
@@ -592,7 +609,7 @@ function enrich(id,kind){ toast('transform '+kind+'…',8000);
  fetch(BASE+'/enrich?id='+encodeURIComponent(id)+'&kind='+kind).then(r=>r.json()).then(sg=>{
    if(kind==='txt'){ const t=(sg.meta&&sg.meta.txt)||[]; toast('TXT '+(sg.meta&&sg.meta.on||'')+':\n'+(t.join('\n')||'(none)'),9000); return; }
    const before=g.order; add(sg||{}); const added=g.order-before;
-   render(); if(added)startLayout(4000); focus=hood(id); renderer&&renderer.refresh(); updateStat();
+   render(); if(added)startLayout(4000); focus=hood(id); renderer&&renderer.refresh(); updateStat(); buildAllList();
    toast(kind+': +'+added+' node'+(added===1?'':'s')+(added?'':' (nothing resolved)'),3500);
  }).catch(()=>toast('transform failed',3000)); }
 $('cy').addEventListener('contextmenu',ev=>ev.preventDefault());
@@ -610,5 +627,5 @@ const LEGEND=[['domain','domain'],['sub','subdomain'],['sub_int','internal host'
  ['favicon','favicon'],['intel','intel']];
 function buildLegend(){ $('legend').innerHTML=LEGEND.map(([g,l])=>'<span class="lg"><i style="background:'+(COL[g]||'#8c959f')+'"></i>'+l+'</span>').join(''); }
 document.addEventListener('click',hideCtx);
-applyTheme(); buildFilters(); buildLegend(); renderSlots(); load();
+applyTheme(); buildFilters(); buildLegend(); load();
 </script></body></html>
