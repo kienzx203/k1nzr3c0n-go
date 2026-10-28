@@ -1059,8 +1059,8 @@ steps:
       done
     done
     # (1) hostnames -> subdomains (feeds merge_passive)
-    grep -oE '[a-zA-Z0-9._-]+\.{target}' {workspace}/.cen_raw 2>/dev/null \
-      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+    grep -oE '[a-zA-Z0-9][a-zA-Z0-9._-]*\.{target}' {workspace}/.cen_raw 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/\.$//' \
       | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_censys.txt || true
     # build the IN-SCOPE IP set: host IPs whose forward/reverse DNS is in-scope, plus
     # webproperty endpoint IPs serving an in-scope hostname. Keeps IP intel on the
