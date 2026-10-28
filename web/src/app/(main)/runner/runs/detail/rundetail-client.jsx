@@ -7,7 +7,6 @@ import { api as artex } from '@/lib/api'  // ARTEX task-create for the handoff
 import { formatDuration, durSecs, fmtDate } from '@/lib/k1z-utils'
 import LogViewer from '@/components/k1z/LogViewer'
 import FileExplorer from '@/components/k1z/FileExplorer'
-import GraphView from '@/components/k1z/GraphView'
 import StepProgress from '@/components/k1z/StepProgress'
 import FindingsPanel from '@/components/k1z/FindingsPanel'
 import ScreenshotGallery from '@/components/k1z/ScreenshotGallery'
@@ -374,7 +373,13 @@ export default function RunDetail() {
           return (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => {
+                if (t === 'Graph') {
+                  window.open(`/api/v1/targets/${encodeURIComponent(run.target)}/graph2/view`, '_blank', 'noopener')
+                } else {
+                  setTab(t)
+                }
+              }}
               className={`px-4 py-2.5 text-xs border-b-2 transition-colors flex items-center gap-1.5 ${
                 tab === t ? 'border-[var(--accent)] text-[var(--accent)]' : 'border-transparent text-[var(--text-2)] hover:text-[var(--text)]'
               }`}
@@ -402,9 +407,6 @@ export default function RunDetail() {
         )}
         {tab === 'Files' && (
           <div className="h-full overflow-y-auto"><FileExplorer runId={id} running={isActive} /></div>
-        )}
-        {tab === 'Graph' && (
-          <div className="h-full"><GraphView runId={id} /></div>
         )}
         {tab === 'Report' && (
           <div className="h-full overflow-y-auto"><div className="p-6 space-y-4">

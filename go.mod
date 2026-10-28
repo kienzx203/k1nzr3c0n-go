@@ -17,7 +17,6 @@ require (
 	github.com/klauspost/compress v1.18.6
 	github.com/lqqyt2423/go-mitmproxy v1.9.2
 	github.com/miekg/dns v1.1.72
-	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/projectdiscovery/dnsx v1.2.3
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/crypto v0.55.0

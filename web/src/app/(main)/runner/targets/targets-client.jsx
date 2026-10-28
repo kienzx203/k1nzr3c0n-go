@@ -165,9 +165,6 @@ function TargetDetail({ name, onChanged, onDeleted }) {
             <a href={`/api/v1/targets/${encodeURIComponent(detail.name)}/graph2/view`} target="_blank" rel="noreferrer"
                className="btn btn-ghost" style={{ fontSize: 10 }}
                title="Interactive WebGL attack-surface graph (Sigma.js) — loads on demand, click a node to expand">🕸 Graph</a>
-            <a href={`/api/v1/targets/${encodeURIComponent(detail.name)}/graph`} target="_blank" rel="noreferrer"
-               className="btn btn-ghost" style={{ fontSize: 10, opacity: 0.7 }}
-               title="Classic static graph (Cytoscape)">Classic</a>
             <button className="btn btn-danger" style={{ fontSize: 10 }} onClick={remove}>Unregister</button>
           </div>
         </div>
