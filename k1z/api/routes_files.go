@@ -42,7 +42,13 @@ var graphMergeFiles = []string{
 	// high-cardinality counts (urls/endpoints/params/secrets)
 	"all_urls.txt", "live_urls.txt", "all_endpoints.txt", "linkfinder_endpoints.txt",
 	"all_params.txt", "found_params.txt", "jsubfinder_secrets.txt", "secretfinder_results.txt",
-	"trufflehog_results.jsonl", "swaggerspy_results.txt",
+	"trufflehog_results.jsonl", "gitleaks_results.json", "swaggerspy_results.txt",
+	// gf attack-candidates (subdir preserved by the merge), related-domain intel
+	"gf/*.txt", "st_associated.txt", "st_pivot_domains.txt", "amass_intel.txt",
+	// service/cert/favicon/dns-record detail + shared-hosting (DB has these; keep
+	// them available to the graph too)
+	"nmap_service.txt", "rustscan_full.txt", "tlsx_raw.txt", "favicon_hashes.txt",
+	"dns_records_raw.txt", "ip_groups/shared_hosting.txt",
 }
 
 func safeTargetDir(t string) string {

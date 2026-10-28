@@ -80,16 +80,21 @@ func (s *Server) targetGraph(target string) (*graph.Graph, int, error) {
 				if e != nil || len(b) == 0 {
 					continue
 				}
-				base := filepath.Base(p)
-				agg[base] = append(agg[base], b...)
+				rel, re := filepath.Rel(ws, p) // preserve subdirs (gf/, ip_groups/)
+				if re != nil || strings.HasPrefix(rel, "..") {
+					rel = filepath.Base(p)
+				}
+				agg[rel] = append(agg[rel], b...)
 				if b[len(b)-1] != '\n' {
-					agg[base] = append(agg[base], '\n')
+					agg[rel] = append(agg[rel], '\n')
 				}
 			}
 		}
 	}
-	for base, buf := range agg {
-		_ = os.WriteFile(filepath.Join(merged, base), buf, 0o644)
+	for rel, buf := range agg {
+		dst := filepath.Join(merged, rel)
+		_ = os.MkdirAll(filepath.Dir(dst), 0o755)
+		_ = os.WriteFile(dst, buf, 0o644)
 	}
 	g := graph.Build(merged, target)
 	graph2Cache[target] = &cachedGraph{g: g, builtAt: time.Now()}

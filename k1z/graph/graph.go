@@ -143,6 +143,22 @@ func gitleaksCount(dir string) int {
 	return 0
 }
 
+// globAll returns the deduped union of files matching any pattern under dir.
+func globAll(dir string, pats ...string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range pats {
+		ms, _ := filepath.Glob(filepath.Join(dir, p))
+		for _, m := range ms {
+			if !seen[m] {
+				seen[m] = true
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
 // shortURL returns the path+query portion of a URL (for compact path labels).
 func shortURL(u string) string {
 	s := regexp.MustCompile(`^[a-z]+://`).ReplaceAllString(u, "")
@@ -256,7 +272,7 @@ func Build(dir, target string) *Graph {
 			}
 		}
 	}
-	jsonl(firstExisting(dir, "httpx.json", "httpx.jsonl"), func(m map[string]any) {
+	httpxH := func(m map[string]any) {
 		h := strings.ToLower(str(m["host"]))
 		if h == "" {
 			h = hostOfURL(str(m["url"]))
@@ -282,8 +298,13 @@ func Build(dir, target string) *Graph {
 		}
 		alive[h] = map[string]string{"status": strconv.Itoa(intOf(m["status_code"]) + intOf(m["status-code"])),
 			"title": title, "server": str(m["webserver"]), "cdn": cdn}
-	})
-	jsonl(firstExisting(dir, "naabu.json", "naabu.jsonl"), func(m map[string]any) {
+	}
+	// glob so probe/pivot/st-pivot httpx runs (the only httpx in templates 03/04)
+	// are read, not just the first httpx.json(l).
+	for _, f := range globAll(dir, "httpx*.jsonl", "httpx*.json", "*httpx*.jsonl") {
+		jsonl(f, httpxH)
+	}
+	naabuH := func(m map[string]any) {
 		ip := str(m["ip"])
 		port := intOf(m["port"])
 		if reIP.MatchString(ip) && port > 0 {
@@ -292,7 +313,10 @@ func Build(dir, target string) *Graph {
 			}
 			ipPorts[ip][strconv.Itoa(port)] = struct{}{}
 		}
-	})
+	}
+	for _, f := range globAll(dir, "naabu*.jsonl", "naabu*.json", "st_pivot_naabu.jsonl", "ports.jsonl") {
+		jsonl(f, naabuH)
+	}
 	nucleiHandler := func(m map[string]any) {
 		info, _ := m["info"].(map[string]any)
 		name := ""
