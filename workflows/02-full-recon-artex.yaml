@@ -1017,6 +1017,197 @@ steps:
     printf 'LeakIX subs: %s\n' "$(wc -l < {workspace}/p_leakix.txt)"
   outputs:
     file: '{workspace}/p_leakix.txt'
+- id: p_censys
+  name: passive — Censys Search API direct (cert SANs -> subs; hosts -> origin IPs; id:secret Basic auth)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 4m
+  run: |
+    touch {workspace}/p_censys.txt {workspace}/censys_ip.txt
+    CID="${CENSYS_API_ID:-}"; CSEC="${CENSYS_API_SECRET:-}"
+    test -n "$CID" -a -n "$CSEC" || { printf '[censys] no CENSYS_API_ID/SECRET — skipping\n'; exit 0; }
+    # subdomains from certificate SANs (legacy Search API v2; 401 = key is Platform PAT, step soft-skips)
+    curl -s --max-time 90 -u "${CID}:${CSEC}" -G \
+      --data-urlencode 'q=names: {target}' --data-urlencode 'per_page=100' \
+      "https://search.censys.io/api/v2/certificates/search" 2>/dev/null \
+      | jq -r '.result.hits[]?.names[]? // empty' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_censys.txt || true
+    # candidate ORIGIN IPs (hosts presenting the cert) -> censys_ip.txt (side output, not merged)
+    curl -s --max-time 90 -u "${CID}:${CSEC}" -G \
+      --data-urlencode 'q=services.tls.certificates.leaf_data.names: {target} or {target}' \
+      --data-urlencode 'per_page=100' \
+      "https://search.censys.io/api/v2/hosts/search" 2>/dev/null \
+      | jq -r '.result.hits[]?.ip // empty' 2>/dev/null | sort -u > {workspace}/censys_ip.txt || true
+    touch {workspace}/p_censys.txt {workspace}/censys_ip.txt
+    printf 'Censys: %s subs | %s origin IPs\n' "$(wc -l < {workspace}/p_censys.txt)" "$(wc -l < {workspace}/censys_ip.txt)"
+  outputs:
+    file: '{workspace}/p_censys.txt'
+    ip: '{workspace}/censys_ip.txt'
+- id: p_netlas
+  name: passive — Netlas domains API direct (env NETLAS_API_KEY)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_netlas.txt
+    NK="${NETLAS_API_KEY:-}"
+    test -n "$NK" || { printf '[netlas] no NETLAS_API_KEY — skipping\n'; exit 0; }
+    curl -s --max-time 90 -H "X-API-Key: $NK" -G \
+      --data-urlencode 'q=domain:*.{target}' \
+      "https://app.netlas.io/api/domains/" 2>/dev/null \
+      | jq -r '.items[]? | (.data.domain // ._source.domain // .domain // empty)' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_netlas.txt || true
+    touch {workspace}/p_netlas.txt
+    printf 'Netlas subs: %s\n' "$(wc -l < {workspace}/p_netlas.txt)"
+  outputs:
+    file: '{workspace}/p_netlas.txt'
+- id: p_whoisxmlapi
+  name: passive — WhoisXML Subdomains API direct (env WHOISXMLAPI_API_KEY)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_whoisxmlapi.txt
+    WK="${WHOISXMLAPI_API_KEY:-}"
+    test -n "$WK" || { printf '[whoisxmlapi] no WHOISXMLAPI_API_KEY — skipping\n'; exit 0; }
+    curl -s --max-time 60 -G \
+      --data-urlencode "apiKey=$WK" --data-urlencode 'domainName={target}' \
+      "https://subdomains.whoisxmlapi.com/api/v1" 2>/dev/null \
+      | jq -r '.result.records[]?.domain // empty' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_whoisxmlapi.txt || true
+    touch {workspace}/p_whoisxmlapi.txt
+    printf 'WhoisXML subs: %s\n' "$(wc -l < {workspace}/p_whoisxmlapi.txt)"
+  outputs:
+    file: '{workspace}/p_whoisxmlapi.txt'
+- id: p_intelx
+  name: passive — IntelX phonebook/selector search direct (env INTELX_API_KEY; two-step)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 4m
+  run: |
+    touch {workspace}/p_intelx.txt
+    IK="${INTELX_API_KEY:-}"
+    test -n "$IK" || { printf '[intelx] no INTELX_API_KEY — skipping\n'; exit 0; }
+    IXB="https://2.intelx.io"
+    SID=$(curl -s --max-time 30 -H "x-key: $IK" -H "Content-Type: application/json" \
+      -d '{"term":"{target}","maxresults":10000,"media":0,"target":1,"timeout":20}' \
+      "$IXB/phonebook/search" 2>/dev/null | jq -r '.id // empty' 2>/dev/null)
+    test -n "$SID" || { printf '[intelx] no search id (bad key/host?) — skipping\n'; exit 0; }
+    : > {workspace}/.intelx_raw
+    for i in 1 2 3 4 5 6; do
+      R=$(curl -s --max-time 30 -H "x-key: $IK" "$IXB/phonebook/search/result?id=${SID}&limit=10000" 2>/dev/null)
+      printf '%s' "$R" | jq -r '.selectors[]?.selectorvalue // empty' 2>/dev/null >> {workspace}/.intelx_raw
+      [ "$(printf '%s' "$R" | jq -r '.status // empty' 2>/dev/null)" = "1" ] && break
+      sleep 3
+    done
+    sort -u {workspace}/.intelx_raw 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's|https\?://||; s|/.*||; s/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_intelx.txt || true
+    rm -f {workspace}/.intelx_raw
+    touch {workspace}/p_intelx.txt
+    printf 'IntelX subs: %s\n' "$(wc -l < {workspace}/p_intelx.txt)"
+  outputs:
+    file: '{workspace}/p_intelx.txt'
+- id: p_dnsdumpster
+  name: passive — DNSDumpster API direct (env DNSDUMPSTER_API_KEY; low free-tier quota)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_dnsdumpster.txt
+    DK="${DNSDUMPSTER_API_KEY:-}"
+    test -n "$DK" || { printf '[dnsdumpster] no DNSDUMPSTER_API_KEY — skipping\n'; exit 0; }
+    curl -s --max-time 60 -H "X-API-Key: $DK" \
+      "https://api.dnsdumpster.com/domain/{target}" 2>/dev/null \
+      | jq -r '([.a[]?.host] + [.cname[]?.host] + [.mx[]?.host] + [.ns[]?.host])[]? // empty' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_dnsdumpster.txt || true
+    touch {workspace}/p_dnsdumpster.txt
+    printf 'DNSDumpster subs: %s\n' "$(wc -l < {workspace}/p_dnsdumpster.txt)"
+  outputs:
+    file: '{workspace}/p_dnsdumpster.txt'
+- id: p_criminalip
+  name: passive — CriminalIP domain scan direct (env CRIMINALIP_API_KEY; async)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 5m
+  run: |
+    touch {workspace}/p_criminalip.txt
+    CK="${CRIMINALIP_API_KEY:-}"
+    test -n "$CK" || { printf '[criminalip] no CRIMINALIP_API_KEY — skipping\n'; exit 0; }
+    SID=$(curl -s --max-time 30 -H "x-api-key: $CK" -d 'query={target}' \
+      "https://api.criminalip.io/v1/domain/lite/scan" 2>/dev/null \
+      | jq -r '.data.scan_id // .scan_id // empty' 2>/dev/null)
+    test -n "$SID" || { printf '[criminalip] no scan_id (verify API) — skipping\n'; exit 0; }
+    for i in 1 2 3 4 5 6 7 8; do
+      ST=$(curl -s --max-time 30 -H "x-api-key: $CK" "https://api.criminalip.io/v1/domain/lite/progress/${SID}" 2>/dev/null \
+        | jq -r '.data.scan_percentage // .scan_percentage // empty' 2>/dev/null)
+      [ "$ST" = "100" ] && break
+      sleep 10
+    done
+    curl -s --max-time 60 -H "x-api-key: $CK" "https://api.criminalip.io/v1/domain/lite/report/${SID}" 2>/dev/null \
+      | jq -r '.. | objects | (.subdomain? // empty)' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's|https\?://||; s|/.*||; s/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_criminalip.txt || true
+    touch {workspace}/p_criminalip.txt
+    printf 'CriminalIP subs: %s\n' "$(wc -l < {workspace}/p_criminalip.txt)"
+  outputs:
+    file: '{workspace}/p_criminalip.txt'
+- id: p_google_cse
+  name: passive — Google Custom Search (site-dork; env GOOGLE_CSE_KEY + GOOGLE_CX)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_google_cse.txt
+    GK="${GOOGLE_CSE_KEY:-}"; GX="${GOOGLE_CX:-}"
+    test -n "$GK" -a -n "$GX" || { printf '[google_cse] no GOOGLE_CSE_KEY/GOOGLE_CX — skipping\n'; exit 0; }
+    : > {workspace}/.gcse_raw
+    for START in 1 11 21 31 41 51 61 71 81 91; do
+      curl -s --max-time 30 -G "https://www.googleapis.com/customsearch/v1" \
+        --data-urlencode "key=$GK" --data-urlencode "cx=$GX" \
+        --data-urlencode 'q=site:{target}' --data-urlencode "start=$START" --data-urlencode 'num=10' 2>/dev/null \
+        | jq -r '.items[]?.link // empty' 2>/dev/null >> {workspace}/.gcse_raw || break
+    done
+    grep -oiE '[a-z0-9._-]+\.{target}' {workspace}/.gcse_raw 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_google_cse.txt || true
+    rm -f {workspace}/.gcse_raw
+    touch {workspace}/p_google_cse.txt
+    printf 'Google CSE subs: %s\n' "$(wc -l < {workspace}/p_google_cse.txt)"
+  outputs:
+    file: '{workspace}/p_google_cse.txt'
 - id: merge_passive
   name: merge all passive sources → deduplicate + scope-filter
   depends_on:
@@ -1058,6 +1249,13 @@ steps:
   - p_fofa
   - p_fullhunt
   - p_leakix
+  - p_censys
+  - p_netlas
+  - p_whoisxmlapi
+  - p_intelx
+  - p_dnsdumpster
+  - p_criminalip
+  - p_google_cse
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -1101,6 +1299,13 @@ steps:
         {workspace}/p_fofa.txt \
         {workspace}/p_fullhunt.txt \
         {workspace}/p_leakix.txt \
+        {workspace}/p_censys.txt \
+        {workspace}/p_netlas.txt \
+        {workspace}/p_whoisxmlapi.txt \
+        {workspace}/p_intelx.txt \
+        {workspace}/p_dnsdumpster.txt \
+        {workspace}/p_criminalip.txt \
+        {workspace}/p_google_cse.txt \
         2>/dev/null || true
       test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
