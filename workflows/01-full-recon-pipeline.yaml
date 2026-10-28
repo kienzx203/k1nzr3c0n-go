@@ -859,6 +859,369 @@ steps:
     printf '[axfr] zone transfer subdomains leaked: %s\n' "$AXFR_COUNT"
   outputs:
     file: '{workspace}/axfr_subs.txt'
+- id: p_subdomaincenter
+  name: passive — subdomain.center (unique dataset, no API key)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    curl -s --max-time 60 --retry 2 "https://api.subdomain.center/?domain={target}" 2>/dev/null \
+      | jq -r '.[]?' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_subdomaincenter.txt || true
+    touch {workspace}/p_subdomaincenter.txt
+    printf 'subdomain.center subs: %s\n' "$(wc -l < {workspace}/p_subdomaincenter.txt)"
+  outputs:
+    file: '{workspace}/p_subdomaincenter.txt'
+- id: p_crtsh_psql
+  name: passive — crt.sh via PostgreSQL (full CT set; deeper than the HTTP API)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 5m
+  run: |
+    touch {workspace}/p_crtsh_psql.txt
+    command -v psql >/dev/null 2>&1 || { printf 'psql not installed — skipping crt.sh-psql\n'; exit 0; }
+    # crt.sh public Postgres returns the FULL identity set the HTTP API truncates.
+    # Server-side statement_timeout caps a slow scan; the step is optional anyway.
+    PGCONNECT_TIMEOUT=20 psql -t -A -h crt.sh -p 5432 -U guest -d certwatch \
+      -c "SET statement_timeout='120s'; SELECT ci.NAME_VALUE FROM certificate_and_identities ci WHERE ci.NAME_VALUE ILIKE '%.{target}';" \
+      2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_crtsh_psql.txt || true
+    touch {workspace}/p_crtsh_psql.txt
+    printf 'crt.sh (psql) subs: %s\n' "$(wc -l < {workspace}/p_crtsh_psql.txt)"
+  outputs:
+    file: '{workspace}/p_crtsh_psql.txt'
+- id: p_github_subs
+  name: passive — github-subdomains (deep code dork; needs GITHUB_TOKEN)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 10m
+  run: |
+    touch {workspace}/p_github_subs.txt
+    command -v github-subdomains >/dev/null 2>&1 || { printf 'github-subdomains not installed — skipping\n'; exit 0; }
+    TOK="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+    test -n "$TOK" || { printf 'no GITHUB_TOKEN/GH_TOKEN — skipping github-subdomains\n'; exit 0; }
+    github-subdomains -d {target} -t "$TOK" -o {workspace}/.gh_subs 2>/dev/null || true
+    cat {workspace}/.gh_subs 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_github_subs.txt || true
+    rm -f {workspace}/.gh_subs
+    touch {workspace}/p_github_subs.txt
+    printf 'github-subdomains subs: %s\n' "$(wc -l < {workspace}/p_github_subs.txt)"
+  outputs:
+    file: '{workspace}/p_github_subs.txt'
+- id: p_columbus
+  name: passive — columbus.elmasy.com (CT-based, keyless, fast, unique dataset)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    # columbus returns subdomain PREFIXES (array of labels) — append the root.
+    curl -s --max-time 60 --retry 2 -H 'accept: text/plain' \
+      "https://columbus.elmasy.com/api/lookup/{target}" 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' \
+      | sed 's/\.$//' \
+      | awk 'NF{ if ($0 ~ /{target}$/) print $0; else print $0".{target}" }' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_columbus.txt || true
+    touch {workspace}/p_columbus.txt
+    printf 'columbus subs: %s\n' "$(wc -l < {workspace}/p_columbus.txt)"
+  outputs:
+    file: '{workspace}/p_columbus.txt'
+- id: p_fofa
+  name: passive — FOFA API direct (host set + separate host/ip/port map; bypasses subfinder's fofa limits)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 4m
+  run: |
+    touch {workspace}/p_fofa.txt {workspace}/fofa_ip_port.txt
+    # FOFA_KEY is set from /keys UI; may be "email:key" (subfinder format) or just the key.
+    # FOFA's /api/v1/search/all accepts key-only, so strip any "email:" prefix.
+    FK="${FOFA_KEY:-}"
+    FKEY="${FK##*:}"
+    test -n "$FKEY" || { printf '[fofa] no FOFA_KEY — skipping\n'; exit 0; }
+    Q=$(printf 'domain="{target}"' | base64 -w0)
+    # ONE request returns host+ip+port — reused for both outputs (saves quota + avoids FOFA rate-limit 45012).
+    RESP=$(curl -s --max-time 120 "https://fofa.info/api/v1/search/all?key=${FKEY}&qbase64=${Q}&size=10000&fields=host,ip,port" 2>/dev/null)
+    # (1) host names -> p_fofa.txt (feeds merge_passive, dedup with the other sources)
+    printf '%s' "$RESP" | jq -r '.results[]? | if type=="array" then .[0] else . end' 2>/dev/null \
+      | sed 's|https\?://||; s|/.*||; s|:[0-9]*$||; s/^\*\.//' \
+      | tr '[:upper:]' '[:lower:]' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_fofa.txt || true
+    # (2) host<TAB>ip<TAB>port -> fofa_ip_port.txt — FOFA's IP + open-port map, for hosts that
+    #     don't resolve publicly (map name->IP) and the service surface without an active port scan.
+    printf '%s' "$RESP" | jq -r '.results[]? | select(type=="array") | "\(.[0])\t\(.[1])\t\(.[2])"' 2>/dev/null \
+      | sed 's|https\?://||' | tr '[:upper:]' '[:lower:]' \
+      | grep "{target}" | sort -u > {workspace}/fofa_ip_port.txt || true
+    touch {workspace}/p_fofa.txt {workspace}/fofa_ip_port.txt
+    printf 'FOFA: %s hosts | %s host/ip/port rows -> fofa_ip_port.txt\n' \
+      "$(wc -l < {workspace}/p_fofa.txt)" "$(wc -l < {workspace}/fofa_ip_port.txt)"
+  outputs:
+    file: '{workspace}/p_fofa.txt'
+    ip_port: '{workspace}/fofa_ip_port.txt'
+- id: p_fullhunt
+  name: passive — FullHunt API direct (env FULLHUNT_API_KEY; dropped from subfinder build)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_fullhunt.txt
+    FH="${FULLHUNT_API_KEY:-}"
+    test -n "$FH" || { printf '[fullhunt] no FULLHUNT_API_KEY — skipping\n'; exit 0; }
+    curl -s --max-time 60 -H "X-API-KEY: $FH" \
+      "https://fullhunt.io/api/v1/domain/{target}/subdomains" 2>/dev/null \
+      | jq -r '(.hosts // .subdomains // [])[]? // empty' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_fullhunt.txt || true
+    touch {workspace}/p_fullhunt.txt
+    printf 'FullHunt subs: %s\n' "$(wc -l < {workspace}/p_fullhunt.txt)"
+  outputs:
+    file: '{workspace}/p_fullhunt.txt'
+- id: p_leakix
+  name: passive — LeakIX subdomains API direct (env LEAKIX_API_KEY; unique scanner dataset, not CT-redundant)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_leakix.txt
+    LK="${LEAKIX_API_KEY:-}"
+    test -n "$LK" || { printf '[leakix] no LEAKIX_API_KEY — skipping\n'; exit 0; }
+    curl -s --max-time 60 -H "api-key: $LK" -H "Accept: application/json" \
+      "https://leakix.net/api/subdomains/{target}" 2>/dev/null \
+      | jq -r '.[]?.subdomain // empty' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_leakix.txt || true
+    touch {workspace}/p_leakix.txt
+    printf 'LeakIX subs: %s\n' "$(wc -l < {workspace}/p_leakix.txt)"
+  outputs:
+    file: '{workspace}/p_leakix.txt'
+- id: p_censys
+  name: passive — Censys Platform API (store key as ORG_ID:PAT) -> subs + host/ip/port
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 4m
+  run: |
+    touch {workspace}/p_censys.txt {workspace}/censys_ip.txt
+    # Censys Platform API. Store the key in /keys (Censys field) as "ORG_ID:PAT" ->
+    # CENSYS_API_ID=org id, CENSYS_API_SECRET=PAT. Legacy Search API (id:secret) was
+    # shut down 2026-09-30; Platform search needs a PAID org id (free = UI only).
+    ORG="${CENSYS_API_ID:-}"; PAT="${CENSYS_API_SECRET:-}"
+    test -n "$ORG" -a -n "$PAT" || { printf '[censys] no CENSYS org/PAT (store ORG_ID:PAT) — skipping\n'; exit 0; }
+    : > {workspace}/.cen_raw
+    TOK=""
+    for page in 1 2 3 4 5; do
+      BODY=$(printf '{"query":"%s","page_size":100%s}' "{target}" "${TOK:+,\"page_token\":\"$TOK\"}")
+      R=$(curl -s --max-time 45 -X POST \
+        "https://api.platform.censys.io/v3/global/search/query?organization_id=${ORG}" \
+        -H "Authorization: Bearer ${PAT}" -H 'Content-Type: application/json' -d "$BODY" 2>/dev/null)
+      printf '%s\n' "$R" >> {workspace}/.cen_raw
+      TOK=$(printf '%s' "$R" | jq -r '.result.next_page_token // empty' 2>/dev/null)
+      [ -z "$TOK" ] && break
+    done
+    # (1) hostnames -> subdomains (feeds merge_passive)
+    grep -oE '[a-zA-Z0-9._-]+\.{target}' {workspace}/.cen_raw 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_censys.txt || true
+    # (2) host/ip/port -> censys_ip.txt (origin IP + service map; side output like fofa_ip_port.txt)
+    jq -r '.result.hits[]? | (.webproperty_v1.resource // .host_v1.resource // empty) | select(type=="object") | "\(.hostname // "-")\t\(.ip // "-")\t\(.port // "-")"' {workspace}/.cen_raw 2>/dev/null \
+      | grep -vE '^-\t-\t-$' | sort -u > {workspace}/censys_ip.txt || true
+    rm -f {workspace}/.cen_raw
+    touch {workspace}/p_censys.txt {workspace}/censys_ip.txt
+    printf 'Censys Platform: %s subs | %s host/ip/port rows\n' "$(wc -l < {workspace}/p_censys.txt)" "$(wc -l < {workspace}/censys_ip.txt)"
+  outputs:
+    file: '{workspace}/p_censys.txt'
+    ip: '{workspace}/censys_ip.txt'
+- id: p_netlas
+  name: passive — Netlas domains API direct (env NETLAS_API_KEY)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_netlas.txt
+    NK="${NETLAS_API_KEY:-}"
+    test -n "$NK" || { printf '[netlas] no NETLAS_API_KEY — skipping\n'; exit 0; }
+    curl -s --max-time 90 -H "X-API-Key: $NK" -G \
+      --data-urlencode 'q=domain:*.{target}' \
+      "https://app.netlas.io/api/domains/" 2>/dev/null \
+      | jq -r '.items[]? | (.data.domain // ._source.domain // .domain // empty)' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_netlas.txt || true
+    touch {workspace}/p_netlas.txt
+    printf 'Netlas subs: %s\n' "$(wc -l < {workspace}/p_netlas.txt)"
+  outputs:
+    file: '{workspace}/p_netlas.txt'
+- id: p_whoisxmlapi
+  name: passive — WhoisXML Subdomains API direct (env WHOISXMLAPI_API_KEY)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_whoisxmlapi.txt
+    WK="${WHOISXMLAPI_API_KEY:-}"
+    test -n "$WK" || { printf '[whoisxmlapi] no WHOISXMLAPI_API_KEY — skipping\n'; exit 0; }
+    curl -s --max-time 60 -G \
+      --data-urlencode "apiKey=$WK" --data-urlencode 'domainName={target}' \
+      "https://subdomains.whoisxmlapi.com/api/v1" 2>/dev/null \
+      | jq -r '.result.records[]?.domain // empty' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_whoisxmlapi.txt || true
+    touch {workspace}/p_whoisxmlapi.txt
+    printf 'WhoisXML subs: %s\n' "$(wc -l < {workspace}/p_whoisxmlapi.txt)"
+  outputs:
+    file: '{workspace}/p_whoisxmlapi.txt'
+- id: p_intelx
+  name: passive — IntelX phonebook/selector search direct (env INTELX_API_KEY; two-step)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 4m
+  run: |
+    touch {workspace}/p_intelx.txt
+    IK="${INTELX_API_KEY:-}"
+    test -n "$IK" || { printf '[intelx] no INTELX_API_KEY — skipping\n'; exit 0; }
+    IXB="https://2.intelx.io"
+    SID=$(curl -s --max-time 30 -H "x-key: $IK" -H "Content-Type: application/json" \
+      -d '{"term":"{target}","maxresults":10000,"media":0,"target":1,"timeout":20}' \
+      "$IXB/phonebook/search" 2>/dev/null | jq -r '.id // empty' 2>/dev/null)
+    test -n "$SID" || { printf '[intelx] no search id (bad key/host?) — skipping\n'; exit 0; }
+    : > {workspace}/.intelx_raw
+    for i in 1 2 3 4 5 6; do
+      R=$(curl -s --max-time 30 -H "x-key: $IK" "$IXB/phonebook/search/result?id=${SID}&limit=10000" 2>/dev/null)
+      printf '%s' "$R" | jq -r '.selectors[]?.selectorvalue // empty' 2>/dev/null >> {workspace}/.intelx_raw
+      [ "$(printf '%s' "$R" | jq -r '.status // empty' 2>/dev/null)" = "1" ] && break
+      sleep 3
+    done
+    sort -u {workspace}/.intelx_raw 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's|https\?://||; s|/.*||; s/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_intelx.txt || true
+    rm -f {workspace}/.intelx_raw
+    touch {workspace}/p_intelx.txt
+    printf 'IntelX subs: %s\n' "$(wc -l < {workspace}/p_intelx.txt)"
+  outputs:
+    file: '{workspace}/p_intelx.txt'
+- id: p_dnsdumpster
+  name: passive — DNSDumpster API direct (env DNSDUMPSTER_API_KEY; low free-tier quota)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_dnsdumpster.txt
+    DK="${DNSDUMPSTER_API_KEY:-}"
+    test -n "$DK" || { printf '[dnsdumpster] no DNSDUMPSTER_API_KEY — skipping\n'; exit 0; }
+    curl -s --max-time 60 -H "X-API-Key: $DK" \
+      "https://api.dnsdumpster.com/domain/{target}" 2>/dev/null \
+      | jq -r '([.a[]?.host] + [.cname[]?.host] + [.mx[]?.host] + [.ns[]?.host])[]? // empty' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_dnsdumpster.txt || true
+    touch {workspace}/p_dnsdumpster.txt
+    printf 'DNSDumpster subs: %s\n' "$(wc -l < {workspace}/p_dnsdumpster.txt)"
+  outputs:
+    file: '{workspace}/p_dnsdumpster.txt'
+- id: p_criminalip
+  name: passive — CriminalIP domain scan direct (env CRIMINALIP_API_KEY; async)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 5m
+  run: |
+    touch {workspace}/p_criminalip.txt
+    CK="${CRIMINALIP_API_KEY:-}"
+    test -n "$CK" || { printf '[criminalip] no CRIMINALIP_API_KEY — skipping\n'; exit 0; }
+    SID=$(curl -s --max-time 30 -H "x-api-key: $CK" -d 'query={target}' \
+      "https://api.criminalip.io/v1/domain/lite/scan" 2>/dev/null \
+      | jq -r '.data.scan_id // .scan_id // empty' 2>/dev/null)
+    test -n "$SID" || { printf '[criminalip] no scan_id (verify API) — skipping\n'; exit 0; }
+    for i in 1 2 3 4 5 6 7 8; do
+      ST=$(curl -s --max-time 30 -H "x-api-key: $CK" "https://api.criminalip.io/v1/domain/lite/progress/${SID}" 2>/dev/null \
+        | jq -r '.data.scan_percentage // .scan_percentage // empty' 2>/dev/null)
+      [ "$ST" = "100" ] && break
+      sleep 10
+    done
+    curl -s --max-time 60 -H "x-api-key: $CK" "https://api.criminalip.io/v1/domain/lite/report/${SID}" 2>/dev/null \
+      | jq -r '.. | objects | (.subdomain? // empty)' 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's|https\?://||; s|/.*||; s/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_criminalip.txt || true
+    touch {workspace}/p_criminalip.txt
+    printf 'CriminalIP subs: %s\n' "$(wc -l < {workspace}/p_criminalip.txt)"
+  outputs:
+    file: '{workspace}/p_criminalip.txt'
+- id: p_google_cse
+  name: passive — Google Custom Search (site-dork; env GOOGLE_CSE_KEY + GOOGLE_CX)
+  depends_on:
+  - setup_subfinder_keys
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3m
+  run: |
+    touch {workspace}/p_google_cse.txt
+    GK="${GOOGLE_CSE_KEY:-}"; GX="${GOOGLE_CX:-}"
+    test -n "$GK" -a -n "$GX" || { printf '[google_cse] no GOOGLE_CSE_KEY/GOOGLE_CX — skipping\n'; exit 0; }
+    : > {workspace}/.gcse_raw
+    for START in 1 11 21 31 41 51 61 71 81 91; do
+      curl -s --max-time 30 -G "https://www.googleapis.com/customsearch/v1" \
+        --data-urlencode "key=$GK" --data-urlencode "cx=$GX" \
+        --data-urlencode 'q=site:{target}' --data-urlencode "start=$START" --data-urlencode 'num=10' 2>/dev/null \
+        | jq -r '.items[]?.link // empty' 2>/dev/null >> {workspace}/.gcse_raw || break
+    done
+    grep -oiE '[a-z0-9._-]+\.{target}' {workspace}/.gcse_raw 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sed 's/^\*\.//; s/\.$//' \
+      | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_google_cse.txt || true
+    rm -f {workspace}/.gcse_raw
+    touch {workspace}/p_google_cse.txt
+    printf 'Google CSE subs: %s\n' "$(wc -l < {workspace}/p_google_cse.txt)"
+  outputs:
+    file: '{workspace}/p_google_cse.txt'
 - id: merge_passive
   name: merge all passive sources → deduplicate + scope-filter
   depends_on:
@@ -893,6 +1256,20 @@ steps:
   - p_threatcrowd
   - p_amass_active
   - axfr_check
+  - p_subdomaincenter
+  - p_crtsh_psql
+  - p_github_subs
+  - p_columbus
+  - p_fofa
+  - p_fullhunt
+  - p_leakix
+  - p_censys
+  - p_netlas
+  - p_whoisxmlapi
+  - p_intelx
+  - p_dnsdumpster
+  - p_criminalip
+  - p_google_cse
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -929,6 +1306,20 @@ steps:
         {workspace}/p_threatcrowd.txt \
         {workspace}/p_amass_active.txt \
         {workspace}/axfr_subs.txt \
+        {workspace}/p_subdomaincenter.txt \
+        {workspace}/p_crtsh_psql.txt \
+        {workspace}/p_github_subs.txt \
+        {workspace}/p_columbus.txt \
+        {workspace}/p_fofa.txt \
+        {workspace}/p_fullhunt.txt \
+        {workspace}/p_leakix.txt \
+        {workspace}/p_censys.txt \
+        {workspace}/p_netlas.txt \
+        {workspace}/p_whoisxmlapi.txt \
+        {workspace}/p_intelx.txt \
+        {workspace}/p_dnsdumpster.txt \
+        {workspace}/p_criminalip.txt \
+        {workspace}/p_google_cse.txt \
         2>/dev/null || true
       test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
