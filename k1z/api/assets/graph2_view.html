@@ -260,6 +260,7 @@ function startLayout(ms){
  if(!LIB||!LIB.FA2Layout){relayout(); renderer&&renderer.refresh(); return;}
  if(g.order<2)return;
  try{ if(fa2){fa2.kill();fa2=null;}
+  clearOverlay(); // no stale hulls during the animation; settleLayout redraws them
   const st=LIB.layoutForceAtlas2.inferSettings(g);
   st.slowDown=1+Math.log(g.order+2);st.barnesHutOptimize=g.order>600;st.adjustSizes=true;
   // A LIVELY, animated layout that still spreads clusters: linLog + outbound
@@ -284,7 +285,7 @@ function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay')
 function settleLayout(){ stopLayout();
  try{ if(LIB&&LIB.layoutNoverlap&&LIB.layoutNoverlap.assign&&renderer&&g.order>1){
    const it=g.order>5000?40:(g.order>2000?70:110);
-   LIB.layoutNoverlap.assign(g,{maxIterations:it,settings:{margin:7,ratio:1.45,expansion:1.25,gridSize:20,speed:3}});
+   LIB.layoutNoverlap.assign(g,{maxIterations:it,settings:{margin:12,ratio:1.55,expansion:1.3,gridSize:20,speed:3}});
    renderer.refresh(); ovT=0; drawOverlay(); drawMini();
    renderer.getCamera().animatedReset({duration:500}); // re-frame the de-overlapped graph
  } }catch(e){} }
@@ -409,6 +410,13 @@ function drawOverlay(){
      if(p.x<-20||p.x>W+20||p.y<-20||p.y>H+20)return; const dd=renderer.getNodeDisplayData(id); const r=dd?dd.size:6;
      ctx.font=Math.max(9,Math.min(17,r*1.2))+'px system-ui'; ctx.fillText(gl,p.x,p.y); }); }
 }
+// The overlay (hulls/glyphs) + minimap each scan ALL nodes, so redrawing them
+// every frame is the main source of lag on a big graph. Instead we draw them
+// ONLY when the view goes idle: clear the overlay the instant the camera moves,
+// then redraw once ~180ms after movement stops.
+let ovIdle=0;
+function clearOverlay(){ const ov=$('ov'); if(!ov)return; const c=ov.getContext('2d'); if(c){ c.setTransform(1,0,0,1,0,0); c.clearRect(0,0,ov.width,ov.height); } }
+function idleDraw(){ clearTimeout(ovIdle); ovIdle=setTimeout(()=>{ ovT=0; miniT=0; drawOverlay(); drawMini(); },180); }
 let annos={};
 function setColorBy(v){ colorBy=v||null; const sel=$('colorBy'); if(sel)sel.value=v||''; }
 const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); return s;};
@@ -449,12 +457,11 @@ function render(){
    const p=renderer.getNodeDisplayData(id);
    if(p)renderer.getCamera().animate({x:p.x,y:p.y,ratio:Math.max(0.06,renderer.getCamera().ratio*0.45)},{duration:550}); });
  renderer.on('doubleClickStage',e=>{ e.preventSigmaDefault&&e.preventSigmaDefault(); }); // don't default-zoom on empty dbl-click
- renderer.getCamera().on('updated',()=>{ const z=$('zlvl'); if(z)z.textContent=Math.round(100/renderer.getCamera().ratio)+'%'; drawMini(); });
+ renderer.getCamera().on('updated',()=>{ const z=$('zlvl'); if(z)z.textContent=Math.round(100/renderer.getCamera().ratio)+'%';
+   clearOverlay(); idleDraw(); }); // hide the overlay while panning/zooming; redraw it once the camera settles
  let drag=null, dragSet=null, dragP=null, dragRAF=0;
- // Overlay (cluster hulls/glyphs) + minimap are the heaviest per-frame cost on a
- // big graph; skip them WHILE dragging so the drag stays at full framerate, then
- // redraw once on release.
- renderer.on('afterRender',()=>{ if(drag)return; drawMini(); drawOverlay(); });
+ // NB: the overlay + minimap are NOT redrawn per-frame anymore (that was the lag).
+ // They refresh on idle (camera settle) and after layout-settle / drag-release.
  // dragApply runs at most ONCE PER FRAME (rAF), applying the latest pointer delta
  // to the whole sub-cluster — so a burst of mousemove events collapses into one
  // position update + one render per frame instead of many.
