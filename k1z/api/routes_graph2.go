@@ -40,6 +40,7 @@ func (s *Server) targetGraph(target string) (*graph.Graph, int, error) {
 	if target == "" {
 		return nil, 400, errors.New("target required")
 	}
+	nt := normTarget(target) // group runs by canonical host, not raw string
 	runs, _, err := s.St.ListRuns(store.RunFilter{Limit: 200})
 	if err != nil {
 		return nil, 500, err
@@ -47,7 +48,7 @@ func (s *Server) targetGraph(target string) (*graph.Graph, int, error) {
 	var wss []string
 	var sigs []string
 	for _, run := range runs {
-		if run.Target != target || run.Workspace == "" || !dirExists(run.Workspace) {
+		if normTarget(run.Target) != nt || run.Workspace == "" || !dirExists(run.Workspace) {
 			continue
 		}
 		wss = append(wss, run.Workspace)
@@ -69,13 +70,13 @@ func (s *Server) targetGraph(target string) (*graph.Graph, int, error) {
 	sig := strings.Join(sigs, "|")
 	graph2Mu.Lock()
 	defer graph2Mu.Unlock()
-	if c, ok := graph2Cache[target]; ok && c.sig == sig {
+	if c, ok := graph2Cache[nt]; ok && c.sig == sig {
 		return c.g, 200, nil
 	}
-	merged := filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(target))
+	merged := filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(nt))
 	mergeRunFiles(wss, merged)
-	g := graph.Build(merged, target)
-	graph2Cache[target] = &cachedGraph{g: g, sig: sig, builtAt: time.Now()}
+	g := graph.Build(merged, nt)
+	graph2Cache[nt] = &cachedGraph{g: g, sig: sig, builtAt: time.Now()}
 	return g, 200, nil
 }
 
@@ -177,7 +178,7 @@ func (s *Server) handleGraph2Stats(w http.ResponseWriter, r *http.Request) {
 var graph2ViewHTML string
 
 func (s *Server) handleGraph2View(w http.ResponseWriter, r *http.Request) {
-	tj, _ := json.Marshal(r.PathValue("name"))
+	tj, _ := json.Marshal(normTarget(r.PathValue("name"))) // canonical host → BASE + annotations key off it
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write([]byte(strings.Replace(graph2ViewHTML, `"__TARGET__"`, string(tj), 1)))

@@ -254,9 +254,13 @@ function startLayout(ms){
  if(g.order<2)return;
  try{ if(fa2){fa2.kill();fa2=null;}
   const st=LIB.layoutForceAtlas2.inferSettings(g);
-  st.slowDown=1+Math.log(g.order+2);st.barnesHutOptimize=g.order>600;st.gravity=0.7;st.scalingRatio=14;st.adjustSizes=true;
+  st.slowDown=2+Math.log(g.order+2);st.barnesHutOptimize=g.order>600;st.adjustSizes=true;
+  // linLog + outbound-attraction fan unrelated clusters apart into their own
+  // regions (instead of one central blob); low gravity keeps that separation,
+  // high scalingRatio adds the repulsion that opens the gaps between clusters.
+  st.linLogMode=true;st.outboundAttractionDistribution=true;st.gravity=0.35;st.scalingRatio=12;
   fa2=new LIB.FA2Layout(g,{settings:st}); fa2.start(); $('lay').textContent='⚛ stop'; $('lay').classList.add('on');
-  clearTimeout(fa2to); fa2to=setTimeout(stopLayout, ms||(g.order>1500?13000:6000));
+  clearTimeout(fa2to); fa2to=setTimeout(stopLayout, ms||(g.order>1500?18000:9000)); // linLog settles slower
  }catch(e){ fa2=null; relayout(); renderer&&renderer.refresh(); }
 }
 function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay').textContent='⚛ layout'; $('lay').classList.remove('on'); }

@@ -54,6 +54,25 @@ var graphMergeFiles = []string{
 	// NOTE: ip_groups/shared_hosting is DB-only (graph has no reader) — not merged.
 }
 
+// normTarget canonicalises a target to its bare host — lowercase, no scheme, no
+// path, no port — so runs entered as "https://example.com", "example.com" and
+// "example.com:443" all aggregate into ONE target graph / annotation set.
+func normTarget(t string) string {
+	t = strings.TrimSpace(t)
+	if i := strings.Index(t, "://"); i >= 0 {
+		t = t[i+3:]
+	}
+	if i := strings.IndexAny(t, "/?#"); i >= 0 {
+		t = t[:i]
+	}
+	if !strings.Contains(t, "]") { // keep bracketed IPv6 literals intact
+		if i := strings.IndexByte(t, ':'); i >= 0 {
+			t = t[:i]
+		}
+	}
+	return strings.ToLower(strings.TrimSuffix(t, "."))
+}
+
 func safeTargetDir(t string) string {
 	var b strings.Builder
 	for _, c := range t {
@@ -86,10 +105,11 @@ func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
 		writeDetail(w, 500, err.Error())
 		return
 	}
+	nt := normTarget(target) // group runs by canonical host, not raw string
 	var wss []string
 	var newest time.Time
 	for _, run := range runs {
-		if run.Target != target || run.Workspace == "" || !dirExists(run.Workspace) {
+		if normTarget(run.Target) != nt || run.Workspace == "" || !dirExists(run.Workspace) {
 			continue
 		}
 		wss = append(wss, run.Workspace)
@@ -107,7 +127,7 @@ func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
 	if si, e := os.Stat(graphScript()); e == nil && si.ModTime().After(newest) {
 		newest = si.ModTime()
 	}
-	merged := filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(target))
+	merged := filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(nt))
 	gh := filepath.Join(merged, "recon-graph.html")
 	// cache: serve if the graph is newer than the latest run (and the generator)
 	if fi, e := os.Stat(gh); e == nil && !newest.After(fi.ModTime()) {
@@ -124,7 +144,7 @@ func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "python3", script, merged, "-o", filepath.Join(merged, "recon-graph"), "--target", target)
+	cmd := exec.CommandContext(ctx, "python3", script, merged, "-o", filepath.Join(merged, "recon-graph"), "--target", nt)
 	cmd.Dir = merged
 	if out, e := cmd.CombinedOutput(); e != nil {
 		writeDetail(w, 500, "graph build failed: "+strings.TrimSpace(string(out)))

@@ -18,7 +18,7 @@ type annotation struct {
 }
 
 func annotationsPath(target string) string {
-	return filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(target), "annotations.json")
+	return filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(normTarget(target)), "annotations.json")
 }
 
 func readAnnotations(target string) map[string]annotation {
