@@ -255,30 +255,20 @@ function startLayout(ms){
  if(!LIB||!LIB.FA2Layout){relayout(); renderer&&renderer.refresh(); return;}
  if(g.order<2)return;
  try{ if(fa2){fa2.kill();fa2=null;}
-  weakenHubEdges();
   const st=LIB.layoutForceAtlas2.inferSettings(g);
-  st.slowDown=2+Math.log(g.order+2);st.barnesHutOptimize=g.order>600;st.adjustSizes=true;
-  // Separate unrelated branches into their own regions. The graph is one big
-  // star (every host, even dead ones, links to the domain), so plain repulsion
-  // can't break it apart — the domain edges always pull everything to centre.
-  // weakenHubEdges() drops those edges' pull (edgeWeightInfluence honours it) and
-  // seedClusters() pre-places each branch in its own sector; linLog + outbound
-  // + low gravity then let the branches stay fanned out.
-  st.linLogMode=true;st.outboundAttractionDistribution=true;st.gravity=0.12;st.scalingRatio=16;st.edgeWeightInfluence=1;
+  st.slowDown=1+Math.log(g.order+2);st.barnesHutOptimize=g.order>600;st.adjustSizes=true;
+  // A LIVELY, animated layout that still spreads clusters: linLog + outbound
+  // give cluster separation, but gravity/scalingRatio stay strong enough that
+  // the simulation visibly MOVES and settles (drag stays responsive). The
+  // seedClusters() pre-placement in load() gives the initial separation; FA2
+  // then refines it. (The earlier gravity 0.12 + edgeWeightInfluence combo
+  // killed the motion and froze the graph — that was the regression.)
+  st.linLogMode=true;st.outboundAttractionDistribution=true;st.gravity=0.6;st.scalingRatio=12;
   fa2=new LIB.FA2Layout(g,{settings:st}); fa2.start(); $('lay').textContent='⚛ stop'; $('lay').classList.add('on');
-  clearTimeout(fa2to); fa2to=setTimeout(stopLayout, ms||(g.order>1500?18000:9000)); // linLog settles slower
+  clearTimeout(fa2to); fa2to=setTimeout(stopLayout, ms||(g.order>1500?13000:6000));
  }catch(e){ fa2=null; relayout(); renderer&&renderer.refresh(); }
 }
 function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay').textContent='⚛ layout'; $('lay').classList.remove('on'); }
-// weakenHubEdges: weight each edge by the inverse sqrt of its busiest endpoint's
-// degree, so EVERY hub (domain, shared IPs, ASNs, CDN providers) releases its
-// pull — not just the domain. With edgeWeightInfluence=1 the force layout then
-// lets dense communities separate instead of collapsing onto shared infra.
-// (Weight is layout-only; edge thickness is driven by `size`, so nothing changes
-// visually.)
-function weakenHubEdges(){ try{ g.forEachEdge((e,at,s,t)=>{
-   const d=Math.max(g.degree(s),g.degree(t));
-   g.setEdgeAttribute(e,'weight', 1/Math.sqrt(Math.max(1,d))); }); }catch(x){} }
 // community detection: prefer Louvain (density-based, robust to shared IP/ASN/CDN
 // infrastructure that would otherwise glue everything into one component); fall
 // back to label-propagation if the library build lacks it.
@@ -577,7 +567,7 @@ function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
    g.clear(); if(renderer){renderer.kill();renderer=null;}
-   add(sg); seedClusters(); render(); startLayout(); updateStat(); loadAnnos(); buildAllList();
+   add(sg); try{seedClusters();}catch(e){} render(); startLayout(); updateStat(); loadAnnos(); buildAllList();
    if(colorBy)loadMetrics(()=>renderer&&renderer.refresh());
    setTimeout(()=>{$('spin').style.display='none';
      if(pendingCam){ try{ renderer&&renderer.getCamera().animate(pendingCam,{duration:450}); }catch(e){} pendingCam=null; } // restore a saved view's framing instead of resetting
