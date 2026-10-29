@@ -231,8 +231,9 @@ const FAMS=[['domain','#0969da'],['subdomain','#54aeff'],['ip','#1f883d'],['asn'
 const famOf=grp=>!grp?'other':(grp.indexOf('vuln')===0?'vuln':(FAM[grp]||'other'));
 const tierOf=grp=>grp&&grp.indexOf('vuln')===0?4:(TIER[grp]!==undefined?TIER[grp]:3);
 // clear size hierarchy: domain biggest → ASN/subnet → IP → host → leaves smallest,
-// then boost by cluster size + risk so hubs and findings still stand out.
-function sizeOf(n){let s={0:17,1:11.5,2:7.5,3:5,4:3.2}[tierOf(n.group)]||4;
+// then boost by cluster size + risk so hubs and findings stand out. Leaves keep a
+// 4.5px floor so every node is still big enough to click-and-drag reliably.
+function sizeOf(n){let s={0:17,1:11,2:7.5,3:5.5,4:4.5}[tierOf(n.group)]||4.5;
  if(n.count)s+=Math.min(9,Math.log2(n.count+1)*1.3); if(n.risk)s+=Math.min(9,n.risk); return s;}
 
 // ── graph building ──────────────────────────────────────────────────────
@@ -282,8 +283,8 @@ function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay')
 // count scales down on big graphs to keep the one-time freeze short.
 function settleLayout(){ stopLayout();
  try{ if(LIB&&LIB.layoutNoverlap&&LIB.layoutNoverlap.assign&&renderer&&g.order>1){
-   const it=g.order>5000?25:(g.order>2000?45:70);
-   LIB.layoutNoverlap.assign(g,{maxIterations:it,settings:{margin:4,ratio:1.3,expansion:1.1,gridSize:20,speed:3}});
+   const it=g.order>5000?40:(g.order>2000?70:110);
+   LIB.layoutNoverlap.assign(g,{maxIterations:it,settings:{margin:7,ratio:1.45,expansion:1.25,gridSize:20,speed:3}});
    renderer.refresh(); ovT=0; drawOverlay(); drawMini();
    renderer.getCamera().animatedReset({duration:500}); // re-frame the de-overlapped graph
  } }catch(e){} }
@@ -465,14 +466,18 @@ function render(){
    if(dragSet)dragSet.forEach(nb=>{ if(nb!==drag){ g.setNodeAttribute(nb,'x',g.getNodeAttribute(nb,'x')+dx); g.setNodeAttribute(nb,'y',g.getNodeAttribute(nb,'y')+dy); } });
  }
  renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node; dragP=null;
-   // move the whole sub-cluster below the node (children, grandchildren, … all tiers).
-   // Expand only to same-or-deeper tier so it doesn't climb the backbone.
-   dragSet=new Set([drag]);
-   { const bt=tierOf(g.getNodeAttribute(drag,'group')); let fr=[drag];
-     while(fr.length){ const nx=[];
+   // move the sub-cluster below the node (children, grandchildren, … same-or-deeper
+   // tier so it doesn't climb the backbone). CAP it: grabbing a backbone node
+   // (ASN/subnet/IP) would otherwise pull almost the whole graph and freeze the
+   // drag — if the set blows past the cap, move JUST the grabbed node so every
+   // node, hub or leaf, stays draggable and responsive.
+   const DRAGCAP=600; dragSet=new Set([drag]);
+   { const bt=tierOf(g.getNodeAttribute(drag,'group')); let fr=[drag], over=false;
+     while(fr.length&&!over){ const nx=[];
        fr.forEach(nd=>g.forEachNeighbor(nd,nb=>{ if(dragSet.has(nb))return;
-         if(tierOf(g.getNodeAttribute(nb,'group'))>=bt){ dragSet.add(nb); nx.push(nb); } }));
-       fr=nx; } }
+         if(tierOf(g.getNodeAttribute(nb,'group'))>=bt){ dragSet.add(nb); nx.push(nb); if(dragSet.size>DRAGCAP)over=true; } }));
+       fr=nx; }
+     if(over)dragSet=new Set([drag]); } // too big → move the node alone
    g.setNodeAttribute(drag,'highlighted',true); $('cy').style.cursor='grabbing';
    const oc=$('ov'); if(oc){ const o=oc.getContext('2d'); o&&o.clearRect(0,0,oc.width,oc.height); } // hide hulls while dragging
    fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
