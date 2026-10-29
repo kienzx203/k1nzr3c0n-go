@@ -204,7 +204,7 @@
   <div id="zlvl">100%</div>
  </div>
  <div id="spin" class="spin" style="display:none"></div>
- <div id="hint">hover = spotlight · click = inspect · right-click = transforms · keys: / search · F fit · O full/overview · D dark · L labels · G edges · Esc clear</div>
+ <div id="hint">hover = spotlight · click = inspect · 2×click = dive in · drag = move cluster · right-click = transforms · keys: / search · F fit · O full/overview · D dark · Esc clear</div>
 </div>
 <div id="ctx"></div><div id="toast"></div>
 <script>
@@ -219,7 +219,7 @@ const COL={domain:'#0969da',sub:'#54aeff',sub_dead:'#afb8c1',vhost:'#fb8500',sub
  ip_pub:'#1f883d',ip_int:'#e5484d',ip_origin:'#2da44e',asn:'#8250df',subnet:'#bf8700',provider:'#1b7c83',
  vuln_critical:'#cf222e',vuln_high:'#bc4c00',vuln_medium:'#bf8700',vuln_low:'#1f883d',vuln_info:'#6e7781',
  bucket:'#9a6700',path:'#6f42c1',param:'#bf3989',
- url:'#9aa7b4',endpoint:'#6cb6ff',secret:'#e5484d',dns:'#768390',cert:'#3fb950',favicon:'#a371f7',intel:'#57606a'};
+ url:'#aab3bf',endpoint:'#8fbce0',secret:'#e5484d',dns:'#768390',cert:'#3fb950',favicon:'#a371f7',intel:'#57606a'};
 const TIER={domain:0,asn:1,subnet:1,ip_pub:2,ip_int:2,ip_origin:2,provider:2,vhost:3,sub:3,sub_int:3,sub_dead:3,
  bucket:3,path:4,param:4,url:4,endpoint:4,secret:4,dns:4,cert:4,favicon:4,intel:4};
 const FAM={domain:'domain',sub:'subdomain',sub_int:'subdomain',sub_dead:'subdomain',vhost:'subdomain',
@@ -227,11 +227,13 @@ const FAM={domain:'domain',sub:'subdomain',sub_int:'subdomain',sub_dead:'subdoma
  url:'url',endpoint:'url',secret:'secret',dns:'intel',cert:'intel',favicon:'intel',intel:'intel'};
 const FAMS=[['domain','#0969da'],['subdomain','#54aeff'],['ip','#1f883d'],['asn','#8250df'],
  ['subnet','#bf8700'],['provider','#1b7c83'],['bucket','#9a6700'],['path','#6f42c1'],['param','#bf3989'],
- ['url','#9aa7b4'],['secret','#e5484d'],['intel','#57606a'],['vuln','#cf222e'],['other','#8c959f']];
+ ['url','#aab3bf'],['secret','#e5484d'],['intel','#57606a'],['vuln','#cf222e'],['other','#8c959f']];
 const famOf=grp=>!grp?'other':(grp.indexOf('vuln')===0?'vuln':(FAM[grp]||'other'));
 const tierOf=grp=>grp&&grp.indexOf('vuln')===0?4:(TIER[grp]!==undefined?TIER[grp]:3);
-function sizeOf(n){let s={0:14,1:10,2:6,3:4,4:7}[tierOf(n.group)]||4;
- if(n.count)s+=Math.min(8,Math.log2(n.count+1)); if(n.risk)s+=Math.min(8,n.risk); return s;}
+// clear size hierarchy: domain biggest → ASN/subnet → IP → host → leaves smallest,
+// then boost by cluster size + risk so hubs and findings still stand out.
+function sizeOf(n){let s={0:17,1:11.5,2:7.5,3:5,4:3.2}[tierOf(n.group)]||4;
+ if(n.count)s+=Math.min(9,Math.log2(n.count+1)*1.3); if(n.risk)s+=Math.min(9,n.risk); return s;}
 
 // ── graph building ──────────────────────────────────────────────────────
 function add(sg){
@@ -240,8 +242,10 @@ function add(sg){
      title:n.title||'',risk:n.risk||0,count:n.count||0,color:COL[n.group]||'#8c959f',size:sizeOf(n),
      x:Math.cos(Math.random()*6.283)*(1+Math.random()*9),y:Math.sin(Math.random()*6.283)*(1+Math.random()*9)}); });
  (sg.edges||[]).forEach(e=>{ if(g.hasNode(e.from)&&g.hasNode(e.to)&&!g.hasEdge(e.from,e.to)){
-   try{g.addEdge(e.from,e.to,{label:e.label,size:0.6,
-     color:(e.label&&'critical high medium low'.indexOf(e.label)>-1)?'#cf222e':'#d9dee3'});}catch(x){} } });
+   // finding edges pop (red, thicker, on top); infra edges are thin and follow
+   // the theme's default edge colour (so they aren't glaring in dark mode).
+   const vuln=e.label&&'critical high medium low'.indexOf(e.label)>-1;
+   try{ g.addEdge(e.from,e.to, vuln?{label:e.label,size:1.1,color:'#cf222e',zIndex:2}:{label:e.label,size:0.5}); }catch(x){} } });
 }
 function relayout(){ const byT={}; g.forEachNode((id,a)=>{const t=tierOf(a.group);(byT[t]=byT[t]||[]).push(id);});
  Object.keys(byT).forEach(t=>{const ids=byT[t],R=t*5+0.1,n=ids.length;
@@ -263,9 +267,12 @@ function startLayout(ms){
   // seedClusters() pre-placement in load() gives the initial separation; FA2
   // then refines it. (The earlier gravity 0.12 + edgeWeightInfluence combo
   // killed the motion and froze the graph — that was the regression.)
-  st.linLogMode=true;st.outboundAttractionDistribution=true;st.gravity=0.6;st.scalingRatio=12;
+  // Wider spacing WITHOUT freezing: stronger repulsion (scalingRatio) + lower
+  // gravity push nodes apart so they stop clumping; adjustSizes uses each node's
+  // size to prevent overlap (bigger hubs claim more room); still lively/animated.
+  st.linLogMode=true;st.outboundAttractionDistribution=true;st.gravity=0.45;st.scalingRatio=20;
   fa2=new LIB.FA2Layout(g,{settings:st}); fa2.start(); $('lay').textContent='⚛ stop'; $('lay').classList.add('on');
-  clearTimeout(fa2to); fa2to=setTimeout(stopLayout, ms||(g.order>1500?13000:6000));
+  clearTimeout(fa2to); fa2to=setTimeout(stopLayout, ms||(g.order>1500?16000:8000)); // a bit longer to settle spread
  }catch(e){ fa2=null; relayout(); renderer&&renderer.refresh(); }
 }
 function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay').textContent='⚛ layout'; $('lay').classList.remove('on'); }
@@ -396,7 +403,7 @@ const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); retu
 function render(){
  if(renderer){renderer.refresh();return;}
  renderer=new Sigma(g,$('cy'),{defaultEdgeColor:EDGECOL,labelColor:{color:LABELCOL},labelSize:11,labelWeight:'600',
-   labelFont:'Inter,system-ui,sans-serif',labelRenderedSizeThreshold:6,labelDensity:0.75,labelGridCellSize:110,
+   labelFont:'Inter,system-ui,sans-serif',labelRenderedSizeThreshold:9,labelDensity:0.4,labelGridCellSize:150,
    renderEdgeLabels:false,zIndex:true,minCameraRatio:0.015,maxCameraRatio:22});
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
    if(!passFilter(n,a))return Object.assign({},d,{hidden:true});
@@ -423,27 +430,51 @@ function render(){
  // hover → spotlight the node's neighbourhood (signature pro-graph interaction)
  renderer.on('enterNode',({node})=>{ if(pickMode||drag)return; hoverNode=node; hover=hood(node); $('cy').style.cursor='pointer'; renderer.refresh(); });
  renderer.on('leaveNode',()=>{ if(hover){hover=null;hoverNode=null; $('cy').style.cursor='default'; renderer.refresh();} });
+ // double-click a node = dive into it: spotlight its neighbourhood + smoothly
+ // zoom the camera onto it (stops Sigma's default double-click zoom).
+ renderer.on('doubleClickNode',e=>{ e.preventSigmaDefault&&e.preventSigmaDefault(); const id=e.node;
+   pathSet=null; focus=hood(id); renderer.refresh(); detail(id); openSide(true);
+   const p=renderer.getNodeDisplayData(id);
+   if(p)renderer.getCamera().animate({x:p.x,y:p.y,ratio:Math.max(0.06,renderer.getCamera().ratio*0.45)},{duration:550}); });
+ renderer.on('doubleClickStage',e=>{ e.preventSigmaDefault&&e.preventSigmaDefault(); }); // don't default-zoom on empty dbl-click
  renderer.getCamera().on('updated',()=>{ const z=$('zlvl'); if(z)z.textContent=Math.round(100/renderer.getCamera().ratio)+'%'; drawMini(); });
- renderer.on('afterRender',()=>{drawMini();drawOverlay();});
- let drag=null;
- let dragSet=null;
- renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node;
+ let drag=null, dragSet=null, dragP=null, dragRAF=0;
+ // Overlay (cluster hulls/glyphs) + minimap are the heaviest per-frame cost on a
+ // big graph; skip them WHILE dragging so the drag stays at full framerate, then
+ // redraw once on release.
+ renderer.on('afterRender',()=>{ if(drag)return; drawMini(); drawOverlay(); });
+ // dragApply runs at most ONCE PER FRAME (rAF), applying the latest pointer delta
+ // to the whole sub-cluster — so a burst of mousemove events collapses into one
+ // position update + one render per frame instead of many.
+ function dragApply(){ dragRAF=0; if(!drag||!dragP)return;
+   const cx=g.getNodeAttribute(drag,'x'), cy=g.getNodeAttribute(drag,'y');
+   const dx=dragP.x-cx, dy=dragP.y-cy;
+   if(!dx&&!dy)return;
+   g.setNodeAttribute(drag,'x',dragP.x); g.setNodeAttribute(drag,'y',dragP.y);
+   if(dragSet)dragSet.forEach(nb=>{ if(nb!==drag){ g.setNodeAttribute(nb,'x',g.getNodeAttribute(nb,'x')+dx); g.setNodeAttribute(nb,'y',g.getNodeAttribute(nb,'y')+dy); } });
+ }
+ renderer.on('downNode',e=>{ if(pickMode)return; drag=e.node; dragP=null;
    // move the whole sub-cluster below the node (children, grandchildren, … all tiers).
-   // Expand only to same-or-deeper tier so it doesn't climb the backbone; no hub
-   // guard and no node cap — the entire subtree follows.
+   // Expand only to same-or-deeper tier so it doesn't climb the backbone.
    dragSet=new Set([drag]);
    { const bt=tierOf(g.getNodeAttribute(drag,'group')); let fr=[drag];
      while(fr.length){ const nx=[];
        fr.forEach(nd=>g.forEachNeighbor(nd,nb=>{ if(dragSet.has(nb))return;
          if(tierOf(g.getNodeAttribute(nb,'group'))>=bt){ dragSet.add(nb); nx.push(nb); } }));
        fr=nx; } }
-   g.setNodeAttribute(drag,'highlighted',true); fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
- renderer.getMouseCaptor().on('mousemovebody',e=>{ if(!drag)return; const p=renderer.viewportToGraph(e);
-   const dx=p.x-g.getNodeAttribute(drag,'x'), dy=p.y-g.getNodeAttribute(drag,'y');
-   g.setNodeAttribute(drag,'x',p.x); g.setNodeAttribute(drag,'y',p.y);
-   if(dragSet)dragSet.forEach(nb=>{ if(nb!==drag){ g.setNodeAttribute(nb,'x',g.getNodeAttribute(nb,'x')+dx); g.setNodeAttribute(nb,'y',g.getNodeAttribute(nb,'y')+dy); } });
+   g.setNodeAttribute(drag,'highlighted',true); $('cy').style.cursor='grabbing';
+   const oc=$('ov'); if(oc){ const o=oc.getContext('2d'); o&&o.clearRect(0,0,oc.width,oc.height); } // hide hulls while dragging
+   fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
+ renderer.getMouseCaptor().on('mousemovebody',e=>{ if(!drag)return;
+   dragP=renderer.viewportToGraph(e);
+   if(!dragRAF)dragRAF=requestAnimationFrame(dragApply);
    e.preventSigmaDefault(); e.original.preventDefault(); e.original.stopPropagation(); });
- renderer.getMouseCaptor().on('mouseup',()=>{ if(drag){g.removeNodeAttribute(drag,'highlighted'); if(fa2&&fa2._w)startLayout(4000);} drag=null; });
+ const endDrag=()=>{ if(!drag)return;
+   if(dragRAF){ cancelAnimationFrame(dragRAF); dragRAF=0; } dragApply(); // flush the final position
+   g.removeNodeAttribute(drag,'highlighted'); drag=null; dragP=null; $('cy').style.cursor='default';
+   ovT=0; drawOverlay(); drawMini(); // restore hulls/minimap at the final layout
+   if(fa2&&fa2._w)startLayout(4000); };
+ renderer.getMouseCaptor().on('mouseup',endDrag);
 }
 function focusTo(id){ const p=renderer.getNodeDisplayData(id); if(p)renderer.getCamera().animate({x:p.x,y:p.y,ratio:0.3},{duration:450}); }
 function focusNode(id){ if(!g.hasNode(id))return; pathSet=null; focus=hood(id); renderer.refresh(); focusTo(id); detail(id); openSide(true); }

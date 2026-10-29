@@ -15,81 +15,8 @@ import (
 
 	"github.com/Autumn-27/artex/k1z/config"
 	"github.com/Autumn-27/artex/k1z/store"
+	"github.com/Autumn-27/artex/k1z/targetgraph"
 )
-
-// graphMergeFiles are the per-run workspace files the target graph unions across
-// all of a target's runs (recon-graph.py dedupes internally).
-var graphMergeFiles = []string{
-	// host name sources
-	"subdomains.txt", "subdomains_resolved.txt", "subdomains_all_resolved.txt", "subdomains_all.txt",
-	"passive_merged.txt", "subdomains_resolved_resp.txt", "subdomains_tlsx_resolved.txt", "tlsx_new_subs.txt",
-	"js_subs.txt", "jsubfinder_subs.txt", "st_intel_subs.txt", "reverse_dns_subs.txt", "ptr_subs.txt",
-	"dns_records_subs.txt", "http_redirect_subs.txt", "recursive_parents.txt",
-	// edge/interesting surface
-	"vhost_new_hosts.txt", "favicon_in_scope.txt", "pivot_new_resolved.txt", "http_redirect_resolved.txt",
-	"dns_svc_new_hosts.txt", "interesting.txt",
-	// resolve / ip
-	"resolved.txt", "dns_resolved.txt", "ptr_resolved.txt", "dns_ptr.txt",
-	// http / ports / vulns (nuclei*.jsonl + afrog globbed)
-	"httpx.json", "httpx.jsonl", "httpx_probe.jsonl", "pivot_httpx_probe.jsonl", "st_pivot_httpx.jsonl",
-	"naabu.json", "naabu.jsonl", "naabu_asn.jsonl", "st_pivot_naabu.jsonl",
-	"nuclei*.jsonl", "nuclei*.json", "afrog.json", "afrog.jsonl", "takeover_findings.txt", "s3scanner.json", "s3scanner.jsonl",
-	// intel: censys / fofa / asn / internal / origin / cdn
-	"censys_hosts.txt", "censys_ip.txt", "censys_ports.txt", "censys_prefixes.txt", "fofa_ip_port.txt",
-	"asn_ipv4_cidrs.txt", "amass_intel_cidrs.txt", "internal_hosts.txt", "dns_internal_hosts.txt",
-	"internal_subnets.txt", "dns_internal_subnets.txt", "origin_ips.txt", "cdncheck.jsonl", "cdncheck.json",
-	"dns_zone_nsec.txt", "p_dns_zone.txt",
-	// high-cardinality counts (urls/endpoints/params/secrets)
-	"all_urls.txt", "live_urls.txt", "all_endpoints.txt", "linkfinder_endpoints.txt",
-	"all_params.txt", "found_params.txt", "jsubfinder_secrets.txt", "secretfinder_results.txt",
-	"trufflehog_results.jsonl", "gitleaks_results.json", "swaggerspy_results.txt",
-	// gf attack-candidates (subdir preserved by the merge), related-domain intel
-	"gf/*.txt", "st_associated.txt", "st_pivot_domains.txt", "amass_intel.txt",
-	// service-version scans (graph reads these for port badges on IPs)
-	"nmap_service.txt", "rustscan_full.txt",
-	// cert / favicon / raw-dns sources — graph.Build's detail() DOES read these
-	// (cert + favicon + extra dns nodes); they must be merged or the aggregate
-	// target graph silently renders zero cert/favicon nodes and partial dns.
-	"tlsx_raw.txt", "favicon_hashes.txt", "dns_records_raw.txt", "st_dns_records.txt",
-	// NOTE: ip_groups/shared_hosting is DB-only (graph has no reader) — not merged.
-}
-
-// normTarget canonicalises a target to its bare host — lowercase, no scheme, no
-// path, no port — so runs entered as "https://example.com", "example.com" and
-// "example.com:443" all aggregate into ONE target graph / annotation set.
-func normTarget(t string) string {
-	t = strings.TrimSpace(t)
-	if i := strings.Index(t, "://"); i >= 0 {
-		t = t[i+3:]
-	}
-	if i := strings.IndexAny(t, "/?#"); i >= 0 {
-		t = t[:i]
-	}
-	if !strings.Contains(t, "]") { // keep bracketed IPv6 literals intact
-		if i := strings.IndexByte(t, ':'); i >= 0 {
-			t = t[:i]
-		}
-	}
-	return strings.ToLower(strings.TrimSuffix(t, "."))
-}
-
-func safeTargetDir(t string) string {
-	var b strings.Builder
-	for _, c := range t {
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' {
-			b.WriteRune(c)
-		} else {
-			b.WriteRune('_')
-		}
-	}
-	if b.Len() == 0 {
-		return "target"
-	}
-	if s := b.String(); s == "." || s == ".." || strings.Trim(s, ".") == "" {
-		return "target" // never a path-traversal segment
-	}
-	return b.String()
-}
 
 // handleTargetGraph builds (or serves cached) the aggregate attack-surface graph
 // for a target by unioning the output of all its runs' workspaces and rendering
@@ -105,11 +32,11 @@ func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
 		writeDetail(w, 500, err.Error())
 		return
 	}
-	nt := normTarget(target) // group runs by canonical host, not raw string
+	nt := targetgraph.NormTarget(target) // group runs by canonical host, not raw string
 	var wss []string
 	var newest time.Time
 	for _, run := range runs {
-		if normTarget(run.Target) != nt || run.Workspace == "" || !dirExists(run.Workspace) {
+		if targetgraph.NormTarget(run.Target) != nt || run.Workspace == "" || !dirExists(run.Workspace) {
 			continue
 		}
 		wss = append(wss, run.Workspace)
@@ -127,16 +54,16 @@ func (s *Server) handleTargetGraph(w http.ResponseWriter, r *http.Request) {
 	if si, e := os.Stat(graphScript()); e == nil && si.ModTime().After(newest) {
 		newest = si.ModTime()
 	}
-	merged := filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(nt))
+	merged := targetgraph.MergedDir(nt)
 	gh := filepath.Join(merged, "recon-graph.html")
 	// cache: serve if the graph is newer than the latest run (and the generator)
 	if fi, e := os.Stat(gh); e == nil && !newest.After(fi.ModTime()) {
 		http.ServeFile(w, r, gh)
 		return
 	}
-	graph2Mu.Lock()
-	mergeRunFiles(wss, merged)
-	graph2Mu.Unlock()
+	targetgraph.Mu.Lock()
+	targetgraph.Merge(wss, merged)
+	targetgraph.Mu.Unlock()
 	script := graphScript()
 	if !fileExists(script) {
 		writeDetail(w, 500, "recon-graph.py not found (deploy scripts/)")

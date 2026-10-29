@@ -20,7 +20,6 @@ import (
 	"github.com/Autumn-27/artex/k1z/config"
 	"github.com/Autumn-27/artex/k1z/notify"
 	"github.com/Autumn-27/artex/k1z/parsers"
-	"github.com/Autumn-27/artex/k1z/scope"
 	"github.com/Autumn-27/artex/k1z/store"
 	"github.com/Autumn-27/artex/k1z/workflow"
 )
@@ -191,11 +190,9 @@ type LaunchInput struct {
 // row, and enqueues it. Returns the new run or an error mirroring the Python
 // HTTP error semantics ("Out of scope: ...", "Invalid workflow path", ...).
 func (r *Runner) Launch(in LaunchInput) (*store.Run, error) {
-	if !in.SkipScopeCheck {
-		if ok, reason := scope.CheckTargetScope(r.St, in.Target); !ok {
-			return nil, &ScopeError{Reason: reason}
-		}
-	}
+	// Scope enforcement removed: the operator vouches for scope and adds targets
+	// manually, so run creation is never refused here. (SkipScopeCheck/ScopeError
+	// are kept for API compatibility; the gate simply no longer runs.)
 	wfPath := filepath.Join(config.WorkflowsDir(), in.Workflow)
 	if filepath.Clean(wfPath) != filepath.Clean(safeJoin(config.WorkflowsDir(), in.Workflow)) {
 		return nil, fmt.Errorf("Invalid workflow path")

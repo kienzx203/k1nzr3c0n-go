@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Autumn-27/artex/k1z/config"
+	"github.com/Autumn-27/artex/k1z/targetgraph"
 )
 
 // ── annotations (per-node tag + note, persisted per target) ─────────────────
@@ -18,7 +19,7 @@ type annotation struct {
 }
 
 func annotationsPath(target string) string {
-	return filepath.Join(config.BaseDir(), "targetgraphs", safeTargetDir(normTarget(target)), "annotations.json")
+	return filepath.Join(config.BaseDir(), "targetgraphs", targetgraph.SafeTargetDir(targetgraph.NormTarget(target)), "annotations.json")
 }
 
 func readAnnotations(target string) map[string]annotation {

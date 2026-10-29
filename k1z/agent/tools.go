@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Autumn-27/artex/k1z/runner"
-	"github.com/Autumn-27/artex/k1z/scope"
 	"github.com/Autumn-27/artex/k1z/store"
+	"github.com/Autumn-27/artex/k1z/targetgraph"
 )
 
 // SystemPrompt is the recon-agent persona, adapted from ScopeWeaver's
@@ -17,28 +18,29 @@ import (
 // of running commands itself.
 const SystemPrompt = `You are the recon agent of an authorized penetration-testing platform (k1nzr3c0n). You operate the platform through TOOLS — you never run raw commands.
 
+Division of labour: the OPERATOR runs reconnaissance workflows MANUALLY. Your job is to LOOK UP and ANALYSE each target from the data those scans produced — not to orchestrate scans.
+
 Operating discipline:
-1. Start broad, then focus. For a new engagement: register the target (create_target with scope patterns), check what's already known (list_assets, list_findings), then launch the appropriate workflow (launch_run). The main pipeline "01-full-recon-pipeline.yaml" covers passive enum → DNS → ports → HTTP → crawl → vuln scan.
-2. Monitor runs with get_run_status / get_run_logs (pass the run id). Long scans take minutes to hours — report progress, don't spam polls.
-3. After completion, review findings (list_findings), ingest discovered hosts into the asset graph (insert_asset), and triage: mark false positives with patch_finding status="fp".
-4. Only operate within the registered scope. Creating runs for out-of-scope targets will be refused (403). Respect that.
-5. Bind captured HTTP evidence to findings (list_traffic + bind_evidence) when traffic proves a finding.
+1. To investigate a target, start with read_target_graph(target): it returns the FULL relationship map — hosts ↔ IPs ↔ ports ↔ ASN/subnet ↔ URLs/paths ↔ params ↔ findings, plus domain-level buckets/secrets/certs/dns/intel and counts. Use its q (search) / node (expand one node) options to drill in.
+2. Read what the operator's scans did with get_target_logs(target) (aggregated across that target's runs), or get_run_logs(run_id) for one specific run; get_run_status for progress.
+3. Review and triage findings (list_findings, patch_finding status="fp"), ingest hosts (insert_asset), and bind HTTP evidence (list_traffic + bind_evidence) when traffic proves a finding.
+4. Targets are added by the operator and need NO scope check — create_target just registers one if asked. There is no out-of-scope refusal.
+5. Do NOT launch workflows on your own. Call launch_run / cancel_run ONLY when the operator explicitly asks you to.
 6. Report facts from actual tool returns — never invent results. Mark uncertainty explicitly.
 7. Answer in the user's language. Be concise; summarize with hosts/counts, not raw dumps.
 
-Workflow catalog: 01-full-recon-pipeline.yaml (full recon + vuln scan, ~95 steps), 02-full-recon-artex.yaml (full recon, NO vuln scan, ~91 steps), 03-js-secrets-recon.yaml (JS/secrets), 04-param-discovery.yaml (parameter discovery).`
+Workflow catalog (the operator runs these manually): 01-full-recon-pipeline.yaml (full recon + vuln scan), 02-full-recon-artex.yaml (full recon, NO vuln scan), 03-js-secrets-recon.yaml (JS/secrets), 04-param-discovery.yaml (parameter discovery).`
 
 // PentestSystemPrompt drives the standalone "Penetration testing" chat agent —
 // an autonomous operator that plans, executes and validates through the platform.
-const PentestSystemPrompt = `You are the autonomous Penetration Testing agent of an authorized platform (k1nzr3c0n). You independently handle an engagement end-to-end: reconnaissance, attack-surface discovery, exploitation, verification and wrap-up, through the platform's TOOLS.
+const PentestSystemPrompt = `You are the penetration-testing analysis agent of an authorized platform (k1nzr3c0n). The OPERATOR runs reconnaissance workflows MANUALLY; you investigate, correlate and advise over the data they produce, through the platform's TOOLS.
 
 Operating discipline:
-1. Clarify scope first. Register/confirm the target (create_target with scope patterns) and respect it strictly — out-of-scope actions are refused (403).
-2. For a goal-driven engagement, create an autonomous Task so the planner/worker engine explores the two-graph attack surface; monitor it and inject hints when useful.
-3. For direct recon, launch the appropriate workflow (launch_run) and monitor it (get_run_status/get_run_logs).
-4. Triage findings (list_findings, patch_finding), ingest assets (insert_asset), and bind HTTP evidence (list_traffic + bind_evidence) to proven findings.
-5. Think adversarially: chain findings (entry → credentials → lateral → escalation). Verify before claiming — never invent results.
-6. Answer in the user's language. Be concise; summarize with hosts/severities/counts.`
+1. Investigate a target with read_target_graph(target) — the full host ↔ ip ↔ port ↔ asn/subnet ↔ url/path ↔ param ↔ finding relationship map (plus buckets/secrets/certs/dns/intel). Drill in with q=<search> or node=<id>; read scan activity with get_target_logs(target) or get_run_logs(run_id).
+2. Triage findings (list_findings, patch_finding), ingest assets (insert_asset), and bind HTTP evidence (list_traffic + bind_evidence) to proven findings.
+3. Think adversarially: chain findings (entry → credentials → lateral → escalation) using the relationship map. Verify before claiming — never invent results.
+4. Targets are operator-asserted — there is NO scope gate. Do NOT launch workflows yourself; call launch_run only when the operator explicitly asks.
+5. Answer in the user's language. Be concise; summarize with hosts/severities/counts.`
 
 // ChatAgentPrompt returns the built-in system prompt for a chat agent key.
 func ChatAgentPrompt(key string) string {
@@ -86,13 +88,6 @@ func Tools() []ToolDef {
 			}, "required": []any{"name"}},
 		}},
 		{Type: "function", Function: FunctionSpec{
-			Name:        "scope_check",
-			Description: "Check whether a host is in scope (deny-wins registry).",
-			Parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"host": str("hostname to check"),
-			}, "required": []any{"host"}},
-		}},
-		{Type: "function", Function: FunctionSpec{
 			Name:        "launch_run",
 			Description: "Start a workflow run against a target. Returns run id + status. Optional vars override workflow defaults (e.g. nuclei_rl=50, run_screenshot=false).",
 			Parameters: map[string]any{"type": "object", "properties": map[string]any{
@@ -110,11 +105,29 @@ func Tools() []ToolDef {
 		}},
 		{Type: "function", Function: FunctionSpec{
 			Name:        "get_run_logs",
-			Description: "Tail run logs (default last 40 lines).",
+			Description: "Tail ONE run's logs by run id (default last 40 lines).",
 			Parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"run_id": str("run id"),
 				"limit":  map[string]any{"type": "integer", "description": "number of lines (default 40, max 200)"},
 			}, "required": []any{"run_id"}},
+		}},
+		{Type: "function", Function: FunctionSpec{
+			Name:        "read_target_graph",
+			Description: "PRIMARY per-target lookup. Returns the FULL attack-surface relationship map for a target: every host with its IPs/ports/provider/URLs/paths/params/findings, every IP with its ASN/subnet/hosts, plus domain-level buckets/secrets/certs/dns/intel, node counts by type and findings-by-severity. Optional q also searches node labels; optional node returns one node's neighbours.",
+			Parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"target": str("the target host, e.g. example.com (scheme/path/port are ignored)"),
+				"q":      str("optional: also return nodes whose label/id contains this substring"),
+				"node":   str("optional: a node id to expand (returns its immediate neighbours)"),
+			}, "required": []any{"target"}},
+		}},
+		{Type: "function", Function: FunctionSpec{
+			Name:        "get_target_logs",
+			Description: "Aggregate the most recent run logs ACROSS all of a target's runs (newest run first). Use this to read what the manually-launched workflows did for a target, without needing a run id.",
+			Parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"target": str("the target host"),
+				"grep":   str("optional: only lines containing this substring"),
+				"limit":  map[string]any{"type": "integer", "description": "number of lines (default 60, max 200)"},
+			}, "required": []any{"target"}},
 		}},
 		{Type: "function", Function: FunctionSpec{
 			Name:        "cancel_run",
@@ -258,22 +271,69 @@ func Exec(st *store.Store, r *runner.Runner, call FunctionCall) string {
 		}
 		return okJSON(map[string]any{"created": t.Name, "mode": mode, "scope": scopePat})
 
-	case "scope_check":
-		host := strings.ToLower(arg("host"))
-		var coveredBy map[string]any
-		reason := "unregistered — no scope defined"
-		inScope, denied := false, false
-		if t := scope.Covering(st, host); t != nil {
-			coveredBy = map[string]any{"name": t.Name, "mode": t.Mode}
-			if t.Mode == "oos" {
-				denied = true
-				reason = "marked out-of-scope"
-			} else {
-				inScope = true
-				reason = "covered by " + t.Name
+	case "read_target_graph":
+		g, code, err := targetgraph.For(st, arg("target"))
+		if err != nil {
+			return okJSON(map[string]any{"target": targetgraph.NormTarget(arg("target")), "status": code, "error": err.Error()})
+		}
+		out := map[string]any{"map": g.TargetMap(0)}
+		if q := arg("q"); q != "" {
+			out["search"] = g.Search(q, 0)
+		}
+		if node := arg("node"); node != "" {
+			out["neighbors"] = g.Neighbors(node, 200)
+		}
+		return okJSON(out)
+
+	case "get_target_logs":
+		target := targetgraph.NormTarget(arg("target"))
+		grep := strings.ToLower(arg("grep"))
+		limit := argInt("limit", 60)
+		if limit > 200 {
+			limit = 200
+		} else if limit < 1 {
+			limit = 60
+		}
+		runs, _, err := st.ListRuns(store.RunFilter{Limit: 200})
+		if err != nil {
+			return fail(err)
+		}
+		var tr []*store.Run
+		for _, run := range runs {
+			if targetgraph.NormTarget(run.Target) == target {
+				tr = append(tr, run)
 			}
 		}
-		return okJSON(map[string]any{"host": host, "in_scope": inScope, "denied": denied, "covered_by": coveredBy, "reason": reason})
+		sort.Slice(tr, func(i, j int) bool { return tr[i].CreatedAt.After(tr[j].CreatedAt) })
+		win := limit
+		if grep != "" {
+			win = 1000 // scan a wider window per run so the filter has material
+		}
+		var lines []map[string]string
+		for _, run := range tr {
+			if len(lines) >= limit {
+				break
+			}
+			_, total, e := st.ListLogs(run.ID, 0, 1)
+			if e != nil {
+				continue
+			}
+			off := total - win
+			if off < 0 {
+				off = 0
+			}
+			msgs, _, e2 := st.ListLogs(run.ID, off, win)
+			if e2 != nil {
+				continue
+			}
+			for i := len(msgs) - 1; i >= 0 && len(lines) < limit; i-- { // newest line first
+				if grep != "" && !strings.Contains(strings.ToLower(msgs[i]), grep) {
+					continue
+				}
+				lines = append(lines, map[string]string{"run": run.ID, "msg": msgs[i]})
+			}
+		}
+		return okJSON(map[string]any{"target": target, "runs": len(tr), "lines": lines})
 
 	case "launch_run":
 		vars := map[string]string{}

@@ -119,12 +119,8 @@ func run() int {
 
 	// Mount k1nzr3c0n's workflow-runner backend under /api/v1/* + /ws/* (own
 	// SQLite store + runner). ARTEX/ScopeWeaver owns everything else.
-	// integration D: continuous recon -> auto-spawn an ARTEX triage Task (env-gated).
-	k1zrunner.AutoTriageHook = func(target, goal, brief string) {
-		if _, err := srv.CreateTriageTask("Auto-triage "+target, goal, brief); err != nil {
-			log.Printf("[auto-triage] create task failed: %v", err)
-		}
-	}
+	// NOTE: auto-triage auto-spawn is intentionally NOT wired — the operator runs
+	// workflows manually; tasks never launch workflows on their own.
 	// push-back: a recon run launched by run_workflow but not consumed inline seeds its
 	// brief back into the originating task when it finishes — on ANY terminal outcome
 	// (completed, failed, cancelled), so partial results are never silently skipped.

@@ -148,6 +148,23 @@ func reconTools() []actool.CoreTool {
 				q.Set("limit", fmt.Sprint(p.Limit))
 				return "/api/v1/assets?" + q.Encode()
 			}),
+		reconReadTool("recon_graph",
+			"Read the FULL attack-surface RELATIONSHIP MAP for a target: every host with its IPs/ports/provider/URLs/paths/params/findings, every IP with its ASN/subnet/hosts, plus domain-level buckets/secrets/certs/dns/intel, node counts and findings-by-severity. The single best way to SEE the whole surface and plan pivots/chains — call it once recon workflows have landed, and again as new runs finish. Use recon_findings/recon_assets for exhaustive flat lists; run_log for a run's live progress.",
+			rtObj(map[string]any{
+				"target": rtStr("the target host/domain, e.g. example.com (scheme/path/port are ignored)"),
+				"hosts":  rtInt("max hosts to include, highest-risk first (default 400)"),
+			}, "target"),
+			func(in json.RawMessage) string {
+				var p struct {
+					Target string `json:"target"`
+					Hosts  int    `json:"hosts"`
+				}
+				_ = json.Unmarshal(in, &p)
+				if p.Hosts <= 0 {
+					p.Hosts = 400
+				}
+				return "/api/v1/targets/" + url.PathEscape(p.Target) + "/graph2/map?hosts=" + fmt.Sprint(p.Hosts)
+			}),
 		reconReadTool("run_status",
 			"Check a Workflow Runner run's progress (status, step counts, findings so far). Poll after run_workflow until status is completed/failed/paused, then read results with recon_findings/recon_assets.",
 			rtObj(map[string]any{"run_id": rtStr("the run id returned by run_workflow")}, "run_id"),

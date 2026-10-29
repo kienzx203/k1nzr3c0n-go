@@ -27,7 +27,23 @@ type Node struct {
 	Risk     int    `json:"risk,omitempty"`
 	Internal bool   `json:"internal,omitempty"`
 	Alive    bool   `json:"alive,omitempty"`
-	Count    int    `json:"count,omitempty"` // cluster nodes: number of members
+	Count    int    `json:"count,omitempty"`  // cluster nodes: number of members
+	Ports    []int  `json:"ports,omitempty"`  // open ports (host / ip nodes)
+}
+
+// portsOf converts a set of port strings to a sorted []int.
+func portsOf(m map[string]struct{}) []int {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([]int, 0, len(m))
+	for p := range m {
+		if n, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
+			out = append(out, n)
+		}
+	}
+	sort.Ints(out)
+	return out
 }
 
 type Edge struct {
@@ -819,7 +835,7 @@ func Build(dir, target string) *Graph {
 			short = strings.TrimSuffix(h, "."+target)
 		}
 		g.add(&Node{ID: "h:" + h, Label: short, Group: grp, Title: title,
-			Risk: riskOf["h:"+h], Internal: internal, Alive: hh != nil})
+			Risk: riskOf["h:"+h], Internal: internal, Alive: hh != nil, Ports: portsOf(hostPorts[h])})
 	}
 	allIP := map[string]bool{}
 	for h, ips := range hostIP {
@@ -838,7 +854,7 @@ func Build(dir, target string) *Graph {
 			if ps := sortedKeys(ipPorts[ip]); len(ps) > 0 {
 				t += "\nports: " + strings.Join(ps, ",")
 			}
-			g.add(&Node{ID: "ip:" + ip, Label: ip, Group: grp, Title: t, Internal: isInternal(ip)})
+			g.add(&Node{ID: "ip:" + ip, Label: ip, Group: grp, Title: t, Internal: isInternal(ip), Ports: portsOf(ipPorts[ip])})
 			if _, ok := g.Nodes["h:"+h]; ok {
 				g.link("h:"+h, "ip:"+ip, "A")
 			}

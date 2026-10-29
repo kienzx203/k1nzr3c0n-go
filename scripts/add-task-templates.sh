@@ -30,16 +30,38 @@ if [ -z "$TOKEN" ]; then
   exit 1
 fi
 
-create() { # create <name> <goal> <description>
-  local payload code
+create() { # upsert <name> <goal> <description> — updates a same-named template in place
+  local payload code id
   payload=$(NAME="$1" GOAL="$2" DESC="$3" python3 -c 'import json,os; print(json.dumps({"name":os.environ["NAME"],"goal":os.environ["GOAL"],"description":os.environ["DESC"]}))')
-  code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/task-templates" \
-    -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" --data "$payload" 2>/dev/null || echo 000)
-  case "$code" in
-    200|201) printf '  ok    %s\n' "$1" ;;
-    401|403) printf '  FAIL  %s (HTTP %s — token invalid/expired)\n' "$1" "$code" ;;
-    *)       printf '  FAIL  %s (HTTP %s)\n' "$1" "$code" ;;
-  esac
+  # find an existing template with the same name → PATCH it (so re-running IMPROVES
+  # the template in place instead of 409-conflicting on the duplicate name).
+  id=$(curl -sS -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/task-templates" 2>/dev/null \
+    | NAME="$1" python3 -c '
+import json,os,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+n=os.environ["NAME"].strip().lower()
+for t in (d.get("templates") or []):
+    if (t.get("name") or "").strip().lower()==n:
+        print(t.get("id")); break
+' 2>/dev/null || echo "")
+  if [ -n "$id" ]; then
+    code=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH "$BASE_URL/api/task-templates/$id" \
+      -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" --data "$payload" 2>/dev/null || echo 000)
+    case "$code" in
+      200|201) printf '  ok    %s (updated #%s)\n' "$1" "$id" ;;
+      401|403) printf '  FAIL  %s (HTTP %s — token invalid/expired)\n' "$1" "$code" ;;
+      *)       printf '  FAIL  %s update (HTTP %s)\n' "$1" "$code" ;;
+    esac
+  else
+    code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/task-templates" \
+      -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" --data "$payload" 2>/dev/null || echo 000)
+    case "$code" in
+      200|201) printf '  ok    %s (created)\n' "$1" ;;
+      401|403) printf '  FAIL  %s (HTTP %s — token invalid/expired)\n' "$1" "$code" ;;
+      *)       printf '  FAIL  %s (HTTP %s)\n' "$1" "$code" ;;
+    esac
+  fi
 }
 
 ROLE=$(cat <<'EOF'
@@ -48,10 +70,12 @@ Lead with the OBJECTIVE / crown jewels: take the SHORTEST path to it first, brea
 detection & response; map the real attack path. OPSEC first: quiet, living-off-the-land, one
 detection hypothesis at a time, go dark when caught. State the objective before acting; if genuinely
 ambiguous, state it and take the most-defensible path. A human steers you mid-run by injecting notes
-into your running work (steer_work) — read and obey them. Hand recon to run_workflow and REUSE
-recon_findings/recon_assets instead of re-scanning. Persist results immediately (insert_assets /
-record_fact / report_finding) so you can DROP raw output from context — your window is limited, never
-hold scan dumps in-head.
+into your running work (steer_work) — read and obey them. Hand recon to run_workflow; while it runs
+FOLLOW it with run_log, and the moment results land SEE THE WHOLE SURFACE with recon_graph (the
+host<->ip<->asn/subnet<->url/path<->param<->finding relationship map — pivots, chokepoints and high-risk
+hosts at a glance) and REUSE recon_findings/recon_assets instead of re-scanning. Persist results
+immediately (insert_assets / record_fact / report_finding) so you can DROP raw output from context —
+your window is limited, never hold scan dumps in-head.
 EOF
 )
 
@@ -162,11 +186,13 @@ EOF
 
 ORCH=$(cat <<'EOF'
 RECON ORCHESTRATION — ONE inventory; workflows PRIMARY, hand-recon fills GAPS only.
-0 REUSE recon_findings + recon_assets first — never re-scan what's mapped.
+0 SEE FIRST: recon_graph (the full relationship map — spot pivots/chokepoints/high-risk hosts at a glance)
+  + recon_findings + recon_assets; never re-scan what's already mapped.
 1 BREADTH: list_workflows -> run_workflow by PURPOSE (never hardcode a filename). NON-BLOCKING: returns a
-  run_id, runs concurrently — do OTHER work, follow run_status (cheapest) + run_log (raw=true to inspect one
-  step), read findings/assets as they land; do NOT busy-poll. A run is done only at status completed/failed;
-  its brief auto-pushes back. Registered target ONLY -> else STOP+record. Empty interim != "none" while live.
+  run_id, runs concurrently — do OTHER work, FOLLOW with run_status (cheapest) + run_log (raw=true to inspect
+  one step); as each run finishes RE-READ recon_graph to absorb the new surface + read findings/assets. Do
+  NOT busy-poll. A run is done only at status completed/failed; its brief auto-pushes back. Registered target
+  ONLY -> else STOP+record. Empty interim != "none" while live.
 2 RECONCILE: merge + dedup + tag. report_finding = access/impact you PROVED this run (reproducible PoC) only;
   version/CVE/exposure observations -> record_fact; the final narrative draws on BOTH. list_untested_assets.
 3 GAP-FILL by hand ONLY what workflows missed (DEEP-DIVE + non-web/edge/cloud/leak). Abandon a line after
