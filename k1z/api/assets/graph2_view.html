@@ -12,6 +12,7 @@
   --acc:#2f6fed; --acc2:#2a62d6; --accink:#ffffff; --ring:0 0 0 3px #2f6fed2b;
   --danger:#e5484d; --ok:#2f9e44; --brand:#0a3069;
   --canvas:#fbfcfe; --canvas2:#ffffff; --dot:#e9eef5; --barbg:rgba(255,255,255,.9);
+  --hover:#f2f6fc; --hover2:#eef4ff; --scroll:#dbe2ec; --hintbg:rgba(255,255,255,.78);
   --sh-sm:0 1px 2px rgba(16,24,40,.05); --sh:0 4px 16px rgba(16,24,40,.08); --sh-lg:0 14px 36px rgba(16,24,40,.17);
  }
  html[data-theme="dark"]{
@@ -20,6 +21,7 @@
   --acc:#4493f8; --acc2:#388bfd; --accink:#06101d; --ring:0 0 0 3px #4493f84a;
   --brand:#79c0ff;
   --canvas:#0a0e14; --canvas2:#0f141b; --dot:#1b222c; --barbg:rgba(22,27,34,.9);
+  --hover:#1c2530; --hover2:#1a2432; --scroll:#2a313a; --hintbg:rgba(13,17,23,.82);
   --sh-sm:0 1px 2px rgba(0,0,0,.4); --sh:0 4px 16px rgba(0,0,0,.5); --sh-lg:0 14px 36px rgba(0,0,0,.6);
  }
  *{box-sizing:border-box}
@@ -38,7 +40,7 @@
    border:1px solid var(--bd);border-radius:8px;height:30px;padding:0 11px;cursor:pointer;
    display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
    transition:background .13s,border-color .13s,box-shadow .13s,color .13s}
- button:hover{background:#f2f6fc;border-color:#d4dbe6;color:var(--fg)}
+ button:hover{background:var(--hover);border-color:var(--bd);color:var(--fg)}
  button:active{transform:translateY(.5px)}
  button.on{background:linear-gradient(180deg,var(--acc),var(--acc2));color:var(--accink);border-color:var(--acc2);box-shadow:0 1px 3px #2f6fed66}
  button.on:hover{filter:brightness(1.04);color:#fff}
@@ -72,7 +74,7 @@
    padding:14px 16px 22px;transition:transform .22s cubic-bezier(.4,0,.2,1)}
  #left{left:0;border-right:1px solid var(--bd);box-shadow:var(--sh)}#left.hide{transform:translateX(-100%);box-shadow:none}
  #side{right:0;border-left:1px solid var(--bd);box-shadow:var(--sh)}#side.hide{transform:translateX(100%);box-shadow:none}
- .panel::-webkit-scrollbar{width:10px}.panel::-webkit-scrollbar-thumb{background:#dbe2ec;border:3px solid var(--surface);border-radius:7px}
+ .panel::-webkit-scrollbar{width:10px}.panel::-webkit-scrollbar-thumb{background:var(--scroll);border:3px solid var(--surface);border-radius:7px}
  .panel::-webkit-scrollbar-thumb:hover{background:#c7d0dd}
  .panel h4{display:flex;align-items:center;gap:9px;margin:18px 0 9px;font:650 10.5px/1 Inter,system-ui;
    letter-spacing:.09em;text-transform:uppercase;color:var(--mut)}
@@ -96,7 +98,7 @@
  #side input{width:100%}
  .act{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.act button{height:27px;padding:0 10px;font-size:11.5px}
  .nb{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:7px;cursor:pointer;font:11.5px ui-monospace,monospace;color:var(--fg2)}
- .nb:hover{background:#eef4ff;color:var(--fg)}
+ .nb:hover{background:var(--hover2);color:var(--fg)}
  .nb span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .pf{background:var(--card);border:1px solid var(--bd);border-radius:9px;padding:8px 10px;margin:5px 0;font:11.5px ui-monospace,monospace;
    min-height:34px;display:flex;align-items:center;justify-content:space-between;gap:6px;color:var(--fg2)}
@@ -110,20 +112,20 @@
    background:var(--surface);border:1px solid var(--bd);border-radius:11px;box-shadow:var(--sh);overflow:hidden;width:40px}
  #zoom button{border:0;border-radius:0;height:38px;width:40px;padding:0;font-size:17px;color:var(--fg2);background:var(--surface);
    border-bottom:1px solid var(--bd2);justify-content:center}
- #zoom button:hover{background:#f1f5fa;color:var(--acc)}
+ #zoom button:hover{background:var(--hover);color:var(--acc)}
  #zoom #zlvl{font:600 10px ui-monospace,monospace;color:var(--mut);text-align:center;padding:5px 0;background:var(--card)}
  .spin{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:8;width:40px;height:40px;
    border:3px solid #dfe6ee;border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;pointer-events:none}
  @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
  #hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);color:var(--fg2);font-size:11px;z-index:3;pointer-events:none;
-   background:rgba(255,255,255,.78);backdrop-filter:blur(6px);padding:6px 13px;border-radius:999px;border:1px solid var(--bd2);box-shadow:var(--sh-sm)}
+   background:var(--hintbg);backdrop-filter:blur(6px);padding:6px 13px;border-radius:999px;border:1px solid var(--bd2);box-shadow:var(--sh-sm)}
  /* menus */
  .menu{position:relative}
  .menu .drop{display:none;position:absolute;top:37px;right:0;background:var(--surface);border:1px solid var(--bd);
    border-radius:12px;box-shadow:var(--sh-lg);z-index:20;min-width:186px;overflow:hidden;padding:5px}
  .menu.open .drop{display:block}
  .drop button,#ctx button{display:flex;width:100%;text-align:left;border:0;border-radius:7px;height:32px;padding:0 10px;background:transparent;font-size:12px}
- .drop button:hover,#ctx button:hover{background:#f2f6fc}
+ .drop button:hover,#ctx button:hover{background:var(--hover)}
  #ctx{display:none;position:fixed;z-index:30;background:var(--surface);border:1px solid var(--bd);border-radius:12px;box-shadow:var(--sh-lg);overflow:hidden;min-width:190px;padding:5px}
  #ctx .hd{padding:7px 10px 8px;font:650 11px ui-monospace,monospace;color:var(--brand);border-bottom:1px solid var(--bd2);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  #toast{display:none;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:40;
@@ -268,29 +270,40 @@ function startLayout(ms){
  }catch(e){ fa2=null; relayout(); renderer&&renderer.refresh(); }
 }
 function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay').textContent='⚛ layout'; $('lay').classList.remove('on'); }
-// weakenHubEdges: give edges that touch a domain hub a tiny weight so the force
-// layout barely attracts along them — branches then spread out by repulsion
-// instead of collapsing onto the domain. (Weight is layout-only; edge thickness
-// is driven by `size`, so this changes nothing visually.)
+// weakenHubEdges: weight each edge by the inverse sqrt of its busiest endpoint's
+// degree, so EVERY hub (domain, shared IPs, ASNs, CDN providers) releases its
+// pull — not just the domain. With edgeWeightInfluence=1 the force layout then
+// lets dense communities separate instead of collapsing onto shared infra.
+// (Weight is layout-only; edge thickness is driven by `size`, so nothing changes
+// visually.)
 function weakenHubEdges(){ try{ g.forEachEdge((e,at,s,t)=>{
-   const hub=g.getNodeAttribute(s,'group')==='domain'||g.getNodeAttribute(t,'group')==='domain';
-   g.setEdgeAttribute(e,'weight',hub?0.02:1); }); }catch(x){} }
-// seedClusters: pre-place nodes so each branch starts in its own sector. A
-// "branch" = a connected component once the domain hub(s) are removed, i.e. the
-// groups that are only related THROUGH the domain. Big branches each get an
-// angular sector; small bits / domain-level findings go to an outer ring.
+   const d=Math.max(g.degree(s),g.degree(t));
+   g.setEdgeAttribute(e,'weight', 1/Math.sqrt(Math.max(1,d))); }); }catch(x){} }
+// community detection: prefer Louvain (density-based, robust to shared IP/ASN/CDN
+// infrastructure that would otherwise glue everything into one component); fall
+// back to label-propagation if the library build lacks it.
+function communitiesMap(){
+ try{ if(LIB&&LIB.communitiesLouvain){ const m=LIB.communitiesLouvain(g);
+   if(m&&typeof m==='object'){ const mp=new Map(); for(const k in m)mp.set(k,m[k]); if(mp.size)return mp; } } }catch(e){}
+ const lab=new Map(); g.forEachNode(id=>lab.set(id,id));
+ for(let it=0;it<8;it++){ let changed=false;
+   g.forEachNode(id=>{ const cnt=new Map(); g.forEachNeighbor(id,nb=>{ const l=lab.get(nb); cnt.set(l,(cnt.get(l)||0)+1); });
+     let best=lab.get(id),bv=0; cnt.forEach((v,l)=>{ if(v>bv){bv=v;best=l;} });
+     if(best!==lab.get(id)){ lab.set(id,best); changed=true; } });
+   if(!changed)break; }
+ return lab;
+}
+// seedClusters: pre-place each community in its own angular sector so the layout
+// starts already separated; large communities get sectors, small ones go to an
+// outer ring. FA2 (weak hub edges + linLog + low gravity) then keeps them apart.
 function seedClusters(){ if(g.order<3)return;
- const isHub=id=>g.getNodeAttribute(id,'group')==='domain';
- const comp=new Map(); let nc=0;
- g.forEachNode(seed=>{ if(isHub(seed)||comp.has(seed))return; const c=nc++; const stk=[seed]; comp.set(seed,c);
-   while(stk.length){ const n=stk.pop(); g.forEachNeighbor(n,nb=>{ if(isHub(nb)||comp.has(nb))return; comp.set(nb,c); stk.push(nb); }); } });
- const size=new Map(); comp.forEach(c=>size.set(c,(size.get(c)||0)+1));
+ const comm=communitiesMap();
+ const size=new Map(); comm.forEach(c=>size.set(c,(size.get(c)||0)+1));
  const big=[...size.keys()].filter(c=>size.get(c)>=4).sort((a,b)=>size.get(b)-size.get(a));
  const sector=new Map(); big.forEach((c,i)=>sector.set(c,2*Math.PI*i/Math.max(1,big.length)));
  const R=Math.max(500,55*Math.sqrt(g.order));
- let miscN=0; comp.forEach(c=>{ if(!sector.has(c))miscN++; }); let miscI=0;
- g.forEachNode(id=>{ if(isHub(id)){ g.setNodeAttribute(id,'x',0); g.setNodeAttribute(id,'y',0); return; }
-   const c=comp.get(id);
+ let miscN=0; comm.forEach(c=>{ if(!sector.has(c))miscN++; }); let miscI=0;
+ g.forEachNode(id=>{ const c=comm.get(id);
    if(sector.has(c)){ const th=sector.get(c), rad=R*(0.45+0.55*Math.random()), sp=R*0.28;
      g.setNodeAttribute(id,'x',Math.cos(th)*rad+(Math.random()-0.5)*sp); g.setNodeAttribute(id,'y',Math.sin(th)*rad+(Math.random()-0.5)*sp); }
    else { const th=2*Math.PI*(miscI++)/Math.max(1,miscN), rad=R*1.75;
@@ -327,7 +340,7 @@ $('showDead').onchange=e=>{filter.showDead=e.target.checked; renderer&&renderer.
 let metrics=null, colorBy=null;
 function applyMetric(id,d){ const m=metrics[id]; if(!m)return d;
  if(colorBy==='chokepoints')return m.cut?Object.assign({},d,{color:'#cf222e',size:d.size*1.7,zIndex:3})
-   :Object.assign({},d,{color:'#cfd6dd',size:Math.max(2,d.size*0.7)});
+   :Object.assign({},d,{color:DIM,size:Math.max(2,d.size*0.7)});
  return d; }
 function loadMetrics(cb){ if(metrics){cb&&cb();return;} $('stat').textContent='finding chokepoints…';
  fetch(BASE+'/metrics').then(r=>r.json()).then(res=>{ metrics=res.nodes||{}; updateStat(); cb&&cb(); })
@@ -482,13 +495,14 @@ function renderTagList(){ const el=$('tagList'); const ids=Object.keys(annos).fi
 function buildAllList(){ const box=$('allList'); if(!box)return;
  const q=(($('allq')&&$('allq').value)||'').trim().toLowerCase();
  const arr=[]; g.forEachNode((id,a)=>{
-   if(q&&(a.rawlabel||'').toLowerCase().indexOf(q)<0&&id.toLowerCase().indexOf(q)<0)return; arr.push([id,a]); });
- arr.sort((x,y)=>(y[1].risk||0)-(x[1].risk||0)||g.degree(y[0])-g.degree(x[0]));
+   if(q&&(a.rawlabel||'').toLowerCase().indexOf(q)<0&&id.toLowerCase().indexOf(q)<0)return; arr.push([id,a,g.degree(id)]); });
+ arr.sort((x,y)=>(y[1].risk||0)-(x[1].risk||0)||y[2]-x[2]); // degree precomputed (no g.degree in the comparator)
  if($('allN'))$('allN').textContent='('+(q?arr.length+' match / '+g.order+' total':arr.length+' total')+')';
  // list EVERY node (no display cap) — nothing is omitted. A single delegated
  // click handler (below) keeps even a 10k+ list fast.
  box.innerHTML=arr.map(([id,a])=>'<div class="nb" data-go="'+esc(id)+'"><span class="dot" style="background:'+(a.color||'#8c959f')+'"></span><span>'+esc(a.rawlabel||id)+'</span><small>'+esc(a.group||'')+'</small></div>').join(''); }
-if($('allq'))$('allq').addEventListener('input',buildAllList);
+let allqTo=null;
+if($('allq'))$('allq').addEventListener('input',()=>{ clearTimeout(allqTo); allqTo=setTimeout(buildAllList,180); }); // debounce the rebuild
 if($('allList'))$('allList').addEventListener('click',e=>{ const row=e.target.closest('.nb'); if(row)focusNode(row.dataset.go); });
 
 // ── custom saved views ─────────────────────────────────────────────────────
@@ -503,15 +517,19 @@ function snapView(){ const s={}; Object.keys(filter).forEach(k=>{ s[k]= k==='onl
  s.mode=MODE; s.colorBy=colorBy||''; s.ts=Date.now();
  try{ if(renderer)s.cam=renderer.getCamera().getState(); }catch(e){}
  return s; }
+let pendingCam=null; // camera to restore after a mode-change reload (avoids racing load()'s reset)
 function applySnap(s){ if(!s)return;
- Object.keys(filter).forEach(k=>{ if(k==='only')filter.only=s.only?new Set(s.only):null; else if(k in s)filter[k]=s[k]; });
- $('minDeg').value=filter.minDeg||0; $('minDegV').textContent=filter.minDeg||0; $('minRisk').value=filter.minRisk||0; $('minRiskV').textContent=filter.minRisk||0; $('showDead').checked=!!filter.showDead;
- syncFilterUI(); setColorBy(s.colorBy||'');
- const needLoad = s.mode && s.mode!==MODE;
- if(needLoad){ MODE=s.mode; $('mode').textContent=(MODE==='full')?'◰ full':'◱ overview'; load(); }
- else if(colorBy){ loadMetrics(()=>renderer&&renderer.refresh()); updateStat(); }
- else { renderer&&renderer.refresh(); updateStat(); }
- if(s.cam){ setTimeout(()=>{ try{ renderer&&renderer.getCamera().animate(s.cam,{duration:400}); }catch(e){} }, needLoad?750:60); } }
+ try{
+  Object.keys(filter).forEach(k=>{ if(k!=='only' && k in s)filter[k]=s[k]; });
+  filter.only=(s.only && typeof s.only[Symbol.iterator]==='function') ? new Set(s.only) : null;
+  $('minDeg').value=filter.minDeg||0; $('minDegV').textContent=filter.minDeg||0; $('minRisk').value=filter.minRisk||0; $('minRiskV').textContent=filter.minRisk||0; $('showDead').checked=!!filter.showDead;
+  syncFilterUI(); setColorBy(s.colorBy||'');
+  if(s.mode && s.mode!==MODE){ MODE=s.mode; $('mode').textContent=(MODE==='full')?'◰ full':'◱ overview'; pendingCam=s.cam||null; load(); return; }
+  if(colorBy){ loadMetrics(()=>renderer&&renderer.refresh()); } else { renderer&&renderer.refresh(); }
+  updateStat();
+  if(s.cam)setTimeout(()=>{ try{ renderer&&renderer.getCamera().animate(s.cam,{duration:400}); }catch(e){} },60);
+ }catch(x){ $('viewMsg').textContent='could not apply view (bad data)'; }
+}
 function renderCustomViews(){ const box=$('customViews'); if(!box)return; const o=loadCustomViews(); const names=Object.keys(o).sort();
  box.innerHTML = names.length ? names.map(n=>'<span class="cvchip" style="display:inline-flex;align-items:center;gap:1px">'+
    '<button class="cv" data-cv="'+esc(n)+'" title="apply this saved view">★ '+esc(n)+'</button>'+
@@ -561,7 +579,9 @@ function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE
    g.clear(); if(renderer){renderer.kill();renderer=null;}
    add(sg); seedClusters(); render(); startLayout(); updateStat(); loadAnnos(); buildAllList();
    if(colorBy)loadMetrics(()=>renderer&&renderer.refresh());
-   setTimeout(()=>{$('spin').style.display='none'; renderer&&renderer.getCamera().animatedReset();},450);
+   setTimeout(()=>{$('spin').style.display='none';
+     if(pendingCam){ try{ renderer&&renderer.getCamera().animate(pendingCam,{duration:450}); }catch(e){} pendingCam=null; } // restore a saved view's framing instead of resetting
+     else { renderer&&renderer.getCamera().animatedReset(); } },450);
  }).catch(()=>{$('spin').style.display='none'; $('stat').textContent='load failed';}); }
 $('zin').onclick=()=>renderer&&renderer.getCamera().animatedZoom({duration:200});
 $('zout').onclick=()=>renderer&&renderer.getCamera().animatedUnzoom({duration:200});

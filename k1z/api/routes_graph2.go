@@ -148,7 +148,7 @@ func (s *Server) handleGraph2Metrics(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGraph2Neighbors(w http.ResponseWriter, r *http.Request) {
 	if g := s.graphFor(w, r); g != nil {
-		writeJSON(w, 200, g.Neighbors(r.URL.Query().Get("id")))
+		writeJSON(w, 200, g.Neighbors(r.URL.Query().Get("id"), atoiDefault(r.URL.Query().Get("limit"), 500)))
 	}
 }
 

@@ -48,6 +48,7 @@ type Graph struct {
 	adj        map[string]map[string]struct{} // undirected neighbour ids
 	inc        map[string][]int               // node id -> edge indices
 	childrenOf map[string][]string            // subnet id -> member ip ids
+	edgeSeen   map[string]bool                // dedup exact (from,to,label) edges
 	Target     string
 
 	metricsOnce sync.Once
@@ -143,8 +144,14 @@ func readTruffle(dir string) []string {
 		}
 	}
 	if b, e := os.ReadFile(filepath.Join(dir, "gitleaks_results.json")); e == nil && len(b) > 0 {
-		var arr []map[string]any
-		if json.Unmarshal(b, &arr) == nil {
+		// the multi-run merge concatenates arrays ([...][...]) → not valid single
+		// JSON, so decode successive arrays from the stream instead of one Unmarshal.
+		dec := json.NewDecoder(bytes.NewReader(b))
+		for {
+			var arr []map[string]any
+			if err := dec.Decode(&arr); err != nil {
+				break
+			}
 			for _, m := range arr {
 				if r := str(m["RuleID"]); r != "" {
 					out = append(out, r)
@@ -203,7 +210,7 @@ func shortURL(u string) string {
 // Build reads the recon output files in dir and assembles the graph.
 func Build(dir, target string) *Graph {
 	g := &Graph{Nodes: map[string]*Node{}, adj: map[string]map[string]struct{}{},
-		inc: map[string][]int{}, childrenOf: map[string][]string{}, Target: target}
+		inc: map[string][]int{}, childrenOf: map[string][]string{}, edgeSeen: map[string]bool{}, Target: target}
 
 	hostIP := map[string]map[string]struct{}{} // host -> ip set
 	hostCname := map[string]string{}
@@ -759,6 +766,21 @@ func Build(dir, target string) *Graph {
 		dtitle := fmt.Sprintf("%s\nURLs: %d · endpoints: %d · params: %d · secrets: %d · related-domains: %d", target, nURL, nEnd, nParam, nSecret, nRelated)
 		g.add(&Node{ID: "dom:" + target, Label: target, Group: "domain", Title: dtitle})
 	}
+	// dedupe findings: the multi-run file merge concatenates nuclei/afrog output,
+	// so identical findings repeat — count risk and draw edges once each.
+	{
+		seenF := make(map[string]bool, len(findings))
+		uniq := findings[:0]
+		for _, f := range findings {
+			k := f.sev + "\x00" + f.name + "\x00" + f.host
+			if seenF[k] {
+				continue
+			}
+			seenF[k] = true
+			uniq = append(uniq, f)
+		}
+		findings = uniq
+	}
 	riskOf := map[string]int{}
 	for _, f := range findings {
 		riskOf["h:"+f.host] += sevW[f.sev]
@@ -980,12 +1002,32 @@ func Build(dir, target string) *Graph {
 		}
 		// Rescue orphan hosts — dead subdomains that never resolved to an IP and
 		// have no CNAME end up with zero edges, so the force layout flings them
-		// far off-screen and they look "missing". Hang every orphan host off the
-		// apex domain so it stays in the main component and is always visible.
-		if _, ok := g.Nodes["dom:"+target]; ok {
+		// far off-screen and they look "missing". Reconnect every in-scope host
+		// that isn't reachable from the apex domain (dead subs with no IP, and
+		// live hosts whose IP has no ASN/subnet enrichment → a 2-node island) by
+		// hanging it off the domain. Only real subdomains of the target are
+		// linked, so foreign intel hosts aren't falsely implied as subdomains.
+		dom := "dom:" + target
+		if _, ok := g.Nodes[dom]; ok {
+			reach := map[string]bool{dom: true}
+			queue := []string{dom}
+			for len(queue) > 0 {
+				cur := queue[0]
+				queue = queue[1:]
+				for nb := range g.adj[cur] {
+					if !reach[nb] {
+						reach[nb] = true
+						queue = append(queue, nb)
+					}
+				}
+			}
 			for id := range g.Nodes {
-				if strings.HasPrefix(id, "h:") && len(g.adj[id]) == 0 {
-					g.link(id, "dom:"+target, "sub")
+				if !strings.HasPrefix(id, "h:") || reach[id] {
+					continue
+				}
+				h := strings.TrimPrefix(id, "h:")
+				if h == target || strings.HasSuffix(h, "."+target) {
+					g.link(id, dom, "sub")
 				}
 			}
 		}
@@ -1005,6 +1047,11 @@ func (g *Graph) link(a, b, label string) {
 	if _, ok := g.Nodes[b]; !ok {
 		return
 	}
+	k := a + "\x00" + b + "\x00" + label
+	if g.edgeSeen[k] { // the file merge can duplicate source lines → dedup edges
+		return
+	}
+	g.edgeSeen[k] = true
 	idx := len(g.Edges)
 	g.Edges = append(g.Edges, Edge{From: a, To: b, Label: label})
 	g.inc[a] = append(g.inc[a], idx)
@@ -1135,13 +1182,42 @@ func (g *Graph) Full() SubGraph {
 		"edgeCount": len(g.Edges), "truncated": true})
 }
 
-// Neighbors returns a node and its immediate neighbours.
-func (g *Graph) Neighbors(id string) SubGraph {
+// Neighbors returns a node and its immediate neighbours, capped: a hub like the
+// apex domain can be adjacent to thousands of nodes, so return only the top
+// `limit` by risk+degree (limit<=0 means the built-in default) and flag it.
+func (g *Graph) Neighbors(id string, limit int) SubGraph {
+	if limit <= 0 {
+		limit = 500
+	}
 	keep := map[string]bool{id: true}
+	nbs := make([]string, 0, len(g.adj[id]))
 	for nb := range g.adj[id] {
+		nbs = append(nbs, nb)
+	}
+	truncated := false
+	if len(nbs) > limit {
+		sort.Slice(nbs, func(i, j int) bool {
+			ni, nj := g.Nodes[nbs[i]], g.Nodes[nbs[j]]
+			si, sj := len(g.adj[nbs[i]]), len(g.adj[nbs[j]])
+			if ni != nil {
+				si += ni.Risk * 100
+			}
+			if nj != nil {
+				sj += nj.Risk * 100
+			}
+			return si > sj
+		})
+		nbs = nbs[:limit]
+		truncated = true
+	}
+	for _, nb := range nbs {
 		keep[nb] = true
 	}
-	return g.slice(keep, nil)
+	var meta map[string]any
+	if truncated {
+		meta = map[string]any{"truncated": true, "degree": len(g.adj[id])}
+	}
+	return g.slice(keep, meta)
 }
 
 // Path returns the shortest path (BFS, undirected) between two nodes.
