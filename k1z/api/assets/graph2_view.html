@@ -284,7 +284,7 @@ function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay')
 // count scales down on big graphs to keep the one-time freeze short.
 function settleLayout(){ stopLayout();
  try{ if(LIB&&LIB.layoutNoverlap&&LIB.layoutNoverlap.assign&&renderer&&g.order>1){
-   const it=g.order>5000?40:(g.order>2000?70:110);
+   const it=g.order>5000?65:(g.order>2000?100:140);
    LIB.layoutNoverlap.assign(g,{maxIterations:it,settings:{margin:12,ratio:1.55,expansion:1.3,gridSize:20,speed:3}});
    renderer.refresh(); ovT=0; drawOverlay(); drawMini();
    renderer.getCamera().animatedReset({duration:500}); // re-frame the de-overlapped graph
@@ -424,7 +424,8 @@ function render(){
  if(renderer){renderer.refresh();return;}
  renderer=new Sigma(g,$('cy'),{defaultEdgeColor:EDGECOL,labelColor:{color:LABELCOL},labelSize:11,labelWeight:'600',
    labelFont:'Inter,system-ui,sans-serif',labelRenderedSizeThreshold:9,labelDensity:0.4,labelGridCellSize:150,
-   renderEdgeLabels:false,zIndex:true,minCameraRatio:0.015,maxCameraRatio:22});
+   renderEdgeLabels:false,zIndex:true,minCameraRatio:0.015,maxCameraRatio:22,
+   hideEdgesOnMove:true,hideLabelsOnMove:true});
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
    if(!passFilter(n,a))return Object.assign({},d,{hidden:true});
    let o=nodeScale!==1?Object.assign({},d,{size:d.size*nodeScale}):d;
@@ -448,8 +449,13 @@ function render(){
  renderer.on('clickStage',()=>{ if(focus||pathSet){focus=null;pathSet=null;renderer.refresh();} });
  renderer.on('rightClickNode',e=>{ const o=e.event&&e.event.original; if(o)o.preventDefault(); showCtx(o?o.clientX:e.event.x,o?o.clientY:e.event.y,e.node); });
  // hover → spotlight the node's neighbourhood (signature pro-graph interaction)
- renderer.on('enterNode',({node})=>{ if(pickMode||drag)return; hoverNode=node; hover=hood(node); $('cy').style.cursor='pointer'; renderer.refresh(); });
- renderer.on('leaveNode',()=>{ if(hover){hover=null;hoverNode=null; $('cy').style.cursor='default'; renderer.refresh();} });
+ // Hover spotlight re-renders the WHOLE graph (reducer dims every node) on each
+ // node you pass over — the main remaining lag on a big graph. Disable it past
+ // HOVERMAX nodes: just show the grab cursor; click still focuses a node.
+ const HOVERMAX=2500;
+ renderer.on('enterNode',({node})=>{ if(pickMode||drag)return; $('cy').style.cursor='pointer';
+   if(g.order>HOVERMAX)return; hoverNode=node; hover=hood(node); renderer.refresh(); });
+ renderer.on('leaveNode',()=>{ $('cy').style.cursor='default'; if(hover){hover=null;hoverNode=null; renderer.refresh();} });
  // double-click a node = dive into it: spotlight its neighbourhood + smoothly
  // zoom the camera onto it (stops Sigma's default double-click zoom).
  renderer.on('doubleClickNode',e=>{ e.preventSigmaDefault&&e.preventSigmaDefault(); const id=e.node;
@@ -484,7 +490,10 @@ function render(){
        fr.forEach(nd=>g.forEachNeighbor(nd,nb=>{ if(dragSet.has(nb))return;
          if(tierOf(g.getNodeAttribute(nb,'group'))>=bt){ dragSet.add(nb); nx.push(nb); if(dragSet.size>DRAGCAP)over=true; } }));
        fr=nx; }
-     if(over)dragSet=new Set([drag]); } // too big → move the node alone
+     if(over){ // subtree too big (backbone): fall back to the DIRECT links so
+       // connected nodes still follow; only a mega-hub moves fully alone.
+       dragSet=new Set([drag]);
+       if(g.degree(drag)<=DRAGCAP)g.forEachNeighbor(drag,nb=>dragSet.add(nb)); } }
    g.setNodeAttribute(drag,'highlighted',true); $('cy').style.cursor='grabbing';
    const oc=$('ov'); if(oc){ const o=oc.getContext('2d'); o&&o.clearRect(0,0,oc.width,oc.height); } // hide hulls while dragging
    fa2&&(fa2._w=fa2Running()); if(fa2Running())fa2.stop(); });
