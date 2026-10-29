@@ -253,17 +253,49 @@ function startLayout(ms){
  if(!LIB||!LIB.FA2Layout){relayout(); renderer&&renderer.refresh(); return;}
  if(g.order<2)return;
  try{ if(fa2){fa2.kill();fa2=null;}
+  weakenHubEdges();
   const st=LIB.layoutForceAtlas2.inferSettings(g);
   st.slowDown=2+Math.log(g.order+2);st.barnesHutOptimize=g.order>600;st.adjustSizes=true;
-  // linLog + outbound-attraction fan unrelated clusters apart into their own
-  // regions (instead of one central blob); low gravity keeps that separation,
-  // high scalingRatio adds the repulsion that opens the gaps between clusters.
-  st.linLogMode=true;st.outboundAttractionDistribution=true;st.gravity=0.35;st.scalingRatio=12;
+  // Separate unrelated branches into their own regions. The graph is one big
+  // star (every host, even dead ones, links to the domain), so plain repulsion
+  // can't break it apart — the domain edges always pull everything to centre.
+  // weakenHubEdges() drops those edges' pull (edgeWeightInfluence honours it) and
+  // seedClusters() pre-places each branch in its own sector; linLog + outbound
+  // + low gravity then let the branches stay fanned out.
+  st.linLogMode=true;st.outboundAttractionDistribution=true;st.gravity=0.12;st.scalingRatio=16;st.edgeWeightInfluence=1;
   fa2=new LIB.FA2Layout(g,{settings:st}); fa2.start(); $('lay').textContent='⚛ stop'; $('lay').classList.add('on');
   clearTimeout(fa2to); fa2to=setTimeout(stopLayout, ms||(g.order>1500?18000:9000)); // linLog settles slower
  }catch(e){ fa2=null; relayout(); renderer&&renderer.refresh(); }
 }
 function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay').textContent='⚛ layout'; $('lay').classList.remove('on'); }
+// weakenHubEdges: give edges that touch a domain hub a tiny weight so the force
+// layout barely attracts along them — branches then spread out by repulsion
+// instead of collapsing onto the domain. (Weight is layout-only; edge thickness
+// is driven by `size`, so this changes nothing visually.)
+function weakenHubEdges(){ try{ g.forEachEdge((e,at,s,t)=>{
+   const hub=g.getNodeAttribute(s,'group')==='domain'||g.getNodeAttribute(t,'group')==='domain';
+   g.setEdgeAttribute(e,'weight',hub?0.02:1); }); }catch(x){} }
+// seedClusters: pre-place nodes so each branch starts in its own sector. A
+// "branch" = a connected component once the domain hub(s) are removed, i.e. the
+// groups that are only related THROUGH the domain. Big branches each get an
+// angular sector; small bits / domain-level findings go to an outer ring.
+function seedClusters(){ if(g.order<3)return;
+ const isHub=id=>g.getNodeAttribute(id,'group')==='domain';
+ const comp=new Map(); let nc=0;
+ g.forEachNode(seed=>{ if(isHub(seed)||comp.has(seed))return; const c=nc++; const stk=[seed]; comp.set(seed,c);
+   while(stk.length){ const n=stk.pop(); g.forEachNeighbor(n,nb=>{ if(isHub(nb)||comp.has(nb))return; comp.set(nb,c); stk.push(nb); }); } });
+ const size=new Map(); comp.forEach(c=>size.set(c,(size.get(c)||0)+1));
+ const big=[...size.keys()].filter(c=>size.get(c)>=4).sort((a,b)=>size.get(b)-size.get(a));
+ const sector=new Map(); big.forEach((c,i)=>sector.set(c,2*Math.PI*i/Math.max(1,big.length)));
+ const R=Math.max(500,55*Math.sqrt(g.order));
+ let miscN=0; comp.forEach(c=>{ if(!sector.has(c))miscN++; }); let miscI=0;
+ g.forEachNode(id=>{ if(isHub(id)){ g.setNodeAttribute(id,'x',0); g.setNodeAttribute(id,'y',0); return; }
+   const c=comp.get(id);
+   if(sector.has(c)){ const th=sector.get(c), rad=R*(0.45+0.55*Math.random()), sp=R*0.28;
+     g.setNodeAttribute(id,'x',Math.cos(th)*rad+(Math.random()-0.5)*sp); g.setNodeAttribute(id,'y',Math.sin(th)*rad+(Math.random()-0.5)*sp); }
+   else { const th=2*Math.PI*(miscI++)/Math.max(1,miscN), rad=R*1.75;
+     g.setNodeAttribute(id,'x',Math.cos(th)*rad+(Math.random()-0.5)*R*0.2); g.setNodeAttribute(id,'y',Math.sin(th)*rad+(Math.random()-0.5)*R*0.2); } });
+}
 $('lay').onclick=()=>fa2Running()?stopLayout():startLayout(8000);
 
 // ── filters ─────────────────────────────────────────────────────────────
@@ -527,7 +559,7 @@ function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
    g.clear(); if(renderer){renderer.kill();renderer=null;}
-   add(sg); render(); startLayout(); updateStat(); loadAnnos(); buildAllList();
+   add(sg); seedClusters(); render(); startLayout(); updateStat(); loadAnnos(); buildAllList();
    if(colorBy)loadMetrics(()=>renderer&&renderer.refresh());
    setTimeout(()=>{$('spin').style.display='none'; renderer&&renderer.getCamera().animatedReset();},450);
  }).catch(()=>{$('spin').style.display='none'; $('stat').textContent='load failed';}); }
