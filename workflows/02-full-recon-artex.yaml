@@ -1524,17 +1524,36 @@ steps:
       command -v bgpq4 >/dev/null 2>&1 && bgpq4 -4 "AS${asn}" 2>/dev/null | grep -oE '[0-9.]+/[0-9]+'
     done | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]+$' >> {workspace}/asn_ipv4_cidrs.txt || true
     sort -u -o {workspace}/asn_ipv4_cidrs.txt {workspace}/asn_ipv4_cidrs.txt
-    # OPT-IN org-wide (only when org_name set): org -> sibling ASNs (bgpview) ->
-    # prefixes (RIPEstat) -> asn_org_cidrs.txt (INTEL only, not the portscan input).
-    if [ -n "{vars.org_name}" ]; then
-      curl -s --max-time 20 -A 'recon' "https://api.bgpview.io/search?query_term={vars.org_name}" 2>/dev/null \
-        | jq -r '.data.asns[]?.asn // empty' 2>/dev/null | sort -un > {workspace}/.orgasns || true
+    # org-wide AUTO (no manual input): ORG = org_name var if set, else auto-derived
+    # from the first owning ASN's holder (RIPEstat) -> sibling ASNs (bgpview) ->
+    # prefixes (RIPEstat) -> asn_org_cidrs.txt (INTEL only, not the portscan input;
+    # confirm target-dedicated before touching). Capped for safety.
+    ORG="{vars.org_name}"
+    if [ -z "$ORG" ]; then
+      A1=$(head -1 {workspace}/asn_list.txt 2>/dev/null)
+      [ -n "$A1" ] && ORG=$(curl -s --max-time 15 "https://stat.ripe.net/data/as-overview/data.json?resource=AS${A1}" 2>/dev/null \
+        | jq -r '.data.holder // empty' 2>/dev/null | sed 's/^[^ ]* - //; s/ - / /g')
+    fi
+    if [ -n "$ORG" ]; then
+      printf '%s\n' "$ORG" > {workspace}/org_name_auto.txt
+      Q=$(printf '%s' "$ORG" | jq -sRr @uri 2>/dev/null)
+      { curl -s --max-time 20 -A 'recon' "https://api.bgpview.io/search?query_term=${Q}" 2>/dev/null | jq -r '.data.asns[]?.asn // empty' 2>/dev/null; \
+        curl -s --max-time 20 -A 'Mozilla/5.0' "https://bgp.he.net/search?search%5Bsearch%5D=${Q}&commit=Search" 2>/dev/null | grep -oE 'AS[0-9]+' | tr -dc '0-9\n'; } \
+        | grep -E '^[0-9]+$' | sort -un | head -60 > {workspace}/.cand_asns || true
+      # VALIDATE: keep only ASNs whose holder shares the org's most distinctive word
+      # (a loose org token otherwise matches hundreds of unrelated ASNs = scope-blast).
+      TOK=$(printf '%s' "$ORG" | tr ' ' '\n' | awk '{print length,$0}' | sort -rn | head -1 | awk '{print $2}')
+      : > {workspace}/.orgasns
+      [ -n "$TOK" ] && for a in $(cat {workspace}/.cand_asns 2>/dev/null); do
+        H=$(curl -s --max-time 10 "https://stat.ripe.net/data/as-overview/data.json?resource=AS${a}" 2>/dev/null | jq -r '.data.holder // empty' 2>/dev/null)
+        printf '%s' "$H" | grep -qiF "$TOK" && echo "$a" >> {workspace}/.orgasns
+      done
       for asn in $(cat {workspace}/.orgasns 2>/dev/null); do
         curl -s --max-time 25 "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}" 2>/dev/null \
           | jq -r '.data.prefixes[]?.prefix // empty' 2>/dev/null
-      done | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]+$' | sort -u > {workspace}/asn_org_cidrs.txt || true
+      done | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]+$' | sort -u | head -20000 > {workspace}/asn_org_cidrs.txt || true
     fi
-    rm -f {workspace}/.asn_seed_ips.txt {workspace}/.cymru {workspace}/.orgasns
+    rm -f {workspace}/.asn_seed_ips.txt {workspace}/.cymru {workspace}/.orgasns {workspace}/.cand_asns
     printf '[asn_expand] IP ranges: %s CIDRs (Cymru+RIPEstat+HE+bgpview+bgpq4) | org-wide intel: %s\n' \
       "$(wc -l < {workspace}/asn_ipv4_cidrs.txt)" "$(wc -l < {workspace}/asn_org_cidrs.txt 2>/dev/null || echo 0)" >> {workspace}/asn_stats.txt
   outputs:
@@ -1554,9 +1573,12 @@ steps:
     # as recon surface; bare IPs / other customers on a shared ASN stay INTEL only.
     touch {workspace}/uncover_asn_in_scope.txt {workspace}/uncover_asn_raw.txt
     test -s {workspace}/asn_list.txt || exit 0
-    for asn in $(head -20 {workspace}/asn_list.txt); do
-      uncover -q "asn:AS${asn}" -e shodan,censys,fofa -silent 2>/dev/null
-    done | sed 's|https\?://||; s|/.*||' | sort -u > {workspace}/uncover_asn_raw.txt || true
+    ORG="{vars.org_name}"; [ -z "$ORG" ] && ORG=$(cat {workspace}/org_name_auto.txt 2>/dev/null)
+    { for asn in $(head -20 {workspace}/asn_list.txt); do
+        uncover -q "asn:AS${asn}" -e shodan,censys,fofa -silent 2>/dev/null
+      done
+      [ -n "$ORG" ] && uncover -q "org:\"${ORG}\"" -e shodan,censys,fofa -silent 2>/dev/null
+    } | sed 's|https\?://||; s|/.*||' | sort -u > {workspace}/uncover_asn_raw.txt || true
     touch {workspace}/uncover_asn_raw.txt
     sed 's|:.*||' {workspace}/uncover_asn_raw.txt | tr '[:upper:]' '[:lower:]' | sort -u \
       | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \

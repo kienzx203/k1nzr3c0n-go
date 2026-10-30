@@ -32,7 +32,7 @@ const PRIORITY_VARS = [
 ]
 
 const VAR_LABEL = {
-  org_name: 'Org name (unlocks ASN org-wide + Shodan/Censys/FOFA org search)',
+  org_name: 'Org name — AUTO-detected from ASN (override only to force a specific org)',
   method: 'Method',
   katana_depth: 'Katana depth',
   katana_concurrency: 'Katana concurrency',
@@ -478,7 +478,7 @@ export default function NewRunModal({ onClose, onCreated, initialTarget = '', in
                           style={{ fontSize: 10, padding: '4px 8px' }}
                           value={getVar(k)}
                           onChange={e => setVar(k, e.target.value)}
-                          placeholder={k === 'org_name' ? 'e.g. Example Org Ltd — blank = skip org-wide ASN/uncover' : ''}
+                          placeholder={k === 'org_name' ? 'blank = auto-detect from the target’s ASN holder' : ''}
                         />
                       )}
                     </div>
