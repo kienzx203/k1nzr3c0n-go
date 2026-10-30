@@ -23,6 +23,7 @@ const WORKFLOW_KEY_DEPS = {
 const SUBFINDER_TOTAL = 21
 
 const PRIORITY_VARS = [
+  'org_name',
   'method', 'katana_depth', 'katana_concurrency', 'katana_timeout',
   'arjun_rate', 'arjun_threads', 'ffuf_threads', 'ffuf_filter_size',
   'param_wordlist', 'dir_wordlist', 'dirsearch_threads', 'ferox_threads',
@@ -31,6 +32,7 @@ const PRIORITY_VARS = [
 ]
 
 const VAR_LABEL = {
+  org_name: 'Org name (unlocks ASN org-wide + Shodan/Censys/FOFA org search)',
   method: 'Method',
   katana_depth: 'Katana depth',
   katana_concurrency: 'Katana concurrency',
@@ -66,13 +68,13 @@ function SectionHeader({ children }) {
   )
 }
 
-export default function NewRunModal({ onClose, onCreated }) {
+export default function NewRunModal({ onClose, onCreated, initialTarget = '', initialWorkflow = '' }) {
   const navigate = useRouter().push
   const [workflows, setWorkflows]     = useState([])
   const [workflow, setWorkflow]       = useState('')
   const [wfMeta, setWfMeta]           = useState(null)
   const [editedVars, setEditedVars]   = useState({})
-  const [raw, setRaw]                 = useState('')
+  const [raw, setRaw]                 = useState(initialTarget)
   const [out, setOut]                 = useState('')
   const [continueOnError, setContinueOnError] = useState(false)
   const [resume, setResume]           = useState(false)
@@ -85,7 +87,7 @@ export default function NewRunModal({ onClose, onCreated }) {
   useEffect(() => {
     api.getWorkflows().then(wfs => {
       setWorkflows(wfs)
-      if (wfs.length) setWorkflow(wfs[0])
+      if (wfs.length) setWorkflow(initialWorkflow && wfs.includes(initialWorkflow) ? initialWorkflow : wfs[0])
     })
     // Load which keys are configured — used to detect auto-injected vars
     api.getKeys().then(keys => {
@@ -476,6 +478,7 @@ export default function NewRunModal({ onClose, onCreated }) {
                           style={{ fontSize: 10, padding: '4px 8px' }}
                           value={getVar(k)}
                           onChange={e => setVar(k, e.target.value)}
+                          placeholder={k === 'org_name' ? 'e.g. Example Org Ltd — blank = skip org-wide ASN/uncover' : ''}
                         />
                       )}
                     </div>

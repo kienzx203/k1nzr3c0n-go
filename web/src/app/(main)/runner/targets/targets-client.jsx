@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { api } from '@/lib/k1z-api'
 import { timeAgo } from '@/lib/k1z-utils'
+import NewRunModal from '@/components/k1z/NewRunModal'
 
 const MODE_META = {
   bounty: { label: 'BOUNTY', color: 'var(--green)' },
@@ -100,7 +101,7 @@ function TargetDetail({ name, onChanged, onDeleted }) {
   const [checkHost, setCheckHost] = useState('')
   const [checkResult, setCheckResult] = useState(null)
   const [newAssets, setNewAssets] = useState(null)
-  const [launching, setLaunching] = useState(false)
+  const [showRun, setShowRun] = useState(false)
   const [err, setErr] = useState('')
   const navigate = useRouter().push
 
@@ -110,16 +111,8 @@ function TargetDetail({ name, onChanged, onDeleted }) {
     api.targetNewAssets(name).then(setNewAssets).catch(() => {})
   }, [name])
 
-  async function runNow() {
-    if (!window.confirm(`Launch 01-full-recon-pipeline against ${name} now?`)) return
-    setLaunching(true)
-    try {
-      const r = await api.createRun({ workflow: '01-full-recon-pipeline.yaml', target: name })
-      navigate(`/runner/runs/detail?id=${r.id}`)
-    } catch (e) {
-      setErr(e.message); setLaunching(false)
-    }
-  }
+  // Opening the full New Run modal (instead of a hardcoded quick-launch) so the
+  // operator can tick phases + set vars (org_name, etc.) before launching.
 
   async function saveScope() {
     setErr('')
@@ -179,13 +172,21 @@ function TargetDetail({ name, onChanged, onDeleted }) {
           )}
         </div>
         <div className="flex gap-2 mt-3">
-          <button className="btn btn-primary" onClick={runNow} disabled={launching}>
-            {launching ? 'Launching…' : '▶ Run recon now'}
+          <button className="btn btn-primary" onClick={() => setShowRun(true)}>
+            ▶ Run recon now
           </button>
           <button className="btn btn-accent" onClick={() => navigate(`/runner/schedules?new=${encodeURIComponent(name)}`)}>
             🕘 New schedule
           </button>
         </div>
+        {showRun && (
+          <NewRunModal
+            initialTarget={name}
+            initialWorkflow="01-full-recon-pipeline.yaml"
+            onClose={() => setShowRun(false)}
+            onCreated={() => setShowRun(false)}
+          />
+        )}
         {detail.notes && <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>{detail.notes}</p>}
       </div>
 

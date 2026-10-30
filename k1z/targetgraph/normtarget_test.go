@@ -5,8 +5,8 @@ import "testing"
 func TestNormTarget(t *testing.T) {
 	cases := map[string]string{
 		"":                              "",
-		"viettelcdn.com.vn":             "viettelcdn.com.vn",
-		"https://viettelcdn.com.vn":     "viettelcdn.com.vn", // scheme stripped → same group
+		"target.example.com":            "target.example.com",
+		"https://target.example.com":    "target.example.com", // scheme stripped → same group
 		"http://Example.COM:8080/a?q=1": "example.com",       // scheme+port+path+case
 		"https://x.com/examp/aaa":       "x.com",             // path stripped
 		"example.com:443":               "example.com",
@@ -19,7 +19,7 @@ func TestNormTarget(t *testing.T) {
 			t.Errorf("NormTarget(%q) = %q, want %q", in, got, want)
 		}
 	}
-	if NormTarget("https://viettelcdn.com.vn") != NormTarget("viettelcdn.com.vn") {
+	if NormTarget("https://target.example.com") != NormTarget("target.example.com") {
 		t.Error("scheme and bare forms must aggregate into one target")
 	}
 }

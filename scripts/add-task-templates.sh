@@ -132,7 +132,7 @@ GAP-FILL, NOT a to-do list. Never re-run what recon_findings already shows.
     netblock than the web tier, so map from the RESOLVED IPs. (Workflow 01/02 step `asn_expand` unions all
     these -> asn_ipv4_cidrs; org-wide -> asn_org_cidrs INTEL.)
     Every derived CIDR = an OUT candidate: CONFIRM target-dedicated before any scan — a "customer
-    hosting" netname (e.g. pvhostingcustomer-net) means shared space; scan only IPs proven to be the
+    hosting" netname (e.g. *-hostingcustomer-net) means shared space; scan only IPs proven to be the
     target's, and on a shared IP send only in-scope Host/SNI (no mass port-scan of the range).
 [3] NON-WEB SVC (on confirmed target IPs only): naabu top-ports -> nmap -sV -sC. Flag unauth redis6379/
     mongo27017/elastic9200/DB, SMB445/LDAP389,636/Kerberos88/RDP3389/SSH22/FTP21/SMTP25/SNMP161, RPC/NFS,
