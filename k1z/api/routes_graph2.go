@@ -80,6 +80,43 @@ func (s *Server) handleGraph2Map(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ── run-scoped graph: the surface ONE run produced (rebuilt live per step) ──
+// Same shapes as the target graph (stats/map/search/neighbors) but built from a
+// single run's workspace, so an agent following a run can read its own delta via
+// recon_graph(run_id=…) instead of re-reading the whole target map each poll.
+func (s *Server) runGraphFor(w http.ResponseWriter, r *http.Request) *graph.Graph {
+	g, code, err := targetgraph.ForRun(s.St, r.PathValue("id"))
+	if err != nil {
+		writeDetail(w, code, err.Error())
+		return nil
+	}
+	return g
+}
+
+func (s *Server) handleRunGraphStats(w http.ResponseWriter, r *http.Request) {
+	if g := s.runGraphFor(w, r); g != nil {
+		writeJSON(w, 200, g.Stats())
+	}
+}
+
+func (s *Server) handleRunGraphMap(w http.ResponseWriter, r *http.Request) {
+	if g := s.runGraphFor(w, r); g != nil {
+		writeJSON(w, 200, g.TargetMap(atoiDefault(r.URL.Query().Get("hosts"), 0)))
+	}
+}
+
+func (s *Server) handleRunGraphSearch(w http.ResponseWriter, r *http.Request) {
+	if g := s.runGraphFor(w, r); g != nil {
+		writeJSON(w, 200, map[string]any{"nodes": g.Search(r.URL.Query().Get("q"), atoiDefault(r.URL.Query().Get("limit"), 50))})
+	}
+}
+
+func (s *Server) handleRunGraphNeighbors(w http.ResponseWriter, r *http.Request) {
+	if g := s.runGraphFor(w, r); g != nil {
+		writeJSON(w, 200, g.Neighbors(r.URL.Query().Get("id"), atoiDefault(r.URL.Query().Get("limit"), 500)))
+	}
+}
+
 // graph2ViewHTML is the WebGL (Sigma.js) client — a page that pulls subgraphs
 // from the graph2 API on demand (no embedded data), so it stays fast regardless
 // of graph size. Embedded so it ships in the binary without the frontend build.

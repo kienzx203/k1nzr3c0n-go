@@ -38,6 +38,11 @@ vars:
   run_recursive: 'false'      # recursive sub-subdomain enum on broad wildcards (slow)
   run_dns_records: 'true'     # extract SRV/MX/NS/TXT records → new hosts
   subdomains_list: ''
+  # inline host subset (comma/space/newline-separated) to scan on top of discovery —
+  # the agent sets this (via run_workflow vars) to focus a run on specific hosts it
+  # saw in the graph. Still passed through the target scope filter, so out-of-scope
+  # names are dropped. Pair with run_passive=false etc. for a pure targeted scan.
+  target_hosts: ''
   chaos_key: ''
   # API keys are auto-injected from the /keys page — no need to set them here.
   # Resolvers — trickest pre-validated list (13k resolvers) preferred; fallback = 6 hardcoded
@@ -1383,6 +1388,7 @@ steps:
         {workspace}/p_dns_zone.txt \
         2>/dev/null || true
       test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
+      printf '%s\n' '{vars.target_hosts}' | tr ',;" ' '\n' || true
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
       | tr '[:upper:]' '[:lower:]' \
       | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \

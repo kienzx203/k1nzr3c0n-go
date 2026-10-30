@@ -154,9 +154,11 @@ func reconTools() []actool.CoreTool {
 				"• q=<text> → SEARCH: matching nodes (host/ip/url/param/finding…) as a flat list. Use to find e.g. admin panels, a specific host, a param — token-light.\n"+
 				"• node=<id> → DRILL ONE node and its neighbours (ids come from a prior map/search, e.g. h:example.com, ip:1.2.3.4). Walk pivots/chains step by step.\n"+
 				"• (none) → FULL map: every host with its IPs/ports/provider/URLs/paths/params/findings, every IP with ASN/subnet/hosts, plus domain buckets/secrets/certs/dns/intel. Bounded by hosts (default 400, highest-risk first); a `truncated` map reports what was dropped — narrow with q/node instead of raising it.\n"+
+				"RUN DELTA: pass run_id=<id> to scope ANY mode to the surface THAT ONE run produced (rebuilt live per finished step) — follow a run with run_log, then recon_graph(run_id, summary) to see what it just added, instead of re-reading the whole target map. Omit run_id for the target-wide graph (every run merged).\n"+
 				"Call again as new runs finish (it rebuilds live per completed step). Exhaustive flat lists: recon_findings/recon_assets; live run progress: run_log.",
 			rtObj(map[string]any{
-				"target":  rtStr("the target host/domain, e.g. example.com (scheme/path/port are ignored)"),
+				"target":  rtStr("the target host/domain, e.g. example.com (scheme/path/port are ignored). Ignored when run_id is set."),
+				"run_id":  rtStr("optional: scope the graph to just this run's surface (its delta), rebuilt live per step. From run_workflow/recon_runs."),
 				"summary": map[string]any{"type": "boolean", "description": "true = cheap overview only (counts by type + findings-by-severity). Start here."},
 				"q":       rtStr("search text → return only matching nodes as a flat list (token-light)"),
 				"node":    rtStr("a node id (e.g. h:host, ip:1.2.3.4) → return just that node + its neighbours"),
@@ -166,6 +168,7 @@ func reconTools() []actool.CoreTool {
 			func(in json.RawMessage) string {
 				var p struct {
 					Target  string `json:"target"`
+					RunID   string `json:"run_id"`
 					Summary bool   `json:"summary"`
 					Q       string `json:"q"`
 					Node    string `json:"node"`
@@ -174,6 +177,9 @@ func reconTools() []actool.CoreTool {
 				}
 				_ = json.Unmarshal(in, &p)
 				base := "/api/v1/targets/" + url.PathEscape(p.Target) + "/graph2"
+				if strings.TrimSpace(p.RunID) != "" { // run-scoped delta
+					base = "/api/v1/runs/" + url.PathEscape(p.RunID) + "/graph2"
+				}
 				switch {
 				case p.Summary:
 					return base + "/stats"
@@ -246,7 +252,54 @@ func reconTools() []actool.CoreTool {
 		reconRunWorkflow(),
 		reconListRuns(),
 		reconStopWorkflow(),
+		reconGraphNote(),
 	}
+}
+
+// reconGraphNote is the agent's WRITE channel into the attack-surface graph (every
+// other recon_* graph tool is read-only): pin a note + priority tag on a node so
+// the lead persists — it shows in the graph viewer, survives context compaction,
+// and is readable later. With no node it LISTS the target's annotations.
+func reconGraphNote() actool.CoreTool {
+	return actool.Build(actool.Spec{
+		Name: "graph_note",
+		Description: "Write a NOTE and/or priority TAG back onto a graph node so the lead persists (shown in the graph viewer, survives compaction, readable later). Record a lead on a node — e.g. node=h:admin.example.com, tag=priority, note='login panel, default-cred + SQLi candidate'. Node ids come from recon_graph (h:host, ip:1.2.3.4, u:url, p:param, f:finding…). Empty tag AND note on an existing node deletes its annotation. With NO node, it LISTS every annotation for the target (recover your own pinned leads after a compaction). recon_graph reads the surface; graph_note is how you mark it.",
+		Schema: rtObj(map[string]any{
+			"target": rtStr("the target host/domain the node belongs to, e.g. example.com"),
+			"node":   rtStr("node id to annotate (h:host, ip:1.2.3.4, u:url, p:param, f:finding…). Omit to LIST all annotations for the target."),
+			"tag":    rtStr("optional short tag, e.g. priority|owned|verified|false-positive|revisit"),
+			"note":   rtStr("optional free note (≤4000 chars). Empty tag+note on an existing node removes its annotation."),
+		}, "target"),
+		ReadOnly: func(in json.RawMessage) bool {
+			var p struct {
+				Node string `json:"node"`
+			}
+			_ = json.Unmarshal(in, &p)
+			return strings.TrimSpace(p.Node) == "" // listing is read-only; writing is not
+		},
+		Concurrent: func(json.RawMessage) bool { return true },
+		Permissions: func(context.Context, json.RawMessage, permission.Context) permission.Decision {
+			return permission.Allowed()
+		},
+		Run: func(ctx context.Context, in json.RawMessage, _ *actool.ToolContext) (actool.Result, error) {
+			var p struct {
+				Target string `json:"target"`
+				Node   string `json:"node"`
+				Tag    string `json:"tag"`
+				Note   string `json:"note"`
+			}
+			_ = json.Unmarshal(in, &p)
+			if strings.TrimSpace(p.Target) == "" {
+				return actool.Errorf("target required"), nil
+			}
+			base := "/api/v1/targets/" + url.PathEscape(p.Target) + "/graph2/annotations"
+			if strings.TrimSpace(p.Node) == "" {
+				return reconHTTP(ctx, "GET", base, nil), nil // list
+			}
+			body, _ := json.Marshal(map[string]string{"id": p.Node, "tag": p.Tag, "note": p.Note})
+			return reconHTTP(ctx, "POST", base, bytes.NewReader(body)), nil
+		},
+	})
 }
 
 // reconDescribeWorkflow exposes ONE workflow's tunable variables (its run_* toggles,

@@ -237,3 +237,42 @@ func For(st *store.Store, target string) (*graph.Graph, int, error) {
 	cache[nt] = &cached{g: g, sig: sig, builtAt: time.Now()}
 	return g, 200, nil
 }
+
+// ForRun builds the graph from ONE run's workspace only — the attack surface THIS
+// run produced, NOT merged across every run of the target. It rebuilds live as the
+// run's steps finish (the signature folds in the done-step count for an in-flight
+// run), so an agent following a run sees its own graph grow tool-by-tool. This is
+// the "what did this run add" delta the recon_graph(run_id=…) mode reads. Cached
+// per run under a "run:" key so it never collides with the target-wide cache.
+func ForRun(st *store.Store, runID string) (*graph.Graph, int, error) {
+	if runID == "" {
+		return nil, 400, errors.New("run_id required")
+	}
+	run, err := st.GetRun(runID)
+	if err != nil || run == nil {
+		return nil, 404, errors.New("run not found")
+	}
+	if run.Workspace == "" || !dirExists(run.Workspace) {
+		return nil, 404, ErrNoRuns
+	}
+	nt := NormTarget(run.Target)
+	ver := ""
+	if run.FinishedAt.IsZero() { // live run: rebuild per finished step
+		ver = ":s" + strconv.Itoa(doneSteps(run.StepsJSON))
+	} else {
+		ver = ":" + strconv.FormatInt(run.FinishedAt.Unix(), 10)
+	}
+	sig := run.ID + ver
+	key := "run:" + run.ID
+	mu.Lock()
+	defer mu.Unlock()
+	if c, ok := cache[key]; ok && c.sig == sig {
+		return c.g, 200, nil
+	}
+	// a single run's workspace already holds every tool-output file graph.Build
+	// reads (the per-run Merge only unions same-named files ACROSS runs), so we
+	// build straight from it — no merge needed.
+	g := graph.Build(run.Workspace, nt)
+	cache[key] = &cached{g: g, sig: sig, builtAt: time.Now()}
+	return g, 200, nil
+}

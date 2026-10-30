@@ -15,10 +15,11 @@ in context — persist, then drop.
                     └──────────────────────────────────────────────┘
         ▲  ▲  ▲                    │ writes workspace files
         │  │  │                    ▼
-        │  │  └── LOG   ◀── run_log(run_id)      live step tail / warnings
-        │  └───── GRAPH ◀── recon_graph(target)  host⇄ip⇄asn⇄url⇄param⇄finding map
+        │  │  └── LOG   ◀── run_log(run_id)       live step tail / warnings
+        │  └───── GRAPH ⇄  recon_graph(target | run_id)  surface map (read; run_id = run delta)
+        │                  graph_note(target,node)       pin a lead back onto a node (write)
         └──────── DB    ◀── recon_findings / recon_assets / recon_runs(target)
-                           run_status(run_id)      progress / counts
+                           run_status(run_id)       progress / counts
 ```
 
 ## The four channels (exact tool names)
@@ -34,6 +35,10 @@ in context — persist, then drop.
   `full=false` + explicit `vars` = a precise/quiet run. `wait=true` blocks and returns
   the brief inline. The finished brief is ALSO pushed back into the task — but do NOT
   wrap up while a run is unread.
+  **TARGETED scan** — focus a run on specific hosts you saw in the graph: set
+  `vars={"target_hosts":"a.ex.com,b.ex.com", "run_passive":"false", …}` (comma/space-separated;
+  still passes the target scope filter so out-of-scope names drop). Pair with `full=false` + the
+  discovery toggles off for a pure, quiet scan of just those hosts instead of the whole target.
 - `stop_workflow(run_id)` — cancel a wrong / out-of-scope / stuck run.
 
 **LOG — follow live**
@@ -55,6 +60,15 @@ in context — persist, then drop.
   params/findings; IPs with ASN/subnet; domain buckets/secrets/certs/dns/intel). Bounded by
   `hosts` (default 400, highest-risk first); a `truncated` map says what was dropped — NARROW with
   q/node instead of raising the cap. Call again as runs finish (rebuilds live per completed step).
+- `recon_graph(target, run_id="<id>", …)` — **RUN DELTA**: scope ANY of the 4 modes to the surface
+  ONE run produced (rebuilt live per finished step). While following a run, `recon_graph(target,
+  run_id, summary=true)` shows what IT just added — far cheaper than re-reading the whole target map
+  each poll. Omit `run_id` for the target-wide (all-runs-merged) graph.
+- `graph_note(target, node[, tag, note])` — **WRITE a lead back onto a node** (recon_graph is
+  read-only; this is the agent's write channel). e.g. `node="h:admin.example.com", tag="priority",
+  note="login panel, default-cred + SQLi candidate"`. It persists — shows in the graph viewer and
+  survives a context compaction. With NO node it LISTS your pinned leads. Use it to mark what to
+  attack next, flag false-positives, and recover your own leads after a compaction.
 
 **DB — exhaustive lists + run recovery**
 - `recon_findings(target)` — flat list of findings for the target.
@@ -80,8 +94,11 @@ in context — persist, then drop.
 3. **Follow live.** While it runs, `run_log(run_id)` + `run_status(run_id)`; keep reconning in
    parallel. Lost the run_id (compaction)? `recon_runs(target, status=running)` to recover it —
    never leave a launched run unread.
-4. **See the surface** as results land: `recon_graph(target, summary=true)` for the new totals,
-   then drill with `q=`/`node=` for pivots & chains; full map only when you truly need it all.
+4. **See the surface** as results land: `recon_graph(target, run_id, summary=true)` for the
+   DELTA of the run you're following (what it just added), or `recon_graph(target, summary=true)`
+   for the whole target; then drill with `q=`/`node=` for pivots & chains; full map only when you
+   truly need it all. **Pin leads** as you spot them: `graph_note(target, node, tag="priority",
+   note=…)` so they survive a compaction and you don't re-derive them.
 5. **Route & attack** — map the surface to the matching offensive domain skill and INVOKE it
    (`recon-to-attack`: web → `web-pentest`, AD/network ports → `active-directory-attack`/`network-attack`,
    cloud → `cloud-security`, secrets → `red-team-ops`, a shell → `privesc-*`/`edr-evasion`, …), driven by
@@ -92,7 +109,9 @@ in context — persist, then drop.
    - a confirmed, reproduced vuln → `report_finding` (with a minimal PoC)
    Only saved results survive a context compaction — never keep scan dumps in-head.
 7. **New surface found mid-attack** (new subdomain/host/param) → narrow loop back to step 1
-   for THAT surface only, not a full re-scan.
+   for THAT surface only, not a full re-scan — launch a TARGETED run with
+   `vars={"target_hosts":"<the new hosts>", "run_passive":"false"}` (+ the scan toggles you need),
+   then follow its delta with `recon_graph(target, run_id)`.
 
 ## Boundaries
 
