@@ -1,7 +1,7 @@
 <!doctype html><html><head><meta charset="utf-8">
 <title>Attack surface</title><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/graphology/0.25.4/graphology.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/graphology-library@0.8.0/dist/graphology-library.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sigma.js/2.4.0/sigma.min.js"></script>
@@ -14,6 +14,8 @@
   --canvas:#fbfcfe; --canvas2:#ffffff; --dot:#e9eef5; --barbg:rgba(255,255,255,.9);
   --hover:#f2f6fc; --hover2:#eef4ff; --scroll:#dbe2ec; --hintbg:rgba(255,255,255,.78);
   --sh-sm:0 1px 2px rgba(16,24,40,.05); --sh:0 4px 16px rgba(16,24,40,.08); --sh-lg:0 14px 36px rgba(16,24,40,.17);
+  --ui:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
  }
  html[data-theme="dark"]{
   --bg:#0d1117; --surface:#161b22; --fg:#e6edf3; --fg2:#9aa5b1; --mut:#6e7781;
@@ -26,13 +28,14 @@
  }
  *{box-sizing:border-box}
  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);
-   font:13px/1.45 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+   font:13px/1.45 var(--ui);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;
+   font-feature-settings:'cv05' 1,'cv08' 1,'ss03' 1,'tnum' 1,'zero' 1;font-variant-numeric:tabular-nums slashed-zero}
  /* toolbar */
  #bar{position:fixed;inset:0 0 auto 0;z-index:6;display:flex;gap:7px;align-items:center;flex-wrap:wrap;
    height:52px;padding:0 14px;background:var(--barbg);backdrop-filter:saturate(1.3) blur(10px);
    border-bottom:1px solid var(--bd);box-shadow:var(--sh-sm)}
  #bar .brand{display:flex;align-items:center;gap:7px;font-weight:650;color:var(--brand);white-space:nowrap}
- #bar .brand .tgt{font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--fg)}
+ #bar .brand .tgt{font:600 12.5px var(--mono);color:var(--fg)}
  .stat{color:var(--mut);font-size:11.5px;white-space:nowrap}
  .sp{flex:1}
  /* controls */
@@ -58,7 +61,7 @@
    border-radius:9px;box-shadow:var(--sh-lg);z-index:30;max-height:300px;overflow:auto;padding:4px}
  #qsug.open{display:block}
  #qsug .s{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;cursor:pointer;
-   font:11.5px ui-monospace,monospace;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+   font:11.5px var(--mono);color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  #qsug .s:hover,#qsug .s.sel{background:rgba(127,139,153,.16);color:var(--fg)}
  #qsug .s small{color:var(--mut);margin-left:auto}
  .seg{display:inline-flex;border:1px solid var(--bd);border-radius:9px;overflow:hidden;background:var(--surface);box-shadow:var(--sh-sm)}
@@ -104,16 +107,16 @@
  /* inspector */
  #side h3{margin:0 0 5px;color:var(--brand);font:650 15px Inter,system-ui;word-break:break-all}
  #side .meta{color:var(--mut);font-size:11px;margin-bottom:10px}
- #side pre{white-space:pre-wrap;word-break:break-word;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
+ #side pre{white-space:pre-wrap;word-break:break-word;font:11px/1.55 var(--mono);
    background:var(--card);border:1px solid var(--bd);border-radius:9px;padding:10px;margin:8px 0;max-height:240px;overflow:auto;color:var(--fg2)}
  #side textarea{border:1px solid var(--bd);border-radius:9px;background:var(--surface);color:var(--fg);outline:none}
  #side textarea:focus{border-color:var(--acc);box-shadow:var(--ring)}
  #side input{width:100%}
  .act{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.act button{height:27px;padding:0 10px;font-size:11.5px}
- .nb{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:7px;cursor:pointer;font:11.5px ui-monospace,monospace;color:var(--fg2)}
+ .nb{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:7px;cursor:pointer;font:11.5px var(--mono);color:var(--fg2)}
  .nb:hover{background:var(--hover2);color:var(--fg)}
  .nb span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
- .pf{background:var(--card);border:1px solid var(--bd);border-radius:9px;padding:8px 10px;margin:5px 0;font:11.5px ui-monospace,monospace;
+ .pf{background:var(--card);border:1px solid var(--bd);border-radius:9px;padding:8px 10px;margin:5px 0;font:11.5px var(--mono);
    min-height:34px;display:flex;align-items:center;justify-content:space-between;gap:6px;color:var(--fg2)}
  .pf.pick{border-color:var(--acc);box-shadow:var(--ring)}
  .pf b{color:var(--brand)}.pf .x{cursor:pointer;color:var(--mut);padding:0 3px}.pf .x:hover{color:var(--danger)}
@@ -126,7 +129,7 @@
  #zoom button{border:0;border-radius:0;height:38px;width:40px;padding:0;font-size:17px;color:var(--fg2);background:var(--surface);
    border-bottom:1px solid var(--bd2);justify-content:center}
  #zoom button:hover{background:var(--hover);color:var(--acc)}
- #zoom #zlvl{font:600 10px ui-monospace,monospace;color:var(--mut);text-align:center;padding:5px 0;background:var(--card)}
+ #zoom #zlvl{font:600 10px var(--mono);color:var(--mut);text-align:center;padding:5px 0;background:var(--card)}
  .spin{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:8;width:40px;height:40px;
    border:3px solid #dfe6ee;border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;pointer-events:none}
  @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
@@ -158,9 +161,9 @@
  .fcghost{background:transparent;border:1px solid var(--bd);border-radius:8px;height:28px;padding:0 12px;font:600 12px Inter,system-ui;cursor:pointer;color:var(--fg2)}
  .fcghost:hover{background:var(--hover);color:var(--fg)}
  #ctx{display:none;position:fixed;z-index:30;background:var(--surface);border:1px solid var(--bd);border-radius:12px;box-shadow:var(--sh-lg);overflow:hidden;min-width:190px;padding:5px}
- #ctx .hd{padding:7px 10px 8px;font:650 11px ui-monospace,monospace;color:var(--brand);border-bottom:1px solid var(--bd2);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #ctx .hd{padding:7px 10px 8px;font:650 11px var(--mono);color:var(--brand);border-bottom:1px solid var(--bd2);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  #toast{display:none;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:40;
-   background:#0f1b2d;color:#eaf0f8;padding:10px 16px;border-radius:12px;font:12px ui-monospace,monospace;max-width:70%;white-space:pre-wrap;box-shadow:var(--sh-lg)}
+   background:#0f1b2d;color:#eaf0f8;padding:10px 16px;border-radius:12px;font:12px var(--mono);max-width:70%;white-space:pre-wrap;box-shadow:var(--sh-lg)}
 </style></head><body>
 <div id="bar">
  <button id="tgLeft" class="icon" title="Filters / nodes">☰</button>
@@ -520,7 +523,7 @@ const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); retu
 function render(){
  if(renderer){renderer.refresh();return;}
  renderer=new Sigma(g,$('cy'),{defaultEdgeColor:EDGECOL,labelColor:{color:LABELCOL},labelSize:11,labelWeight:'600',
-   labelFont:'Inter,system-ui,sans-serif',labelRenderedSizeThreshold:9,labelDensity:0.4,labelGridCellSize:150,
+   labelFont:'"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',labelRenderedSizeThreshold:9,labelDensity:0.4,labelGridCellSize:150,
    renderEdgeLabels:false,zIndex:true,minCameraRatio:0.015,maxCameraRatio:22,
    hideEdgesOnMove:true,hideLabelsOnMove:true});
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
@@ -631,7 +634,7 @@ function detail(id){ const a=g.getNodeAttributes(id);
  if(ins.length)h+='<h4>← in ('+ins.length+')</h4>'+ins.map(neighRow).join('');
  const an=annos[id]||{};
  h+='<h4>tag / note</h4><input id="tagIn" placeholder="tag (e.g. pivot, owned)" value="'+esc(an.tag||'')+'" style="width:100%;margin-bottom:5px">'+
-    '<textarea id="noteIn" placeholder="analyst note…" style="width:100%;height:56px;font:11px ui-monospace,monospace;border:1px solid var(--bd);border-radius:6px;padding:6px">'+esc(an.note||'')+'</textarea>'+
+    '<textarea id="noteIn" placeholder="analyst note…" style="width:100%;height:56px;font:11px var(--mono);border:1px solid var(--bd);border-radius:6px;padding:6px">'+esc(an.note||'')+'</textarea>'+
     '<div class="act"><button data-act="saveAnno" class="on">save tag/note</button></div>';
  const side=$('side'); side.innerHTML=h; side.dataset.id=id;
  side.querySelectorAll('.nb').forEach(el=>el.onclick=()=>focusNode(el.dataset.go));
@@ -969,4 +972,7 @@ const LEGEND=[['domain','domain'],['sub','subdomain'],['sub_int','internal host'
 function buildLegend(){ $('legend').innerHTML=LEGEND.map(([g,l])=>'<span class="lg"><i style="background:'+(COL[g]||'#8c959f')+'"></i>'+l+'</span>').join(''); }
 document.addEventListener('click',hideCtx);
 applyTheme(); buildFilters(); buildLegend(); load();
+// canvas labels are drawn before the web fonts finish loading; re-render once
+// JetBrains Mono / Inter are ready so node labels pick up the pro font.
+if(document.fonts&&document.fonts.ready){document.fonts.ready.then(()=>{try{renderer&&renderer.refresh();}catch(e){}});}
 </script></body></html>
