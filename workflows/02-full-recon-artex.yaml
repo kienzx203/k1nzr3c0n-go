@@ -1478,12 +1478,15 @@ steps:
   optional: true
   timeout: 15m
   run: |
-    # Discovery-only flow (no bulk resolve): derive the org's IP ranges from the
-    # domain itself — apex A record(s) + any IPs already seen (PTR) -> owning ASN
-    # (Team Cymru) -> ALL that ASN's announced prefixes (RIPEstat). Both are free and
-    # keyless; asnmap is NOT used (v5+ needs a ProjectDiscovery Cloud API key and
-    # prompts interactively, which would hang this step). The ARTEX agent resolves
-    # the subdomain names itself.
+    # Robust + fast. Derive the org's IP ranges from the domain itself: apex A
+    # record(s) + any IPs already seen (PTR/resolved) -> owning ASN (Team Cymru)
+    # -> ALL that ASN's prefixes from RIPEstat (authoritative JSON) + bgp.he.net
+    # (bonus coverage, hard-capped so it can never hang). All keyless.
+    # Deliberately NO bgpview/bgpq4 and NO org-wide sibling-ASN sweep here: on a
+    # telco apex (whose apex sits in a whole-carrier ASN) those pulled thousands of
+    # prefixes / hung the IRR query and blew the step timeout over the scan VM's
+    # NAT. asnmap is NOT used (v5+ needs a ProjectDiscovery Cloud key, prompts
+    # interactively -> hang). The ARTEX agent resolves the subdomain names itself.
     touch {workspace}/asn_ipv4_cidrs.txt
     { dig +short A {target} 2>/dev/null; \
       grep -ohE '([0-9]{1,3}\.){3}[0-9]{1,3}' {workspace}/subdomains_resolved_resp.txt {workspace}/ptr_resolved.txt 2>/dev/null; } \
@@ -1495,51 +1498,19 @@ steps:
       dig +short TXT "$rev.origin.asn.cymru.com" 2>/dev/null | tr -d '"' >> {workspace}/.cymru
     done < {workspace}/.asn_seed_ips.txt
     awk -F'|' '{gsub(/ /,"",$2); if($2 ~ /\//)print $2}' {workspace}/.cymru >> {workspace}/asn_ipv4_cidrs.txt
-    awk -F'|' '{gsub(/ /,"",$1); if($1 ~ /^[0-9]+$/)print $1}' {workspace}/.cymru | sort -un > {workspace}/asn_list.txt
-    # each owning ASN -> ALL prefixes, UNIONED from every keyless BGP source:
-    # RIPEstat + bgp.he.net (most complete) + bgpview.io + bgpq4 (IRR, if installed).
+    awk -F'|' '{gsub(/ /,"",$1); if($1 ~ /^[0-9]+$/)print $1}' {workspace}/.cymru | sort -un | head -10 > {workspace}/asn_list.txt
+    # each owning ASN -> ALL prefixes: RIPEstat (fast, authoritative) + bgp.he.net
+    # (bonus coverage, hard 20s timeout so a slow fetch can never hang the step).
     for asn in $(cat {workspace}/asn_list.txt 2>/dev/null); do
-      curl -s --max-time 25 "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}" 2>/dev/null \
+      curl -s --max-time 20 "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}" 2>/dev/null \
         | jq -r '.data.prefixes[]?.prefix // empty' 2>/dev/null
-      curl -s --max-time 20 -A 'Mozilla/5.0' "https://bgp.he.net/AS${asn}" 2>/dev/null \
+      timeout 20 curl -s --max-time 15 -A 'Mozilla/5.0' "https://bgp.he.net/AS${asn}" 2>/dev/null \
         | grep -oE 'href="/net/[0-9.]+/[0-9]+"' | grep -oE '[0-9.]+/[0-9]+'
-      curl -s --max-time 20 -A 'recon' "https://api.bgpview.io/asn/${asn}/prefixes" 2>/dev/null \
-        | jq -r '.data.ipv4_prefixes[]?.prefix // empty' 2>/dev/null
-      command -v bgpq4 >/dev/null 2>&1 && bgpq4 -4 "AS${asn}" 2>/dev/null | grep -oE '[0-9.]+/[0-9]+'
     done | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]+$' >> {workspace}/asn_ipv4_cidrs.txt || true
     sort -u -o {workspace}/asn_ipv4_cidrs.txt {workspace}/asn_ipv4_cidrs.txt
-    # org-wide AUTO (no manual input): ORG = org_name var if set, else auto-derived
-    # from the first owning ASN's holder (RIPEstat) -> sibling ASNs (bgpview) ->
-    # prefixes (RIPEstat) -> asn_org_cidrs.txt (INTEL only, not the portscan input;
-    # confirm target-dedicated before touching). Capped for safety.
-    ORG="{vars.org_name}"
-    if [ -z "$ORG" ]; then
-      A1=$(head -1 {workspace}/asn_list.txt 2>/dev/null)
-      [ -n "$A1" ] && ORG=$(curl -s --max-time 15 "https://stat.ripe.net/data/as-overview/data.json?resource=AS${A1}" 2>/dev/null \
-        | jq -r '.data.holder // empty' 2>/dev/null | sed 's/^[^ ]* - //; s/ - / /g')
-    fi
-    if [ -n "$ORG" ]; then
-      printf '%s\n' "$ORG" > {workspace}/org_name_auto.txt
-      Q=$(printf '%s' "$ORG" | jq -sRr @uri 2>/dev/null)
-      { curl -s --max-time 20 -A 'recon' "https://api.bgpview.io/search?query_term=${Q}" 2>/dev/null | jq -r '.data.asns[]?.asn // empty' 2>/dev/null; \
-        curl -s --max-time 20 -A 'Mozilla/5.0' "https://bgp.he.net/search?search%5Bsearch%5D=${Q}&commit=Search" 2>/dev/null | grep -oE 'AS[0-9]+' | tr -dc '0-9\n'; } \
-        | grep -E '^[0-9]+$' | sort -un | head -15 > {workspace}/.cand_asns || true
-      # VALIDATE: keep only ASNs whose holder shares the org's most distinctive word
-      # (a loose org token otherwise matches hundreds of unrelated ASNs = scope-blast).
-      TOK=$(printf '%s' "$ORG" | tr ' ' '\n' | awk '{print length,$0}' | sort -rn | head -1 | awk '{print $2}')
-      : > {workspace}/.orgasns
-      [ -n "$TOK" ] && for a in $(cat {workspace}/.cand_asns 2>/dev/null); do
-        H=$(curl -s --max-time 10 "https://stat.ripe.net/data/as-overview/data.json?resource=AS${a}" 2>/dev/null | jq -r '.data.holder // empty' 2>/dev/null)
-        printf '%s' "$H" | grep -qiF "$TOK" && echo "$a" >> {workspace}/.orgasns
-      done
-      for asn in $(cat {workspace}/.orgasns 2>/dev/null); do
-        curl -s --max-time 25 "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}" 2>/dev/null \
-          | jq -r '.data.prefixes[]?.prefix // empty' 2>/dev/null
-      done | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]+$' | sort -u | head -3000 > {workspace}/asn_org_cidrs.txt || true
-    fi
-    rm -f {workspace}/.asn_seed_ips.txt {workspace}/.cymru {workspace}/.orgasns {workspace}/.cand_asns
-    printf '[asn_expand] IP ranges: %s CIDRs (Cymru+RIPEstat+HE+bgpview+bgpq4) | org-wide intel: %s\n' \
-      "$(wc -l < {workspace}/asn_ipv4_cidrs.txt)" "$(wc -l < {workspace}/asn_org_cidrs.txt 2>/dev/null || echo 0)" >> {workspace}/asn_stats.txt
+    rm -f {workspace}/.asn_seed_ips.txt {workspace}/.cymru
+    printf '[asn_expand] domain -> %s IP-range CIDRs from %s owning ASN(s) (Cymru + RIPEstat + bgp.he.net, no API key)\n' \
+      "$(wc -l < {workspace}/asn_ipv4_cidrs.txt)" "$(wc -l < {workspace}/asn_list.txt 2>/dev/null || echo 0)" >> {workspace}/asn_stats.txt
     exit 0   # best-effort enrichment: never fail the run on a slow/missing source
   outputs:
     file: '{workspace}/asn_ipv4_cidrs.txt'
