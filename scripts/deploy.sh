@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 # One-command deploy for K1nzr3c0n. Run from the source checkout on the server.
 # It does EVERYTHING in the right order so nothing is forgotten (the usual trap is
