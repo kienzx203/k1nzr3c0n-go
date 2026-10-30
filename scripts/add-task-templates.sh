@@ -166,6 +166,18 @@ are then themselves mapped+scanned. Every sub is a LEDGER item; this baseline (r
 IP port scan) is REQUIRED for EVERY sub before any wrap-up. A sub that won't resolve is WORKED via
 RESOLVE, never dropped as "dead".
 
+VHOST MATRIX — NO domain left behind, NO IP left behind. Keep ONE list of EVERY collected in-scope name
+(resolving OR not) and ONE list of EVERY confirmed target-dedicated IP (from resolve / PTR-revdns /
+cert-SAN / Shodan·Censys·FOFA / a dedicated ASN prefix). Test EACH name as a Host/SNI against EVERY such
+IP (curl --resolve name:443:IP and :80, both schemes; or /etc/hosts): a name that won't resolve publicly
+is most often a VHOST co-located on an IP you already know, and ONLY this name x IP cross-product surfaces
+it. ffuf -H "Host: FUZZ.<root>" (dictionary brute) is a COMPLEMENT, never a substitute — it guesses names
+you never collected; the matrix uses the REAL names you did. Likewise EVERY IP is a LEDGER item in its own
+right: full port-scan (on a dedicated IP) + probed with the WHOLE name list as vhosts; an IP is not "done"
+until both are. A distinct response (status/length/title/body) for a name on an IP = a live vhost -> add it
+as an asset and WORK it like any host. Nothing is dropped as "dead" until it has been through BOTH the
+RESOLVE path and this matrix.
+
 DEEP-DIVE (GAP CHECKLIST — by hand only for what the workflows did NOT produce): sourcemap reconstruction,
 historical-JS diff, GraphQL introspection+batching, targeted param mining, and the non-web/edge/cloud/
 leak classes above.
