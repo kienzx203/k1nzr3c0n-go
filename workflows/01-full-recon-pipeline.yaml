@@ -1526,8 +1526,14 @@ steps:
     file: '{workspace}/reverse_dns_subs.txt'
 - id: permutation_dns
   name: DNS permutation — dnsgen + alterx + gotator → resolve with dnsx/shuffledns (sequential)
+  # Seeds come from passive_merged.txt (merge_passive), NOT reverse-DNS. Depend on
+  # merge_passive, not reverse_dns_asn: reverse_dns_asn needs asn_expand's CIDRs
+  # (which run post-resolution), so making it upstream of permutation created a
+  # dependency cycle (permutation→…→resolve→asn_expand→reverse_dns_asn→permutation).
+  # reverse_dns_asn is now a late enrichment; its subs still reach the graph/DB via
+  # the merge-file set.
   depends_on:
-  - reverse_dns_asn
+  - merge_passive
   run_on_failed_deps: true
   timeout: 60m
   when: '{vars.run_permutation}'

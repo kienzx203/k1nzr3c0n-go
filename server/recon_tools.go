@@ -154,11 +154,12 @@ func reconTools() []actool.CoreTool {
 				"• q=<text> → SEARCH: matching nodes (host/ip/url/param/finding…) as a flat list. Use to find e.g. admin panels, a specific host, a param — token-light.\n"+
 				"• node=<id> → DRILL ONE node and its neighbours (ids come from a prior map/search, e.g. h:example.com, ip:1.2.3.4). Walk pivots/chains step by step.\n"+
 				"• (none) → FULL map: every host with its IPs/ports/provider/URLs/paths/params/findings, every IP with ASN/subnet/hosts, plus domain buckets/secrets/certs/dns/intel. Bounded by hosts (default 400, highest-risk first); a `truncated` map reports what was dropped — narrow with q/node instead of raising it.\n"+
-				"RUN DELTA: pass run_id=<id> to scope ANY mode to the surface THAT ONE run produced (rebuilt live per finished step) — follow a run with run_log, then recon_graph(run_id, summary) to see what it just added, instead of re-reading the whole target map. Omit run_id for the target-wide graph (every run merged).\n"+
+				"RUN DELTA: pass run_id=<id> to scope ANY mode to the surface THAT ONE run produced (rebuilt live per finished step) — follow a run with run_log, then recon_graph(run_id, summary) to see what it just added, instead of re-reading the whole target map. Add delta=true (with run_id) for the TRUE diff: ONLY the nodes this run added that weren't in any prior run ({total_new, counts_by_type, new_nodes}). Omit run_id for the target-wide graph (every run merged).\n"+
 				"Call again as new runs finish (it rebuilds live per completed step). Exhaustive flat lists: recon_findings/recon_assets; live run progress: run_log.",
 			rtObj(map[string]any{
 				"target":  rtStr("the target host/domain, e.g. example.com (scheme/path/port are ignored). Ignored when run_id is set."),
 				"run_id":  rtStr("optional: scope the graph to just this run's surface (its delta), rebuilt live per step. From run_workflow/recon_runs."),
+				"delta":   map[string]any{"type": "boolean", "description": "with run_id: return the TRUE diff — only nodes this run added that no prior run had ({total_new, counts_by_type, new_nodes})."},
 				"summary": map[string]any{"type": "boolean", "description": "true = cheap overview only (counts by type + findings-by-severity). Start here."},
 				"q":       rtStr("search text → return only matching nodes as a flat list (token-light)"),
 				"node":    rtStr("a node id (e.g. h:host, ip:1.2.3.4) → return just that node + its neighbours"),
@@ -169,6 +170,7 @@ func reconTools() []actool.CoreTool {
 				var p struct {
 					Target  string `json:"target"`
 					RunID   string `json:"run_id"`
+					Delta   bool   `json:"delta"`
 					Summary bool   `json:"summary"`
 					Q       string `json:"q"`
 					Node    string `json:"node"`
@@ -177,8 +179,15 @@ func reconTools() []actool.CoreTool {
 				}
 				_ = json.Unmarshal(in, &p)
 				base := "/api/v1/targets/" + url.PathEscape(p.Target) + "/graph2"
-				if strings.TrimSpace(p.RunID) != "" { // run-scoped delta
+				if strings.TrimSpace(p.RunID) != "" { // run-scoped
 					base = "/api/v1/runs/" + url.PathEscape(p.RunID) + "/graph2"
+					if p.Delta { // true new-this-run diff — overrides the mode switch
+						lim := p.Limit
+						if lim <= 0 {
+							lim = 500
+						}
+						return base + "/delta?limit=" + fmt.Sprint(lim)
+					}
 				}
 				switch {
 				case p.Summary:

@@ -1,0 +1,116 @@
+name: 05-scan-hosts
+description: 'TARGETED host scan (NO passive discovery): resolve + httpx probe + port scan + nuclei on a SPECIFIC host set you already found — set target_hosts (inline comma/space list) or subdomains_list (file path). For the agent to focus a run on hosts it saw in the graph instead of re-running the whole full-recon pipeline. Writes the canonical files (resolved/httpx.jsonl/naabu.jsonl/nuclei_results.jsonl/live_urls) so the graph + DB ingest picks the results up. Every host is still passed through the target scope filter.'
+max_parallel: 4
+vars:
+  # the host set to scan — set AT LEAST one of these (the agent sets target_hosts):
+  target_hosts: ''          # inline, comma/space/newline-separated hosts
+  subdomains_list: ''       # OR a path to a file of hosts
+  run_portscan: 'true'
+  run_nuclei: 'true'
+  httpx_threads: '50'
+  httpx_timeout: '10'
+  nuclei_severity: 'critical,high,medium'
+  web_ports: '80,443,8080,8443,8000,8888,3000,5000,9000,9443,2083,8006,10250'
+steps:
+  - id: seed_hosts
+    name: 'build the in-scope host set (target_hosts + subdomains_list, scope-filtered)'
+    shell: true
+    run: |
+      : > {workspace}/scan_hosts.txt
+      ( printf '%s\n' '{vars.target_hosts}' | tr ',;" ' '\n'
+        test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
+        echo '{target}'
+      ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
+        | tr '[:upper:]' '[:lower:]' \
+        | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
+        | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
+        | sort -u > {workspace}/scan_hosts.txt
+      printf '[seed] %s in-scope hosts to scan\n' "$(wc -l < {workspace}/scan_hosts.txt)"
+    outputs:
+      hosts: '{workspace}/scan_hosts.txt'
+  - id: resolve
+    name: 'resolve hosts -> IPs (dnsx)'
+    depends_on:
+    - seed_hosts
+    shell: true
+    timeout: 15m
+    run: |
+      touch {workspace}/subdomains_resolved.txt {workspace}/resolved.txt
+      test -s {workspace}/scan_hosts.txt || exit 0
+      dnsx -l {workspace}/scan_hosts.txt -silent -a -resp-only 2>/dev/null | sort -u > {workspace}/resolved.txt || true
+      cp {workspace}/scan_hosts.txt {workspace}/subdomains_resolved.txt
+      printf '[resolve] %s IPs from %s hosts\n' "$(wc -l < {workspace}/resolved.txt)" "$(wc -l < {workspace}/scan_hosts.txt)"
+      exit 0
+    outputs:
+      resolved: '{workspace}/resolved.txt'
+  - id: httpx_probe
+    name: 'probe live web hosts (httpx -> httpx.jsonl + live_urls)'
+    depends_on:
+    - resolve
+    run_on_failed_deps: true
+    shell: true
+    timeout: 20m
+    run: |
+      touch {workspace}/httpx.jsonl {workspace}/live_urls.txt {workspace}/all_urls.txt
+      test -s {workspace}/scan_hosts.txt || exit 0
+      httpx -l {workspace}/scan_hosts.txt -silent -json -o {workspace}/httpx.jsonl \
+        -td -title -status-code -content-length -cname -follow-redirects -retries 2 \
+        -timeout {vars.httpx_timeout} -threads {vars.httpx_threads} -random-agent 2>/dev/null || true
+      jq -r '.url // empty' {workspace}/httpx.jsonl 2>/dev/null | sort -u > {workspace}/live_urls.txt || true
+      cp {workspace}/live_urls.txt {workspace}/all_urls.txt
+      printf '[httpx] %s live web hosts\n' "$(wc -l < {workspace}/live_urls.txt)"
+      exit 0
+    outputs:
+      httpx_jsonl: '{workspace}/httpx.jsonl'
+      live_urls: '{workspace}/live_urls.txt'
+  - id: portscan
+    name: 'port scan (naabu passive + web ports)'
+    depends_on:
+    - resolve
+    run_on_failed_deps: true
+    when: '{vars.run_portscan}'
+    optional: true
+    shell: true
+    timeout: 40m
+    run: |
+      touch {workspace}/naabu.jsonl
+      test -s {workspace}/scan_hosts.txt || exit 0
+      naabu -list {workspace}/scan_hosts.txt -passive -json -silent 2>/dev/null >> {workspace}/naabu.jsonl || true
+      naabu -list {workspace}/scan_hosts.txt -p {vars.web_ports} -json -silent -retries 2 2>/dev/null >> {workspace}/naabu.jsonl || true
+      printf '[naabu] %s port records\n' "$(wc -l < {workspace}/naabu.jsonl)"
+      exit 0
+    outputs:
+      naabu_jsonl: '{workspace}/naabu.jsonl'
+  - id: nuclei_scan
+    name: 'vuln scan live hosts (nuclei -> nuclei_results.jsonl)'
+    depends_on:
+    - httpx_probe
+    run_on_failed_deps: true
+    when: '{vars.run_nuclei}'
+    optional: true
+    shell: true
+    timeout: 60m
+    run: |
+      touch {workspace}/nuclei_results.jsonl
+      test -s {workspace}/live_urls.txt || exit 0
+      nuclei -l {workspace}/live_urls.txt -jsonl -o {workspace}/nuclei_results.jsonl \
+        -severity {vars.nuclei_severity} -rate-limit 150 -retries 1 -silent 2>/dev/null || true
+      printf '[nuclei] %s findings\n' "$(wc -l < {workspace}/nuclei_results.jsonl)"
+      exit 0
+    outputs:
+      nuclei_jsonl: '{workspace}/nuclei_results.jsonl'
+  - id: final_report
+    name: 'targeted scan summary'
+    depends_on:
+    - httpx_probe
+    - portscan
+    - nuclei_scan
+    run_on_failed_deps: true
+    shell: true
+    run: |
+      printf '[scan-hosts] hosts=%s live=%s port_records=%s vulns=%s\n' \
+        "$(wc -l < {workspace}/scan_hosts.txt 2>/dev/null || echo 0)" \
+        "$(wc -l < {workspace}/live_urls.txt 2>/dev/null || echo 0)" \
+        "$(wc -l < {workspace}/naabu.jsonl 2>/dev/null || echo 0)" \
+        "$(wc -l < {workspace}/nuclei_results.jsonl 2>/dev/null || echo 0)"
+      exit 0

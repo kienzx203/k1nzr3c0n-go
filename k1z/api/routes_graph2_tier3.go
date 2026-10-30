@@ -56,6 +56,17 @@ func (s *Server) handleGraph2AnnotationsSave(w http.ResponseWriter, r *http.Requ
 	if len(in.Note) > 4000 {
 		in.Note = in.Note[:4000]
 	}
+	// On a WRITE (not a delete), reject an id that isn't a real node in the current
+	// graph — stops a typo'd id (e.g. from the graph_note agent tool) creating an
+	// orphan annotation. Skipped when the graph can't be built yet (no runs).
+	if strings.TrimSpace(in.Tag) != "" || strings.TrimSpace(in.Note) != "" {
+		if g, _, gerr := s.targetGraph(target); gerr == nil && g != nil {
+			if _, ok := g.Nodes[in.ID]; !ok {
+				writeDetail(w, 422, "unknown node id '"+in.ID+"' — not in the target graph (ids look like h:host, ip:1.2.3.4, u:url, p:param, f:finding). Use recon_graph to find a valid id.")
+				return
+			}
+		}
+	}
 	m := readAnnotations(target)
 	if strings.TrimSpace(in.Tag) == "" && strings.TrimSpace(in.Note) == "" {
 		delete(m, in.ID)

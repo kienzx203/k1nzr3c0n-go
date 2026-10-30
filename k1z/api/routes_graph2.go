@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/Autumn-27/artex/k1z/graph"
@@ -67,7 +68,9 @@ func (s *Server) handleGraph2Search(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGraph2Stats(w http.ResponseWriter, r *http.Request) {
 	if g := s.graphFor(w, r); g != nil {
-		writeJSON(w, 200, g.Stats())
+		// fold in the agent's pinned leads so a single summary read shows both the
+		// surface size AND what was flagged (counts stays flat for back-compat).
+		writeJSON(w, 200, map[string]any{"counts": g.Stats(), "annotations": readAnnotations(r.PathValue("name"))})
 	}
 }
 
@@ -76,7 +79,8 @@ func (s *Server) handleGraph2Stats(w http.ResponseWriter, r *http.Request) {
 // structured per-target lookup consumed by the recon_graph agent/task tool.
 func (s *Server) handleGraph2Map(w http.ResponseWriter, r *http.Request) {
 	if g := s.graphFor(w, r); g != nil {
-		writeJSON(w, 200, g.TargetMap(atoiDefault(r.URL.Query().Get("hosts"), 0)))
+		// attach the pinned leads so the agent sees them in the same map read
+		writeJSON(w, 200, map[string]any{"map": g.TargetMap(atoiDefault(r.URL.Query().Get("hosts"), 0)), "annotations": readAnnotations(r.PathValue("name"))})
 	}
 }
 
@@ -115,6 +119,47 @@ func (s *Server) handleRunGraphNeighbors(w http.ResponseWriter, r *http.Request)
 	if g := s.runGraphFor(w, r); g != nil {
 		writeJSON(w, 200, g.Neighbors(r.URL.Query().Get("id"), atoiDefault(r.URL.Query().Get("limit"), 500)))
 	}
+}
+
+// handleRunGraphDelta is the TRUE delta: nodes this run produced that are NOT in
+// any OTHER run of the same target (run graph minus the all-other-runs graph).
+// So an agent re-scanning an already-mapped target sees only what is genuinely new.
+func (s *Server) handleRunGraphDelta(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("id")
+	run, err := s.St.GetRun(runID)
+	if err != nil || run == nil {
+		writeDetail(w, 404, "run not found")
+		return
+	}
+	runG, code, err := targetgraph.ForRun(s.St, runID)
+	if err != nil {
+		writeDetail(w, code, err.Error())
+		return
+	}
+	prior := map[string]bool{}
+	if pg, _, perr := targetgraph.ForExcept(s.St, run.Target, runID); perr == nil && pg != nil {
+		for id := range pg.Nodes {
+			prior[id] = true
+		}
+	}
+	limit := atoiDefault(r.URL.Query().Get("limit"), 500)
+	counts := map[string]int{}
+	newNodes := make([]map[string]string, 0, 32)
+	for id, n := range runG.Nodes {
+		if prior[id] {
+			continue
+		}
+		counts[n.Group]++
+		if len(newNodes) < limit {
+			newNodes = append(newNodes, map[string]string{"id": id, "label": n.Label, "group": n.Group})
+		}
+	}
+	sort.Slice(newNodes, func(i, j int) bool { return newNodes[i]["id"] < newNodes[j]["id"] })
+	total := 0
+	for _, c := range counts {
+		total += c
+	}
+	writeJSON(w, 200, map[string]any{"total_new": total, "counts_by_type": counts, "new_nodes": newNodes, "truncated": total > len(newNodes)})
 }
 
 // graph2ViewHTML is the WebGL (Sigma.js) client — a page that pulls subgraphs

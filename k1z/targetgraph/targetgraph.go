@@ -160,6 +160,27 @@ var (
 	cache = map[string]*cached{}
 )
 
+// cacheCap bounds the combined per-target + per-run (ForRun) + all-other-runs
+// (ForExcept) graph cache so a long-lived server with many runs doesn't grow it
+// without limit. evictIfNeeded drops the oldest entries; the caller holds mu.
+const cacheCap = 96
+
+func evictIfNeeded() {
+	for len(cache) > cacheCap {
+		oldestKey := ""
+		var oldest time.Time
+		for k, c := range cache {
+			if oldestKey == "" || c.builtAt.Before(oldest) {
+				oldestKey, oldest = k, c.builtAt
+			}
+		}
+		if oldestKey == "" {
+			return
+		}
+		delete(cache, oldestKey)
+	}
+}
+
 func dirExists(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()
@@ -235,6 +256,7 @@ func For(st *store.Store, target string) (*graph.Graph, int, error) {
 	Mu.Unlock()
 	g := graph.Build(merged, nt)
 	cache[nt] = &cached{g: g, sig: sig, builtAt: time.Now()}
+	evictIfNeeded()
 	return g, 200, nil
 }
 
@@ -274,5 +296,59 @@ func ForRun(st *store.Store, runID string) (*graph.Graph, int, error) {
 	// build straight from it — no merge needed.
 	g := graph.Build(run.Workspace, nt)
 	cache[key] = &cached{g: g, sig: sig, builtAt: time.Now()}
+	evictIfNeeded()
+	return g, 200, nil
+}
+
+// ForExcept builds the target graph from every run EXCEPT excludeRunID — the
+// "everything that was already there before this run" surface. handleRunGraphDelta
+// subtracts it from ForRun(excludeRunID) to get the TRUE new-this-run delta.
+// Returns 404/ErrNoRuns when the excluded run is the target's only run (caller
+// then treats the whole run as new).
+func ForExcept(st *store.Store, target, excludeRunID string) (*graph.Graph, int, error) {
+	if target == "" {
+		return nil, 400, errors.New("target required")
+	}
+	nt := NormTarget(target)
+	runs, _, err := st.ListRuns(store.RunFilter{Limit: 200})
+	if err != nil {
+		return nil, 500, err
+	}
+	var wss, sigs []string
+	for _, run := range runs {
+		if run.ID == excludeRunID || NormTarget(run.Target) != nt || run.Workspace == "" || !dirExists(run.Workspace) {
+			continue
+		}
+		wss = append(wss, run.Workspace)
+		var newest time.Time
+		for _, t := range []time.Time{run.FinishedAt, run.StartedAt, run.CreatedAt} {
+			if t.After(newest) {
+				newest = t
+			}
+		}
+		ver := ""
+		if run.FinishedAt.IsZero() {
+			ver = ":s" + strconv.Itoa(doneSteps(run.StepsJSON))
+		}
+		sigs = append(sigs, run.ID+":"+strconv.FormatInt(newest.Unix(), 10)+ver)
+	}
+	if len(wss) == 0 {
+		return nil, 404, ErrNoRuns
+	}
+	sort.Strings(sigs)
+	key := "except:" + nt + ":" + excludeRunID
+	sig := strings.Join(sigs, "|")
+	mu.Lock()
+	defer mu.Unlock()
+	if c, ok := cache[key]; ok && c.sig == sig {
+		return c.g, 200, nil
+	}
+	merged := MergedDir("except-" + excludeRunID + "-" + nt)
+	Mu.Lock()
+	Merge(wss, merged)
+	Mu.Unlock()
+	g := graph.Build(merged, nt)
+	cache[key] = &cached{g: g, sig: sig, builtAt: time.Now()}
+	evictIfNeeded()
 	return g, 200, nil
 }

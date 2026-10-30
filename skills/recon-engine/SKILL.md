@@ -35,10 +35,11 @@ in context — persist, then drop.
   `full=false` + explicit `vars` = a precise/quiet run. `wait=true` blocks and returns
   the brief inline. The finished brief is ALSO pushed back into the task — but do NOT
   wrap up while a run is unread.
-  **TARGETED scan** — focus a run on specific hosts you saw in the graph: set
-  `vars={"target_hosts":"a.ex.com,b.ex.com", "run_passive":"false", …}` (comma/space-separated;
-  still passes the target scope filter so out-of-scope names drop). Pair with `full=false` + the
-  discovery toggles off for a pure, quiet scan of just those hosts instead of the whole target.
+  **TARGETED scan** — focus a run on specific hosts you saw in the graph. CLEANEST: the dedicated
+  `05-scan-hosts.yaml` workflow (resolve + httpx + ports + nuclei on a host set, NO passive discovery):
+  `run_workflow(target, "05-scan-hosts.yaml", vars={"target_hosts":"a.ex.com,b.ex.com"})`. On the big
+  pipelines you can instead set `vars={"target_hosts":"…", "run_passive":"false"}` + `full=false`.
+  target_hosts is comma/space-separated and still passes the target scope filter (out-of-scope drop).
 - `stop_workflow(run_id)` — cancel a wrong / out-of-scope / stuck run.
 
 **LOG — follow live**
@@ -63,7 +64,10 @@ in context — persist, then drop.
 - `recon_graph(target, run_id="<id>", …)` — **RUN DELTA**: scope ANY of the 4 modes to the surface
   ONE run produced (rebuilt live per finished step). While following a run, `recon_graph(target,
   run_id, summary=true)` shows what IT just added — far cheaper than re-reading the whole target map
-  each poll. Omit `run_id` for the target-wide (all-runs-merged) graph.
+  each poll. Add `delta=true` for the TRUE diff (only nodes this run added that NO prior run had:
+  `{total_new, counts_by_type, new_nodes}`) — the precise "what's new" when re-scanning a mapped
+  target. Omit `run_id` for the target-wide (all-runs-merged) graph. (summary/map reads also carry the
+  target's `annotations` so your pinned leads show in the same response.)
 - `graph_note(target, node[, tag, note])` — **WRITE a lead back onto a node** (recon_graph is
   read-only; this is the agent's write channel). e.g. `node="h:admin.example.com", tag="priority",
   note="login panel, default-cred + SQLi candidate"`. It persists — shows in the graph viewer and

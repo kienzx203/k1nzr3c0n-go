@@ -261,6 +261,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/runs/{id}/graph2/map", s.handleRunGraphMap)
 	m.HandleFunc("GET /api/v1/runs/{id}/graph2/search", s.handleRunGraphSearch)
 	m.HandleFunc("GET /api/v1/runs/{id}/graph2/neighbors", s.handleRunGraphNeighbors)
+	m.HandleFunc("GET /api/v1/runs/{id}/graph2/delta", s.handleRunGraphDelta)
 	m.HandleFunc("GET /api/v1/targets/{name}/audit", s.handleTargetAudit)
 	m.HandleFunc("GET /api/v1/targets/{name}/new-assets", s.handleTargetNewAssets)
 	m.HandleFunc("GET /api/v1/targets/{name}", s.handleGetTarget)
