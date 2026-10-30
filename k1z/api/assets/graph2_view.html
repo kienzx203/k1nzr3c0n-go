@@ -166,6 +166,15 @@
   <div class="row"><label><input type="checkbox" id="optHulls" checked> cluster hulls</label>
    <label><input type="checkbox" id="optGlyphs" checked> icons</label></div>
   <div class="row"><span style="width:62px">node size</span><input type="range" id="optSize" min="50" max="250" value="100"><span class="cnt" id="optSizeV">1.0×</span></div>
+  <div class="row"><span style="width:62px">depth</span>
+   <select id="depth" style="flex:1" title="how many levels to show by default — click a node to drill deeper">
+    <option value="0">1 · domain</option>
+    <option value="1">2 · +ASN/subnet</option>
+    <option value="2" selected>3 · +IP</option>
+    <option value="3">4 · +hosts</option>
+    <option value="99">all · +URLs/findings</option>
+   </select></div>
+  <div class="cnt" style="margin:-2px 0 2px">click a node to expand its deeper children</div>
   <h4>Filters</h4>
   <div id="filters"></div>
   <div class="row"><span style="width:62px">min deg</span><input type="range" id="minDeg" min="0" max="15" value="0"><span class="cnt" id="minDegV">0</span></div>
@@ -239,8 +248,12 @@ function sizeOf(n){let s={0:17,1:11,2:7.5,3:5.5,4:4.5}[tierOf(n.group)]||4.5;
 // ── graph building ──────────────────────────────────────────────────────
 function add(sg){
  (sg.nodes||[]).forEach(n=>{ if(g.hasNode(n.id))return;
+   // dead subdomains are hidden by default and usually the bulk of the graph
+   // (10k+). Don't even load them unless "dead subdomains" is on — that keeps the
+   // layout + render operating on the ~few-thousand live nodes, not all 12k.
+   if(n.group==='sub_dead' && !filter.showDead)return;
    g.addNode(n.id,{label:(n.label||n.id)+(n.count?'  ('+n.count+')':''),rawlabel:n.label||n.id,group:n.group,
-     title:n.title||'',risk:n.risk||0,count:n.count||0,color:COL[n.group]||'#8c959f',size:sizeOf(n),
+     title:n.title||'',risk:n.risk||0,count:n.count||0,color:COL[n.group]||'#8c959f',size:sizeOf(n),tier:tierOf(n.group),
      x:Math.cos(Math.random()*6.283)*(1+Math.random()*9),y:Math.sin(Math.random()*6.283)*(1+Math.random()*9)}); });
  (sg.edges||[]).forEach(e=>{ if(g.hasNode(e.from)&&g.hasNode(e.to)&&!g.hasEdge(e.from,e.to)){
    // finding edges pop (red, thicker, on top); infra edges are thin and follow
@@ -284,10 +297,10 @@ function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay')
 // count scales down on big graphs to keep the one-time freeze short.
 function settleLayout(){ stopLayout();
  try{ if(LIB&&LIB.layoutNoverlap&&LIB.layoutNoverlap.assign&&renderer&&g.order>1){
-   const it=g.order>5000?65:(g.order>2000?100:140);
+   const it=g.order>4000?30:(g.order>1500?50:80); // synchronous — keep modest so it never blocks the main thread
    LIB.layoutNoverlap.assign(g,{maxIterations:it,settings:{margin:12,ratio:1.55,expansion:1.3,gridSize:20,speed:3}});
    renderer.refresh(); ovT=0; drawOverlay(); drawMini();
-   renderer.getCamera().animatedReset({duration:500}); // re-frame the de-overlapped graph
+   fitVisible(500); // frame only the visible (depth-gated) nodes
  } }catch(e){} }
 // community detection: prefer Louvain (density-based, robust to shared IP/ASN/CDN
 // infrastructure that would otherwise glue everything into one component); fall
@@ -323,10 +336,19 @@ $('lay').onclick=()=>fa2Running()?settleLayout():startLayout(8000);
 
 // ── filters ─────────────────────────────────────────────────────────────
 const filter={minDeg:0,minRisk:0,showDead:false,only:null}; FAMS.forEach(([f])=>filter[f]=true);
+// ── depth drill-down: show tiers 0..maxTier by default; deeper nodes appear
+// only when a parent is expanded (clicked). This keeps the default view to a few
+// hundred nodes (domain→ASN/subnet→IP) and lets you drill into IP→hosts→URLs.
+let maxTier=2; const expanded=new Set(); let revealed=new Set();
+function recomputeRevealed(){ revealed=new Set();
+ expanded.forEach(e=>{ if(!g.hasNode(e))return; const et=g.getNodeAttribute(e,'tier');
+   g.forEachNeighbor(e,nb=>{ const nt=g.getNodeAttribute(nb,'tier'); if(nt>maxTier&&nt>et)revealed.add(nb); }); }); }
 function passFilter(id,a){
  if(a.group==='sub_dead'&&!filter.showDead)return false; // dead subs hidden until the box is ticked
  if(filter.only){ if(!filter.only.has(a.group))return false; }
- else if(!filter[famOf(a.group)])return false;
+ else { if(!filter[famOf(a.group)])return false;
+   const t=a.tier!==undefined?a.tier:tierOf(a.group);
+   if(t>maxTier && !revealed.has(id))return false; } // depth gate (skipped when an explicit family filter / saved view is active)
  if(g.degree(id)<filter.minDeg)return false;
  if((a.risk||0)<filter.minRisk)return false;
  return true;
@@ -341,7 +363,7 @@ function famCounts(){ const c={}; FAMS.forEach(([f])=>c[f]=0); g.forEachNode((id
  FAMS.forEach(([f])=>{const el=$('fc_'+f); if(el)el.textContent=c[f]||0;}); }
 $('minDeg').oninput=e=>{filter.minDeg=+e.target.value; $('minDegV').textContent=e.target.value; renderer&&renderer.refresh(); updateStat();};
 $('minRisk').oninput=e=>{filter.minRisk=+e.target.value; $('minRiskV').textContent=e.target.value; renderer&&renderer.refresh(); updateStat();};
-$('showDead').onchange=e=>{filter.showDead=e.target.checked; renderer&&renderer.refresh(); updateStat();};
+$('showDead').onchange=e=>{filter.showDead=e.target.checked; load();}; // reload: dead subs are added to / removed from the graph, not just shown/hidden
 
 // ── chokepoints ───────────────────────────────────────────────────────────
 // The "top chokepoints" analysis panel was dropped, but the chokepoints SAVED
@@ -417,6 +439,16 @@ function drawOverlay(){
 let ovIdle=0;
 function clearOverlay(){ const ov=$('ov'); if(!ov)return; const c=ov.getContext('2d'); if(c){ c.setTransform(1,0,0,1,0,0); c.clearRect(0,0,ov.width,ov.height); } }
 function idleDraw(){ clearTimeout(ovIdle); ovIdle=setTimeout(()=>{ ovT=0; miniT=0; drawOverlay(); drawMini(); },180); }
+// fitVisible frames only the nodes currently shown (the depth gate hides the deep
+// ones, but they still sit in the layout — fitting ALL would zoom out past them).
+function fitVisible(dur){ if(!renderer)return;
+ let mnx=Infinity,mny=Infinity,mxx=-Infinity,mxy=-Infinity,any=false;
+ g.forEachNode((id,a)=>{ if(!passFilter(id,a))return; const p=renderer.getNodeDisplayData(id); if(!p)return;
+   any=true; if(p.x<mnx)mnx=p.x; if(p.x>mxx)mxx=p.x; if(p.y<mny)mny=p.y; if(p.y>mxy)mxy=p.y; });
+ if(!any||mnx===Infinity){ renderer.getCamera().animatedReset({duration:dur||500}); return; }
+ const cx=(mnx+mxx)/2, cy=(mny+mxy)/2, ext=Math.max(mxx-mnx,mxy-mny)||0.001;
+ try{ renderer.getCamera().animate({x:cx,y:cy,ratio:Math.max(0.02,Math.min(22,ext*1.15))},{duration:dur||500}); }
+ catch(e){ renderer.getCamera().animatedReset({duration:dur||500}); } }
 let annos={};
 function setColorBy(v){ colorBy=v||null; const sel=$('colorBy'); if(sel)sel.value=v||''; }
 const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); return s;};
@@ -445,6 +477,11 @@ function render(){
      return Object.assign({},d,{color:'#7d8793',size:(d.size||0.6)+0.5,zIndex:3}); }
    return d; });
  renderer.on('clickNode',({node})=>{
+   // expand / collapse deeper children (if the node has any that are currently
+   // hidden by the depth gate). Then inspect + spotlight as before.
+   if(!filter.only){ const t=g.getNodeAttribute(node,'tier'); let hasDeep=false;
+     g.forEachNeighbor(node,nb=>{ const nt=g.getNodeAttribute(nb,'tier'); if(nt>t&&nt>maxTier)hasDeep=true; });
+     if(hasDeep){ expanded.has(node)?expanded.delete(node):expanded.add(node); recomputeRevealed(); updateStat(); } }
    pathSet=null; focus=hood(node); renderer.refresh(); detail(node); });
  renderer.on('clickStage',()=>{ if(focus||pathSet){focus=null;pathSet=null;renderer.refresh();} });
  renderer.on('rightClickNode',e=>{ const o=e.event&&e.event.original; if(o)o.preventDefault(); showCtx(o?o.clientX:e.event.x,o?o.clientY:e.event.y,e.node); });
@@ -509,7 +546,12 @@ function render(){
  renderer.getMouseCaptor().on('mouseup',endDrag);
 }
 function focusTo(id){ const p=renderer.getNodeDisplayData(id); if(p)renderer.getCamera().animate({x:p.x,y:p.y,ratio:0.3},{duration:450}); }
-function focusNode(id){ if(!g.hasNode(id))return; pathSet=null; focus=hood(id); renderer.refresh(); focusTo(id); detail(id); openSide(true); }
+function focusNode(id){ if(!g.hasNode(id))return;
+ // if the target is hidden by the depth gate, reveal it (expand its parents) so
+ // search / the all-nodes list can jump to any node regardless of depth.
+ const t=g.getNodeAttribute(id,'tier');
+ if(t>maxTier && !revealed.has(id)){ g.forEachNeighbor(id,nb=>{ if(g.getNodeAttribute(nb,'tier')<t)expanded.add(nb); }); recomputeRevealed(); updateStat(); }
+ pathSet=null; focus=hood(id); renderer.refresh(); focusTo(id); detail(id); openSide(true); }
 
 // ── inspector ───────────────────────────────────────────────────────────
 function neighRow(id){ const a=g.getNodeAttributes(id);
@@ -629,12 +671,12 @@ function updateStat(){ $('stat').textContent=visibleCount()+' shown / '+g.order+
 function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE+'…'; $('spin').style.display='block'; focus=null; pathSet=null; metrics=null;
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
-   g.clear(); if(renderer){renderer.kill();renderer=null;}
+   g.clear(); expanded.clear(); revealed=new Set(); if(renderer){renderer.kill();renderer=null;}
    add(sg); try{seedClusters();}catch(e){} render(); startLayout(); updateStat(); loadAnnos(); buildAllList();
    if(colorBy)loadMetrics(()=>renderer&&renderer.refresh());
    setTimeout(()=>{$('spin').style.display='none';
      if(pendingCam){ try{ renderer&&renderer.getCamera().animate(pendingCam,{duration:450}); }catch(e){} pendingCam=null; } // restore a saved view's framing instead of resetting
-     else { renderer&&renderer.getCamera().animatedReset(); } },450);
+     else { fitVisible(400); } },450);
  }).catch(()=>{$('spin').style.display='none'; $('stat').textContent='load failed';}); }
 $('zin').onclick=()=>renderer&&renderer.getCamera().animatedZoom({duration:200});
 $('zout').onclick=()=>renderer&&renderer.getCamera().animatedUnzoom({duration:200});
@@ -647,6 +689,7 @@ $('mini').onclick=e=>{ if(!renderer)return; const cv=$('mini'),t=cv._t; if(!t)re
 $('optLabels').onchange=e=>{ renderer&&renderer.setSetting('renderLabels',e.target.checked); renderer&&renderer.refresh(); };
 $('optEdges').onchange=e=>{ showEdges=e.target.checked; renderer&&renderer.refresh(); };
 $('optSize').oninput=e=>{ nodeScale=(+e.target.value)/100; $('optSizeV').textContent=nodeScale.toFixed(1)+'×'; renderer&&renderer.refresh(); };
+if($('depth'))$('depth').onchange=e=>{ maxTier=+e.target.value; expanded.clear(); recomputeRevealed(); renderer&&renderer.refresh(); updateStat(); fitVisible(400); };
 $('optHulls').onchange=e=>{ showHulls=e.target.checked; ovT=0; drawOverlay(); };
 $('optGlyphs').onchange=e=>{ showGlyphs=e.target.checked; ovT=0; drawOverlay(); };
 // search autocomplete
@@ -683,11 +726,11 @@ document.addEventListener('keydown',e=>{ const tag=e.target.tagName;
 // ── saved views ──────────────────────────────────────────────────────────
 function syncFilterUI(){ document.querySelectorAll('#filters input[data-f]').forEach(cb=>cb.checked=!!filter[cb.dataset.f]); }
 const VIEWS={
- reset:()=>{ filter.only=null; FAMS.forEach(([f])=>filter[f]=true); filter.minDeg=0; filter.minRisk=0; filter.showDead=true;
-   $('minDeg').value=0; $('minDegV').textContent='0'; $('minRisk').value=0; $('minRiskV').textContent='0'; $('showDead').checked=true;
+ reset:()=>{ filter.only=null; FAMS.forEach(([f])=>filter[f]=true); filter.minDeg=0; filter.minRisk=0; filter.showDead=false;
+   $('minDeg').value=0; $('minDegV').textContent='0'; $('minRisk').value=0; $('minRiskV').textContent='0'; $('showDead').checked=false;
    syncFilterUI(); setColorBy('');
-   if(MODE!=='full'){ MODE='full'; $('mode').textContent='◰ full'; load(); } // overview drops dead subs at the data layer — force full so nothing is hidden
-   return 'all nodes (full)'; },
+   MODE='full'; $('mode').textContent='◰ full'; load(); // all LIVE nodes (dead subs stay opt-in via the checkbox, for performance)
+   return 'all live nodes'; },
  exposed:()=>{ filter.only=new Set(['domain','asn','sub','vhost','ip_pub']); setColorBy(''); return 'internet-exposed surface'; },
  internal:()=>{ filter.only=new Set(['sub_int','ip_int','ip_origin']); setColorBy(''); return 'internal leaks (RFC1918 / origin)'; },
  findings:()=>{ filter.only=new Set(['vuln_critical','vuln_high','vuln_medium','vuln_low','vuln_info']); setColorBy(''); return 'findings'; },
