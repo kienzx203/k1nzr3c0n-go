@@ -5,6 +5,7 @@
 package targetgraph
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -94,6 +95,8 @@ var MergeFiles = []string{
 	// (cert + favicon + extra dns nodes); they must be merged or the aggregate
 	// target graph silently renders zero cert/favicon nodes and partial dns.
 	"tlsx_raw.txt", "favicon_hashes.txt", "dns_records_raw.txt", "st_dns_records.txt",
+	// technology fingerprinting (webanalyze) → tech nodes
+	"webanalyze.jsonl", "webanalyze.json",
 	// NOTE: ip_groups/shared_hosting is DB-only (graph has no reader) — not merged.
 }
 
@@ -158,6 +161,28 @@ func dirExists(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
+// doneSteps counts the completed steps in a run's steps_json so the graph cache
+// signature advances each time a tool finishes during a live run.
+func doneSteps(stepsJSON string) int {
+	if stepsJSON == "" {
+		return 0
+	}
+	var steps []struct {
+		Status string `json:"status"`
+	}
+	if json.Unmarshal([]byte(stepsJSON), &steps) != nil {
+		return 0
+	}
+	n := 0
+	for _, s := range steps {
+		switch s.Status {
+		case "ok", "done", "failed", "skipped", "completed":
+			n++
+		}
+	}
+	return n
+}
+
 // For builds (or returns a cached) graph for a target by unioning every run's
 // workspace. Runs are grouped by canonical host, so "https://x" and "x" merge.
 // The returned int is an HTTP-style status (200/400/404/500).
@@ -182,7 +207,11 @@ func For(st *store.Store, target string) (*graph.Graph, int, error) {
 				newest = t
 			}
 		}
-		sigs = append(sigs, run.ID+":"+strconv.FormatInt(newest.Unix(), 10))
+		ver := ""
+		if run.FinishedAt.IsZero() { // live run: rebuild the graph as each tool/step finishes
+			ver = ":s" + strconv.Itoa(doneSteps(run.StepsJSON))
+		}
+		sigs = append(sigs, run.ID+":"+strconv.FormatInt(newest.Unix(), 10)+ver)
 	}
 	if len(wss) == 0 {
 		return nil, 404, ErrNoRuns

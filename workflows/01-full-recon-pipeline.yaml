@@ -2461,6 +2461,28 @@ steps:
   run: jq -r '.url // empty' {workspace}/httpx.jsonl 2>/dev/null | sort -u > {workspace}/live_urls.txt; touch {workspace}/live_urls.txt
   outputs:
     live_urls: '{workspace}/live_urls.txt'
+
+- id: webanalyze_tech
+  name: '[tech] deep technology fingerprinting (webanalyze / Wappalyzer) on live hosts → tech nodes'
+  depends_on:
+  - extract_live_urls
+  run_on_failed_deps: true
+  timeout: 15m
+  shell: true
+  optional: true
+  # Deeper Wappalyzer-style stack detection beyond httpx -td. Safe no-op if the
+  # tool is missing (install: go install github.com/rverton/webanalyze/cmd/webanalyze@latest).
+  run: |
+    test -s {workspace}/live_urls.txt || exit 0
+    command -v webanalyze >/dev/null 2>&1 || { echo "webanalyze not installed — skip"; exit 0; }
+    test -f {workspace}/apps.json || webanalyze -update -apps {workspace}/apps.json >/dev/null 2>&1 || true
+    webanalyze -apps {workspace}/apps.json -hosts {workspace}/live_urls.txt -output json -worker {vars.httpx_threads} 2>/dev/null \
+      | jq -c 'if type=="array" then .[] else . end' > {workspace}/webanalyze.jsonl 2>/dev/null || true
+    touch {workspace}/webanalyze.jsonl
+    printf 'webanalyze: %s tech rows\n' "$(wc -l < {workspace}/webanalyze.jsonl)"
+  outputs:
+    webanalyze: '{workspace}/webanalyze.jsonl'
+
 - id: favicon_hash
   name: '[favicon] compute mmh3 favicon hash per live host (Shodan/FOFA http.favicon.hash compatible)'
   depends_on:

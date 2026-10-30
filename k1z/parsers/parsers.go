@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,7 +34,39 @@ func ParseWorkspace(st *store.Store, run *store.Run, b *bus.Bus, force bool) err
 		return nil // an incremental parse is in flight; the forced completion parse will run
 	}
 	defer ml.Unlock()
+	parseWorkspaceLocked(st, run, b)
+	return nil
+}
 
+var parseDirty sync.Map // runID -> struct{} : a parse was requested while one ran
+
+// ReparseLive parses the workspace into the DB NOW, with a trailing pass: if a
+// parse is already running for this run, the work is flagged dirty so the running
+// parser does one more pass afterwards. So EVERY tool's output lands in the DB
+// (and thus the graph) as soon as the tool finishes — not only at run completion.
+func ReparseLive(st *store.Store, runID string, b *bus.Bus) {
+	parseDirty.Store(runID, struct{}{})
+	ml := runLock(runID)
+	if !ml.TryLock() {
+		return // a parser is running — it will see the dirty flag and re-run
+	}
+	go func() {
+		defer ml.Unlock()
+		for {
+			parseDirty.Delete(runID)
+			run, err := st.GetRun(runID)
+			if err != nil || run.Workspace == "" {
+				return
+			}
+			parseWorkspaceLocked(st, run, b)
+			if _, pending := parseDirty.Load(runID); !pending {
+				return
+			}
+		}
+	}()
+}
+
+func parseWorkspaceLocked(st *store.Store, run *store.Run, b *bus.Bus) {
 	_ = st.DeleteFindingsByRun(run.ID)
 	ws := run.Workspace
 	scanNuclei(st, run, ws)
@@ -58,7 +91,6 @@ func ParseWorkspace(st *store.Store, run *store.Run, b *bus.Bus, force bool) err
 	ingestAssetGraph(st, run)
 	DetectNewAssets(st, run)
 	alertCritical(st, run, b)
-	return nil
 }
 
 // ingestAssetGraph feeds confirmed findings into the company asset graph
@@ -207,8 +239,38 @@ func scanNuclei(st *store.Store, run *store.Run, ws string) {
 
 // ── httpx ────────────────────────────────────────────────────────────────────
 
+// loadWebanalyze reads webanalyze output (deeper Wappalyzer fingerprinting) into
+// host -> set of technologies, to merge with httpx's -td results.
+func loadWebanalyze(ws string) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for _, f := range globFiles(ws, "webanalyze.jsonl", "webanalyze.json") {
+		eachJSONLine(f, func(m map[string]any) {
+			h := hostOfURL(str(m["hostname"]))
+			if h == "" {
+				h = strings.ToLower(str(m["host"]))
+			}
+			if h == "" {
+				return
+			}
+			arr, _ := m["matches"].([]any)
+			for _, x := range arr {
+				if mm, ok := x.(map[string]any); ok {
+					if app := strings.TrimSpace(str(mm["app_name"])); app != "" {
+						if out[h] == nil {
+							out[h] = map[string]bool{}
+						}
+						out[h][app] = true
+					}
+				}
+			}
+		})
+	}
+	return out
+}
+
 func scanHTTPX(st *store.Store, run *store.Run, ws string) {
 	shots := gowitnessShots(ws)
+	webTech := loadWebanalyze(ws) // deeper tech per host, merged into httpx tech
 	files := globFiles(ws, "httpx.jsonl", "httpx.json", "http_alive.jsonl",
 		"httpx_probe.jsonl", "pivot_httpx_probe.jsonl", "st_pivot_httpx.jsonl")
 	if len(files) == 0 {
@@ -246,11 +308,28 @@ func scanHTTPX(st *store.Store, run *store.Run, ws string) {
 			if sc == 0 {
 				sc = intFromAny(m["status-code"])
 			}
+			techSet := map[string]bool{}
+			for _, srcKey := range []string{"technologies", "tech"} {
+				if arr, ok := m[srcKey].([]any); ok {
+					for _, t := range arr {
+						if s := strings.TrimSpace(str(t)); s != "" {
+							techSet[s] = true
+						}
+					}
+				}
+			}
+			for t := range webTech[strings.ToLower(host)] { // merge webanalyze findings
+				techSet[t] = true
+			}
 			tech := "[]"
-			if t := anyTech(m["technologies"]); t != "" {
-				tech = t
-			} else if t := anyTech(m["tech"]); t != "" {
-				tech = t
+			if len(techSet) > 0 {
+				arr := make([]string, 0, len(techSet))
+				for t := range techSet {
+					arr = append(arr, t)
+				}
+				sort.Strings(arr)
+				b, _ := json.Marshal(arr)
+				tech = string(b)
 			}
 			var shot *string
 			if s, ok := shots[screenshotKey(host, port)]; ok {

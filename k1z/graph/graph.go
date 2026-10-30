@@ -235,7 +235,8 @@ func Build(dir, target string) *Graph {
 	hostCname := map[string]string{}
 	hostPorts := map[string]map[string]struct{}{}
 	ipPorts := map[string]map[string]struct{}{}
-	alive := map[string]map[string]string{} // host -> httpx fields
+	alive := map[string]map[string]string{}      // host -> httpx fields
+	hostTech := map[string]map[string]struct{}{} // host -> detected technologies
 	internalH := map[string]bool{}
 	interesting := map[string]bool{}
 	originIP := map[string]bool{}
@@ -363,11 +364,49 @@ func Build(dir, target string) *Graph {
 		}
 		alive[h] = map[string]string{"status": strconv.Itoa(intOf(m["status_code"]) + intOf(m["status-code"])),
 			"title": title, "server": str(m["webserver"]), "cdn": cdn}
+		// detected technologies (httpx -td / webanalyze → "tech" or "technologies")
+		for _, key := range []string{"tech", "technologies"} {
+			if arr, ok := m[key].([]any); ok {
+				for _, t := range arr {
+					if s := strings.TrimSpace(str(t)); s != "" {
+						if hostTech[h] == nil {
+							hostTech[h] = map[string]struct{}{}
+						}
+						hostTech[h][s] = struct{}{}
+					}
+				}
+			}
+		}
 	}
 	// glob so probe/pivot/st-pivot httpx runs (the only httpx in templates 03/04)
 	// are read, not just the first httpx.json(l).
 	for _, f := range globAll(dir, "httpx*.jsonl", "httpx*.json", "*httpx*.jsonl") {
 		jsonl(f, httpxH)
+	}
+	// webanalyze: deeper Wappalyzer-style tech fingerprinting (one JSON object per
+	// host: {hostname, matches:[{app_name}]}). Merged into the same hostTech.
+	webanalyzeH := func(m map[string]any) {
+		h := hostOfURL(str(m["hostname"]))
+		if h == "" {
+			h = strings.ToLower(str(m["host"]))
+		}
+		if h == "" {
+			return
+		}
+		arr, _ := m["matches"].([]any)
+		for _, x := range arr {
+			if mm, ok := x.(map[string]any); ok {
+				if app := strings.TrimSpace(str(mm["app_name"])); app != "" {
+					if hostTech[h] == nil {
+						hostTech[h] = map[string]struct{}{}
+					}
+					hostTech[h][app] = struct{}{}
+				}
+			}
+		}
+	}
+	for _, f := range globAll(dir, "webanalyze.jsonl", "webanalyze.json") {
+		jsonl(f, webanalyzeH)
 	}
 	naabuH := func(m map[string]any) {
 		ip := str(m["ip"])
@@ -833,12 +872,27 @@ func Build(dir, target string) *Graph {
 		if urlByHost[h] > 0 || endByHost[h] > 0 {
 			title += fmt.Sprintf("\npaths: %d urls · %d endpoints", urlByHost[h], endByHost[h])
 		}
+		if ts := sortedKeys(hostTech[h]); len(ts) > 0 {
+			title += "\ntech: " + strings.Join(ts, ", ")
+		}
 		short := h
 		if target != "" && strings.HasSuffix(h, "."+target) {
 			short = strings.TrimSuffix(h, "."+target)
 		}
 		g.add(&Node{ID: "h:" + h, Label: short, Group: grp, Title: title,
 			Risk: riskOf["h:"+h], Internal: internal, Alive: hh != nil, Ports: portsOf(hostPorts[h])})
+	}
+	// technology nodes: one per detected technology, linked to every host that
+	// runs it — so you can pivot ("show every host on Apache APISIX / Node.js").
+	for h, techs := range hostTech {
+		if _, ok := g.Nodes["h:"+h]; !ok {
+			continue
+		}
+		for t := range techs {
+			tid := "tech:" + strings.ToLower(t)
+			g.add(&Node{ID: tid, Label: t, Group: "tech", Title: "technology: " + t})
+			g.link("h:"+h, tid, "tech")
+		}
 	}
 	allIP := map[string]bool{}
 	for h, ips := range hostIP {

@@ -407,15 +407,17 @@ func (e *runEvents) StepDone(id string) {
 	e.setStepStatus(id, "ok")
 	e.persistSteps()
 	e.publishSteps()
-	if incrementalParseSteps[id] {
-		go rParse(e.r, e.run.ID)
-	}
+	// Every tool that finishes gets its output parsed into the DB (and thus the
+	// graph) right away — in parallel, not only at run completion. ReparseLive
+	// coalesces concurrent step-dones and does a trailing pass so nothing is missed.
+	parsers.ReparseLive(e.r.St, e.run.ID, e.r.Bus)
 }
 
 func (e *runEvents) StepFail(id string) {
 	e.setStepStatus(id, "failed")
 	e.persistSteps()
 	e.publishSteps()
+	parsers.ReparseLive(e.r.St, e.run.ID, e.r.Bus) // a failed step may still have partial output
 }
 
 func (e *runEvents) StepSkip(id string) {

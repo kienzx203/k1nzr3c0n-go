@@ -55,6 +55,7 @@ type HostEntry struct {
 	Secrets   []string  `json:"secrets,omitempty"`
 	Certs     []string  `json:"certs,omitempty"`
 	DNS       []string  `json:"dns,omitempty"`
+	Tech      []string  `json:"tech,omitempty"`
 	Findings  []Finding `json:"findings,omitempty"`
 }
 
@@ -157,6 +158,8 @@ func (g *Graph) TargetMap(hostCap int) TargetMapResult {
 					capAppend(&he.Certs, nn.Label, perList)
 				case nn.Group == "dns":
 					capAppend(&he.DNS, nn.Label, perList)
+				case nn.Group == "tech":
+					capAppend(&he.Tech, nn.Label, perList)
 				case strings.HasPrefix(nn.Group, "vuln_"):
 					if len(he.Findings) < perList {
 						he.Findings = append(he.Findings, Finding{Sev: strings.TrimPrefix(nn.Group, "vuln_"), Name: nn.Label})
