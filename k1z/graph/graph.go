@@ -20,15 +20,18 @@ import (
 )
 
 type Node struct {
-	ID       string `json:"id"`
-	Label    string `json:"label"`
-	Group    string `json:"group"`
-	Title    string `json:"title,omitempty"`
-	Risk     int    `json:"risk,omitempty"`
-	Internal bool   `json:"internal,omitempty"`
-	Alive    bool   `json:"alive,omitempty"`
-	Count    int    `json:"count,omitempty"`  // cluster nodes: number of members
-	Ports    []int  `json:"ports,omitempty"`  // open ports (host / ip nodes)
+	ID       string  `json:"id"`
+	Label    string  `json:"label"`
+	Group    string  `json:"group"`
+	Title    string  `json:"title,omitempty"`
+	Risk     int     `json:"risk,omitempty"`
+	Internal bool    `json:"internal,omitempty"`
+	Alive    bool    `json:"alive,omitempty"`
+	Count    int     `json:"count,omitempty"` // cluster nodes: number of members
+	Ports    []int   `json:"ports,omitempty"` // open ports (host / ip nodes)
+	X        float64 `json:"x"`               // server-computed layout position
+	Y        float64 `json:"y"`
+	Sz       float64 `json:"sz,omitempty"` // server-computed node size (radius)
 }
 
 // portsOf converts a set of port strings to a sorted []int.
@@ -1048,6 +1051,7 @@ func Build(dir, target string) *Graph {
 			}
 		}
 	}
+	g.Layout() // precompute node positions (radial hierarchy + collision) once
 	return g
 }
 

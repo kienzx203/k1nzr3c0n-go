@@ -252,9 +252,13 @@ function add(sg){
    // (10k+). Don't even load them unless "dead subdomains" is on — that keeps the
    // layout + render operating on the ~few-thousand live nodes, not all 12k.
    if(n.group==='sub_dead' && !filter.showDead)return;
+   // positions + size come PRECOMPUTED from the server (radial layout + collision);
+   // fall back to sizeOf / a small random spot only if the server didn't send them.
+   const sx=(typeof n.x==='number')?n.x:Math.cos(Math.random()*6.283)*(1+Math.random()*9);
+   const sy=(typeof n.y==='number')?n.y:Math.sin(Math.random()*6.283)*(1+Math.random()*9);
    g.addNode(n.id,{label:(n.label||n.id)+(n.count?'  ('+n.count+')':''),rawlabel:n.label||n.id,group:n.group,
-     title:n.title||'',risk:n.risk||0,count:n.count||0,color:COL[n.group]||'#8c959f',size:sizeOf(n),tier:tierOf(n.group),
-     x:Math.cos(Math.random()*6.283)*(1+Math.random()*9),y:Math.sin(Math.random()*6.283)*(1+Math.random()*9)}); });
+     title:n.title||'',risk:n.risk||0,count:n.count||0,color:COL[n.group]||'#8c959f',size:(n.sz>0?n.sz:sizeOf(n)),tier:tierOf(n.group),
+     x:sx,y:sy}); });
  (sg.edges||[]).forEach(e=>{ if(g.hasNode(e.from)&&g.hasNode(e.to)&&!g.hasEdge(e.from,e.to)){
    // finding edges pop (red, thicker, on top); infra edges are thin and follow
    // the theme's default edge colour (so they aren't glaring in dark mode).
@@ -296,12 +300,10 @@ function stopLayout(){ clearTimeout(fa2to); if(fa2Running())fa2.stop(); $('lay')
 // clumped). This is what gives even, readable spacing. Synchronous, so iteration
 // count scales down on big graphs to keep the one-time freeze short.
 function settleLayout(){ stopLayout();
- try{ if(LIB&&LIB.layoutNoverlap&&LIB.layoutNoverlap.assign&&renderer&&g.order>1){
-   const it=g.order>4000?30:(g.order>1500?50:80); // synchronous — keep modest so it never blocks the main thread
-   LIB.layoutNoverlap.assign(g,{maxIterations:it,settings:{margin:12,ratio:1.55,expansion:1.3,gridSize:20,speed:3}});
-   renderer.refresh(); ovT=0; drawOverlay(); drawMini();
+ try{ deOverlapVisible(80); // guarantee no overlapping radii among the visible nodes
+   renderer&&renderer.refresh(); ovT=0; drawOverlay(); drawMini();
    fitVisible(500); // frame only the visible (depth-gated) nodes
- } }catch(e){} }
+ }catch(e){} }
 // community detection: prefer Louvain (density-based, robust to shared IP/ASN/CDN
 // infrastructure that would otherwise glue everything into one component); fall
 // back to label-propagation if the library build lacks it.
@@ -449,6 +451,28 @@ function fitVisible(dur){ if(!renderer)return;
  const cx=(mnx+mxx)/2, cy=(mny+mxy)/2, ext=Math.max(mxx-mnx,mxy-mny)||0.001;
  try{ renderer.getCamera().animate({x:cx,y:cy,ratio:Math.max(0.02,Math.min(22,ext*1.15))},{duration:dur||500}); }
  catch(e){ renderer.getCamera().animatedReset({duration:dur||500}); } }
+// deOverlapVisible: a real collision pass over the VISIBLE nodes only — pushes
+// every pair apart until (distance ≥ r1 + r2 + gap), i.e. no two node radii ever
+// touch. Grid-accelerated, so it's cheap on the few-hundred nodes the depth gate
+// shows. Guarantees the "radii never overlap" the force layout can't promise.
+function deOverlapVisible(iters){
+ const ids=[]; g.forEachNode((id,a)=>{ if(passFilter(id,a))ids.push(id); });
+ const n=ids.length; if(n<2)return;
+ const X=new Float64Array(n),Y=new Float64Array(n),R=new Float64Array(n); let maxr=1;
+ for(let i=0;i<n;i++){ X[i]=g.getNodeAttribute(ids[i],'x')||0; Y[i]=g.getNodeAttribute(ids[i],'y')||0; R[i]=g.getNodeAttribute(ids[i],'size')||4; if(R[i]>maxr)maxr=R[i]; }
+ const GAP=maxr*0.7, cell=maxr*2+GAP, grid=new Map(), K=(a,b)=>a+'|'+b;
+ const mx=Math.min(iters||60, n>2500?18:(n>1000?40:90)); // cap work so a big visible set never freezes
+ for(let it=0;it<mx;it++){ grid.clear();
+   for(let i=0;i<n;i++){ const k=K(Math.floor(X[i]/cell),Math.floor(Y[i]/cell)); let a=grid.get(k); if(!a){a=[];grid.set(k,a);} a.push(i); }
+   let moved=false;
+   for(let i=0;i<n;i++){ const cx=Math.floor(X[i]/cell),cy=Math.floor(Y[i]/cell);
+     for(let gx=cx-1;gx<=cx+1;gx++)for(let gy=cy-1;gy<=cy+1;gy++){ const a=grid.get(K(gx,gy)); if(!a)continue;
+       for(let t=0;t<a.length;t++){ const j=a[t]; if(j<=i)continue;
+         let dx=X[j]-X[i],dy=Y[j]-Y[i],d=Math.sqrt(dx*dx+dy*dy)||0.001; const min=R[i]+R[j]+GAP;
+         if(d<min){ const p=(min-d)/2,ux=dx/d,uy=dy/d; X[i]-=ux*p;Y[i]-=uy*p;X[j]+=ux*p;Y[j]+=uy*p; moved=true; } } } }
+   if(!moved)break; }
+ for(let i=0;i<n;i++){ g.setNodeAttribute(ids[i],'x',X[i]); g.setNodeAttribute(ids[i],'y',Y[i]); }
+}
 let annos={};
 function setColorBy(v){ colorBy=v||null; const sel=$('colorBy'); if(sel)sel.value=v||''; }
 const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); return s;};
@@ -481,7 +505,7 @@ function render(){
    // hidden by the depth gate). Then inspect + spotlight as before.
    if(!filter.only){ const t=g.getNodeAttribute(node,'tier'); let hasDeep=false;
      g.forEachNeighbor(node,nb=>{ const nt=g.getNodeAttribute(nb,'tier'); if(nt>t&&nt>maxTier)hasDeep=true; });
-     if(hasDeep){ expanded.has(node)?expanded.delete(node):expanded.add(node); recomputeRevealed(); updateStat(); } }
+     if(hasDeep){ expanded.has(node)?expanded.delete(node):expanded.add(node); recomputeRevealed(); updateStat(); idleDraw(); } }
    pathSet=null; focus=hood(node); renderer.refresh(); detail(node); });
  renderer.on('clickStage',()=>{ if(focus||pathSet){focus=null;pathSet=null;renderer.refresh();} });
  renderer.on('rightClickNode',e=>{ const o=e.event&&e.event.original; if(o)o.preventDefault(); showCtx(o?o.clientX:e.event.x,o?o.clientY:e.event.y,e.node); });
@@ -672,11 +696,12 @@ function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
    g.clear(); expanded.clear(); revealed=new Set(); if(renderer){renderer.kill();renderer=null;}
-   add(sg); try{seedClusters();}catch(e){} render(); startLayout(); updateStat(); loadAnnos(); buildAllList();
+   add(sg); render(); updateStat(); loadAnnos(); buildAllList(); // positions are server-computed — NO in-browser force layout
    if(colorBy)loadMetrics(()=>renderer&&renderer.refresh());
    setTimeout(()=>{$('spin').style.display='none';
-     if(pendingCam){ try{ renderer&&renderer.getCamera().animate(pendingCam,{duration:450}); }catch(e){} pendingCam=null; } // restore a saved view's framing instead of resetting
-     else { fitVisible(400); } },450);
+     if(pendingCam){ try{ renderer&&renderer.getCamera().animate(pendingCam,{duration:450}); }catch(e){} pendingCam=null; } // restore a saved view's framing
+     else { fitVisible(400); }
+     ovT=0; miniT=0; drawOverlay(); drawMini(); },350);
  }).catch(()=>{$('spin').style.display='none'; $('stat').textContent='load failed';}); }
 $('zin').onclick=()=>renderer&&renderer.getCamera().animatedZoom({duration:200});
 $('zout').onclick=()=>renderer&&renderer.getCamera().animatedUnzoom({duration:200});
@@ -689,7 +714,7 @@ $('mini').onclick=e=>{ if(!renderer)return; const cv=$('mini'),t=cv._t; if(!t)re
 $('optLabels').onchange=e=>{ renderer&&renderer.setSetting('renderLabels',e.target.checked); renderer&&renderer.refresh(); };
 $('optEdges').onchange=e=>{ showEdges=e.target.checked; renderer&&renderer.refresh(); };
 $('optSize').oninput=e=>{ nodeScale=(+e.target.value)/100; $('optSizeV').textContent=nodeScale.toFixed(1)+'×'; renderer&&renderer.refresh(); };
-if($('depth'))$('depth').onchange=e=>{ maxTier=+e.target.value; expanded.clear(); recomputeRevealed(); renderer&&renderer.refresh(); updateStat(); fitVisible(400); };
+if($('depth'))$('depth').onchange=e=>{ maxTier=+e.target.value; expanded.clear(); recomputeRevealed(); renderer&&renderer.refresh(); updateStat(); fitVisible(400); idleDraw(); };
 $('optHulls').onchange=e=>{ showHulls=e.target.checked; ovT=0; drawOverlay(); };
 $('optGlyphs').onchange=e=>{ showGlyphs=e.target.checked; ovT=0; drawOverlay(); };
 // search autocomplete
@@ -749,8 +774,8 @@ function highlightHits(hit){ if(!hit.length)return false; pathSet=null; focus=ne
  hit.forEach(id=>hood(id).forEach(x=>focus.add(x))); renderer&&renderer.refresh(); focusTo(hit[0]); detail(hit[0]); openSide(true); return true; }
 $('q').addEventListener('change',e=>{ const q=(e.target.value||'').trim().toLowerCase(); if(!q||!renderer)return;
  fetch(BASE+'/search?q='+encodeURIComponent(q)+'&limit=0').then(r=>r.json()).then(d=>{ // limit=0 → server returns EVERY match (no cap)
-   let added=0; (d.nodes||[]).forEach(n=>{ if(!g.hasNode(n.id)){ add({nodes:[n],edges:[]}); added++; } });
-   if(added){ render(); startLayout(3000); }
+   let added=0; (d.nodes||[]).forEach(n=>{ if(!g.hasNode(n.id)){ add({nodes:[n],edges:[]}); added++; } }); // search results carry server positions
+   if(added){ render(); }
    const hit=localHits(q); buildAllList(); updateStat();
    if(highlightHits(hit)) toast(hit.length+' node'+(hit.length===1?'':'s')+' match "'+q+'"'+(added?' (+'+added+' loaded)':''),3000);
    else $('stat').textContent='no match for "'+q+'"';
@@ -768,8 +793,14 @@ function hideCtx(){ $('ctx').style.display='none'; }
 function enrich(id,kind){ toast('transform '+kind+'…',8000);
  fetch(BASE+'/enrich?id='+encodeURIComponent(id)+'&kind='+kind).then(r=>r.json()).then(sg=>{
    if(kind==='txt'){ const t=(sg.meta&&sg.meta.txt)||[]; toast('TXT '+(sg.meta&&sg.meta.on||'')+':\n'+(t.join('\n')||'(none)'),9000); return; }
+   // enrich nodes are new (no server position): place them in a ring around the
+   // source node, then a local de-overlap — no global re-layout.
+   const sx=g.hasNode(id)?g.getNodeAttribute(id,'x'):0, sy=g.hasNode(id)?g.getNodeAttribute(id,'y'):0;
+   const newIds=(sg&&sg.nodes||[]).filter(nn=>!g.hasNode(nn.id)).map(nn=>nn.id);
    const before=g.order; add(sg||{}); const added=g.order-before;
-   render(); if(added)startLayout(4000); focus=hood(id); renderer&&renderer.refresh(); updateStat(); buildAllList();
+   newIds.forEach((nid,i)=>{ if(!g.hasNode(nid))return; const a=(i/Math.max(1,newIds.length))*6.283, R=50+newIds.length*3;
+     g.setNodeAttribute(nid,'x',sx+Math.cos(a)*R); g.setNodeAttribute(nid,'y',sy+Math.sin(a)*R); });
+   render(); if(added)deOverlapVisible(45); focus=hood(id); renderer&&renderer.refresh(); updateStat(); buildAllList();
    toast(kind+': +'+added+' node'+(added===1?'':'s')+(added?'':' (nothing resolved)'),3500);
  }).catch(()=>toast('transform failed',3000)); }
 $('cy').addEventListener('contextmenu',ev=>ev.preventDefault());
