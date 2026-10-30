@@ -641,7 +641,7 @@ func Build(dir, target string) *Graph {
 	// ── extended surface coverage (permutation/tlsx/pivot/vhost/favicon/js/ptr) ──
 	for _, p := range []string{"subdomains_all_resolved.txt", "subdomains_all.txt", "subdomains_tlsx_resolved.txt",
 		"tlsx_new_subs.txt", "js_subs.txt", "jsubfinder_subs.txt", "st_intel_subs.txt", "reverse_dns_subs.txt",
-		"ptr_subs.txt", "dns_records_subs.txt", "http_redirect_subs.txt", "recursive_parents.txt"} {
+		"ptr_subs.txt", "dns_records_subs.txt", "http_redirect_subs.txt", "recursive_parents.txt", "uncover_asn_in_scope.txt"} {
 		for _, h := range lines(firstExisting(dir, p)) {
 			h = strings.ToLower(strings.Trim(h, "."))
 			if reHost.MatchString(h) {
@@ -686,7 +686,7 @@ func Build(dir, target string) *Graph {
 		}
 	}
 	// org/ASN CIDR ranges → subnet nodes
-	for _, p := range []string{"asn_ipv4_cidrs.txt", "amass_intel_cidrs.txt", "censys_prefixes.txt"} {
+	for _, p := range []string{"asn_ipv4_cidrs.txt", "asn_org_cidrs.txt", "amass_intel_cidrs.txt", "censys_prefixes.txt"} {
 		for _, ln := range lines(firstExisting(dir, p)) {
 			if f := strings.Fields(ln); len(f) > 0 && strings.Contains(f[0], "/") {
 				subnets[f[0]] = true

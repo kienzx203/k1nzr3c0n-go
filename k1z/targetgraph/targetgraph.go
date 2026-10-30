@@ -68,7 +68,7 @@ var MergeFiles = []string{
 	"subdomains.txt", "subdomains_resolved.txt", "subdomains_all_resolved.txt", "subdomains_all.txt",
 	"passive_merged.txt", "subdomains_resolved_resp.txt", "subdomains_tlsx_resolved.txt", "tlsx_new_subs.txt",
 	"js_subs.txt", "jsubfinder_subs.txt", "st_intel_subs.txt", "reverse_dns_subs.txt", "ptr_subs.txt",
-	"dns_records_subs.txt", "http_redirect_subs.txt", "recursive_parents.txt",
+	"dns_records_subs.txt", "http_redirect_subs.txt", "recursive_parents.txt", "uncover_asn_in_scope.txt",
 	// edge/interesting surface
 	"vhost_new_hosts.txt", "favicon_in_scope.txt", "pivot_new_resolved.txt", "http_redirect_resolved.txt",
 	"dns_svc_new_hosts.txt", "interesting.txt",
@@ -80,7 +80,7 @@ var MergeFiles = []string{
 	"nuclei*.jsonl", "nuclei*.json", "afrog.json", "afrog.jsonl", "takeover_findings.txt", "s3scanner.json", "s3scanner.jsonl",
 	// intel: censys / fofa / asn / internal / origin / cdn
 	"censys_hosts.txt", "censys_ip.txt", "censys_ports.txt", "censys_prefixes.txt", "fofa_ip_port.txt",
-	"asn_ipv4_cidrs.txt", "amass_intel_cidrs.txt", "internal_hosts.txt", "dns_internal_hosts.txt",
+	"asn_ipv4_cidrs.txt", "asn_org_cidrs.txt", "amass_intel_cidrs.txt", "internal_hosts.txt", "dns_internal_hosts.txt",
 	"internal_subnets.txt", "dns_internal_subnets.txt", "origin_ips.txt", "cdncheck.jsonl", "cdncheck.json",
 	"dns_zone_nsec.txt", "p_dns_zone.txt",
 	// high-cardinality counts (urls/endpoints/params/secrets)

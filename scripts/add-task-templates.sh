@@ -122,12 +122,15 @@ RECON — QUIET first (passive, throttle; no loud full-TCP unless the objective 
 already cover classes 1-5 + JS/secrets/params — REUSE their output; the menu below is a REFERENCE for
 GAP-FILL, NOT a to-do list. Never re-run what recon_findings already shows.
 [1] DNS/SUBS: subfinder -all + crt.sh + subdomain.center; perms gotator/dnsgen; AXFR dig @ns; records MX/NS/TXT/SPF/DMARC.
-[2] IP/ASN — DERIVE THE FULL IP FOOTPRINT from the domain (don't stop at one host):
-    resolve subs -> collect every A-record IP -> map each IP to its announced BGP prefix (Team Cymru:
-    dig +short TXT <reversed-ip>.origin.asn.cymru.com) AND to its ASN, then expand: asnmap -d <domain>
-    / asnmap -i <ip> / asnmap -org "<org>" + metabigor net --domain/--org -> the org's CIDR ranges.
-    The mail/CRM tier often sits in a DIFFERENT netblock than the web tier, so map from the RESOLVED
-    IPs, not just a domain lookup. (Workflow 01 step `asn_expand` now does this automatically.)
+[2] IP/ASN — DERIVE THE FULL IP FOOTPRINT from the domain (don't stop at one host; NO API key needed):
+    resolve subs -> every A-record IP -> map each IP to its owning ASN + announced prefix (Team Cymru:
+    dig +short TXT <reversed-ip>.origin.asn.cymru.com) -> expand each ASN to ALL its prefixes, UNIONED
+    from every keyless BGP source for completeness: RIPEstat (stat.ripe.net announced-prefixes) +
+    bgp.he.net (Hurricane Electric, most complete) + bgpview.io (api.bgpview.io/asn/<n>/prefixes) +
+    bgpq4 (IRR). Org-wide: bgpview.io 'search?query_term=<org>' -> ALL sibling ASNs. (asnmap v5+ needs a
+    ProjectDiscovery Cloud key + prompts, so it is NOT used.) The mail/CRM tier often sits in a DIFFERENT
+    netblock than the web tier, so map from the RESOLVED IPs. (Workflow 01/02 step `asn_expand` unions all
+    these -> asn_ipv4_cidrs; org-wide -> asn_org_cidrs INTEL.)
     Every derived CIDR = an OUT candidate: CONFIRM target-dedicated before any scan — a "customer
     hosting" netname (e.g. pvhostingcustomer-net) means shared space; scan only IPs proven to be the
     target's, and on a shared IP send only in-scope Host/SNI (no mass port-scan of the range).
@@ -313,9 +316,10 @@ origin IPs; unsure = OUT, skip); an IP is in-scope only if registered or a regis
 dedicated A-record (ASN/CIDR/PTR/favicon/shared-hosting neighbors = OUT candidates, never scan targets; on
 a shared/CDN IP send only in-scope Host/SNI, no port-scan/vhost/neighbor enum). IP FOOTPRINT: to find the
 org's IP ranges from the domain (even for hosts whose name you don't know), map every RESOLVED IP to its
-announced BGP prefix (Team Cymru) + asnmap -d/-i/-org (workflow step `asn_expand` does this -> asn_ipv4_cidrs)
-— the mail/CRM tier often lives in a different netblock than the web tier; each derived CIDR stays an OUT
-candidate until proven target-dedicated. Scope GROWS only when a human adds it. No DoS, no mass exploitation, no destructive action. Prove impact WITHOUT bulk exfil
+owning ASN (Team Cymru) then expand each ASN to ALL its prefixes, unioned from RIPEstat + bgp.he.net +
+bgpview.io + bgpq4 (all keyless) — workflow step `asn_expand` does this -> asn_ipv4_cidrs (org-wide sibling
+ASNs via bgpview search -> asn_org_cidrs INTEL); the mail/CRM tier often lives in a different netblock than
+the web tier; each derived CIDR stays an OUT candidate until proven target-dedicated. Scope GROWS only when a human adds it. No DoS, no mass exploitation, no destructive action. Prove impact WITHOUT bulk exfil
 (metadata / screenshot / row-count, or AT MOST one redacted record); redact secrets in findings. Leave
 heavy/loud scanning to run_workflow; your job is choose -> follow -> read -> triage -> validate -> persist.
 EOF

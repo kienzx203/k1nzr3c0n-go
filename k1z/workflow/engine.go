@@ -336,7 +336,10 @@ func (e *engine) executeStep(st *Step) error {
 				paths = append(paths, Require{Path: p, MinBytes: 1}) // non-empty required
 			}
 		}
-		if e.requirementsMet(paths) { // vacuously true when no paths (parity)
+		// Quiet: a missing output here just means the step is NOT skippable and will
+		// run normally — not an error. Warning on it printed a misleading
+		// "Required path missing" on every first run of a skip_if_exists step.
+		if e.requirementsMetQuiet(paths) { // vacuously true when no paths (parity)
 			if e.resumeStepOK(st.ID) {
 				e.ev.Warn(fmt.Sprintf("Skipping '%s' (already completed)", st.ID))
 			}

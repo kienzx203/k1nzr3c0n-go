@@ -612,7 +612,7 @@ func scanNetIntel(st *store.Store, run *store.Run, ws string) {
 		})
 	}
 	// org/ASN CIDRs + internal subnets + origin IPs → kind=net
-	for _, f := range globFiles(ws, "asn_ipv4_cidrs.txt", "amass_intel_cidrs.txt", "censys_prefixes.txt",
+	for _, f := range globFiles(ws, "asn_ipv4_cidrs.txt", "asn_org_cidrs.txt", "amass_intel_cidrs.txt", "censys_prefixes.txt",
 		"internal_subnets.txt", "dns_internal_subnets.txt") {
 		eachLine(f, func(l string) {
 			if ff := strings.Fields(l); len(ff) > 0 && strings.Contains(ff[0], "/") {
