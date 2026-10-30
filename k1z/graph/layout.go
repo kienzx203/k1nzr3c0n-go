@@ -29,15 +29,15 @@ func layoutTier(group string) int {
 // layoutSize mirrors the viewer's sizeOf so collision uses the same radii the
 // client will render with: a tier-based base, boosted by cluster size + risk.
 func layoutSize(n *Node) float64 {
-	base := map[int]float64{0: 17, 1: 11, 2: 7.5, 3: 5.5, 4: 4.5}[layoutTier(n.Group)]
+	base := map[int]float64{0: 9, 1: 5, 2: 3.5, 3: 3, 4: 2.5}[layoutTier(n.Group)]
 	if base == 0 {
-		base = 4.5
+		base = 2.5
 	}
 	if n.Count > 0 {
-		base += math.Min(9, math.Log2(float64(n.Count)+1)*1.3)
+		base += math.Min(4, math.Log2(float64(n.Count)+1))
 	}
 	if n.Risk > 0 {
-		base += math.Min(9, float64(n.Risk))
+		base += math.Min(3, float64(n.Risk)*0.5)
 	}
 	return base
 }
@@ -130,8 +130,8 @@ func (g *Graph) Layout() {
 			maxOverall = g.Nodes[id].Sz
 		}
 	}
-	gapArc := maxOverall * 0.9   // spacing between neighbours along a ring
-	gapRing := maxOverall*3 + 40 // clearance between concentric rings
+	gapArc := maxOverall*1.4 + 2 // spacing between neighbours along a ring
+	gapRing := maxOverall*4 + 60 // clearance between concentric rings
 
 	tiers := make([]int, 0, len(orderT))
 	for t := range orderT {
@@ -139,39 +139,61 @@ func (g *Graph) Layout() {
 	}
 	sort.Ints(tiers)
 
-	// Concentric rings around the centre: each tier on its own circle, the radius
-	// grown so the whole tier fits without overlap and clears the ring inside it;
-	// nodes are spread around the ring proportional to their footprint. Clean,
-	// deterministic, radiates outward from the domain — no collision scatter.
-	prevR, prevMax := 0.0, 0.0
-	for _, t := range tiers {
-		list := orderT[t]
-		mx, total := 0.0, 0.0
-		for _, id := range list {
-			s := g.Nodes[id].Sz
-			if s > mx {
-				mx = s
-			}
-			total += 2*s + gapArc
+	// Concentric rings around the centre. Each tier gets a band; a crowded tier is
+	// split into several concentric SUB-rings so no single circle is overpacked —
+	// that's what keeps nodes from touching even on tiers with hundreds of members.
+	// Within a sub-ring nodes are spread proportional to their footprint. Clean,
+	// deterministic, radiates outward — no collision scatter.
+	placeRing := func(sub []string, r float64) {
+		total := 0.0
+		for _, id := range sub {
+			total += 2*g.Nodes[id].Sz + gapArc
 		}
 		if total <= 0 {
 			total = 1
 		}
-		r := math.Max(total/(2*math.Pi), prevR+prevMax+mx+gapRing)
-		if t == tiers[0] && len(list) <= 1 { // the centre (domain) sits at the origin
-			r = 0
-		}
 		ang := 0.0
-		for _, id := range list {
+		for _, id := range sub {
 			w := (2*g.Nodes[id].Sz + gapArc) / total * 2 * math.Pi
 			mid := ang + w/2
-			if r == 0 {
-				g.Nodes[id].X, g.Nodes[id].Y = 0, 0
-			} else {
-				g.Nodes[id].X = r * math.Cos(mid)
-				g.Nodes[id].Y = r * math.Sin(mid)
-			}
+			g.Nodes[id].X = r * math.Cos(mid)
+			g.Nodes[id].Y = r * math.Sin(mid)
 			ang += w
+		}
+	}
+	prevR, prevMax := 0.0, 0.0
+	for _, t := range tiers {
+		list := orderT[t]
+		if len(list) == 0 {
+			continue
+		}
+		mx := 0.0
+		for _, id := range list {
+			if g.Nodes[id].Sz > mx {
+				mx = g.Nodes[id].Sz
+			}
+		}
+		if t == tiers[0] && len(list) <= 1 { // the centre (domain) sits at the origin
+			g.Nodes[list[0]].X, g.Nodes[list[0]].Y = 0, 0
+			prevR, prevMax = 0, mx
+			continue
+		}
+		r := prevR + prevMax + mx + gapRing
+		idx := 0
+		for idx < len(list) {
+			circ := 2 * math.Pi * r
+			end, used := idx, 0.0
+			for end < len(list) {
+				fp := 2*g.Nodes[list[end]].Sz + gapArc
+				if used+fp > circ && end > idx {
+					break
+				}
+				used += fp
+				end++
+			}
+			placeRing(list[idx:end], r)
+			idx = end
+			r += 2*mx + gapRing*0.55 // next sub-ring of the same tier, a little closer
 		}
 		prevR, prevMax = r, mx
 	}
