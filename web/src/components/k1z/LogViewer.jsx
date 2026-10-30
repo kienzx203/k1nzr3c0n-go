@@ -30,6 +30,11 @@ function classify(line) {
 export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
   const containerRef = useRef(null)
   const bottomRef = useRef(null)
+  // Synchronous "follow the tail" flag. The effect below reads THIS (not the async
+  // autoScroll state) so a fast log stream can't re-snap the view to the bottom
+  // in the gap before a scroll-up's setState lands — the bug that made it
+  // impossible to scroll up while logs were streaming.
+  const stickRef = useRef(true)
   const [autoScroll, setAutoScroll] = useState(true)
   const [filter, setFilter] = useState('')
   const [level, setLevel] = useState('all')  // all | error | warn | info
@@ -52,21 +57,23 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
       })
     : buffered
 
-  // Auto-scroll to bottom
+  // Stick to the bottom ONLY while the user is following the tail (stickRef).
+  // stickRef is updated synchronously on scroll, so it's never stale here.
   useEffect(() => {
-    if (autoScroll && !filter) {
-      bottomRef.current?.scrollIntoView({ behavior: 'instant' })
-    }
-  }, [logs.length, autoScroll, filter])
+    if (filter || !stickRef.current) return
+    bottomRef.current?.scrollIntoView({ behavior: 'instant' })
+  }, [logs.length, filter])
 
-  // Detect manual scroll up → disable auto-scroll
+  // Detect manual scroll → follow the tail only when at the bottom. Setting the
+  // ref is synchronous (decides the next log's behaviour immediately); the state
+  // just keeps the checkbox in sync for the UI.
   const handleScroll = useCallback((e) => {
     const el = e.target
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-    if (!atBottom && autoScroll) setAutoScroll(false)
-    if (atBottom && !autoScroll) setAutoScroll(true)
+    stickRef.current = atBottom
+    setAutoScroll(prev => (prev === atBottom ? prev : atBottom))
     setScrollTop(el.scrollTop)
-  }, [autoScroll])
+  }, [])
 
   // Virtual window: only render WIN_ROWS rows
   const totalH = visible.length * ROW_H
@@ -122,7 +129,7 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
           onChange={e => setFilter(e.target.value)}
         />
         <label className="flex items-center gap-1.5 text-xs text-[var(--text-2)] cursor-pointer select-none">
-          <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} className="accent-[var(--accent)]" />
+          <input type="checkbox" checked={autoScroll} onChange={e => { const v = e.target.checked; stickRef.current = v; setAutoScroll(v); if (v) bottomRef.current?.scrollIntoView({ behavior: 'instant' }) }} className="accent-[var(--accent)]" />
           Auto-scroll
         </label>
         <div className="flex items-center gap-1">
@@ -147,10 +154,11 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
       </div>
 
       {/* Log pane */}
+      <div className="relative flex-1 overflow-hidden">
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 py-3 bg-[var(--bg-soft)]"
+        className="h-full overflow-y-auto px-4 py-3 bg-[var(--bg-soft)]"
         style={{ fontSize: 11, lineHeight: `${ROW_H}px`, fontFamily: 'monospace' }}
       >
         {/* Load-older banner */}
@@ -188,6 +196,16 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
         </div>
 
         <div ref={bottomRef} />
+      </div>
+      {!autoScroll && (
+        <button
+          onClick={() => { stickRef.current = true; setAutoScroll(true); bottomRef.current?.scrollIntoView({ behavior: 'instant' }) }}
+          title="Jump to latest"
+          className="absolute bottom-3 right-4 z-10 flex items-center gap-1 text-[11px] font-mono px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--bg)] text-[var(--text-2)] shadow-lg hover:text-[var(--text)] hover:border-[var(--accent)] transition-colors"
+        >
+          ↓ Bottom{running ? ' · live' : ''}
+        </button>
+      )}
       </div>
     </div>
   )
