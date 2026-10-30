@@ -345,6 +345,9 @@ let maxTier=2; const expanded=new Set(); let revealed=new Set();
 function recomputeRevealed(){ revealed=new Set();
  expanded.forEach(e=>{ if(!g.hasNode(e))return; const et=g.getNodeAttribute(e,'tier');
    g.forEachNeighbor(e,nb=>{ const nt=g.getNodeAttribute(nb,'tier'); if(nt>maxTier&&nt>et)revealed.add(nb); }); }); }
+// kids = number of deeper-tier neighbours a node has — used to show a "＋N" badge
+// on collapsed nodes so you can tell at a glance which ones can be expanded.
+function computeKids(){ g.forEachNode((id,a)=>{ let k=0; const t=a.tier; g.forEachNeighbor(id,nb=>{ if(g.getNodeAttribute(nb,'tier')>t)k++; }); g.setNodeAttribute(id,'kids',k); }); }
 function passFilter(id,a){
  if(a.group==='sub_dead'&&!filter.showDead)return false; // dead subs hidden until the box is ticked
  if(filter.only){ if(!filter.only.has(a.group))return false; }
@@ -481,12 +484,14 @@ function render(){
  renderer=new Sigma(g,$('cy'),{defaultEdgeColor:EDGECOL,labelColor:{color:LABELCOL},labelSize:11,labelWeight:'600',
    labelFont:'Inter,system-ui,sans-serif',labelRenderedSizeThreshold:9,labelDensity:0.4,labelGridCellSize:150,
    renderEdgeLabels:false,zIndex:true,minCameraRatio:0.015,maxCameraRatio:22,
-   hideEdgesOnMove:true,hideLabelsOnMove:true});
+   hideEdgesOnMove:true,hideLabelsOnMove:true,
+   itemSizesReference:'positions',zoomToSizeRatioFunction:x=>x}); // node radius is in GRAPH units → server collision (also graph units) means no visual overlap at any zoom
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
    if(!passFilter(n,a))return Object.assign({},d,{hidden:true});
    let o=nodeScale!==1?Object.assign({},d,{size:d.size*nodeScale}):d;
    if(colorBy&&metrics){ o=applyMetric(n,o); }
    if(annos[n]&&annos[n].tag)o=Object.assign({},o,{label:'🏷 '+(o.label||a.label),zIndex:(o.zIndex||1)+1});
+   if(a.kids>0 && a.tier>=maxTier && !expanded.has(n))o=Object.assign({},o,{label:(o.label||a.label)+'  ＋'+a.kids,forceLabel:true}); // collapsed: always show how many children can be expanded
    if(pathSet){ return pathSet.has(n)?Object.assign({},o,{zIndex:3,size:o.size*1.15}):Object.assign({},o,{color:DIM,label:'',zIndex:0}); }
    if(focus){ return focus.has(n)?Object.assign({},o,{zIndex:2}):Object.assign({},o,{color:DIM,label:'',size:Math.max(2,o.size*0.6),zIndex:0}); }
    if(hover){ if(hover.has(n)){ o=Object.assign({},o,{zIndex:4,highlighted:n===hoverNode,size:n===hoverNode?o.size*1.25:o.size}); }
@@ -696,7 +701,7 @@ function load(){ stopLayout(); hover=null; $('stat').textContent='loading '+MODE
  const url=MODE==='full'?BASE+'/full':BASE+'/overview?hostCap=200';
  fetch(url).then(r=>r.json()).then(sg=>{
    g.clear(); expanded.clear(); revealed=new Set(); if(renderer){renderer.kill();renderer=null;}
-   add(sg); render(); updateStat(); loadAnnos(); buildAllList(); // positions are server-computed — NO in-browser force layout
+   add(sg); computeKids(); render(); updateStat(); loadAnnos(); buildAllList(); // positions are server-computed — NO in-browser force layout
    if(colorBy)loadMetrics(()=>renderer&&renderer.refresh());
    setTimeout(()=>{$('spin').style.display='none';
      if(pendingCam){ try{ renderer&&renderer.getCamera().animate(pendingCam,{duration:450}); }catch(e){} pendingCam=null; } // restore a saved view's framing

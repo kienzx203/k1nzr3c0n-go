@@ -189,7 +189,7 @@ func deOverlap(g *Graph, ids []string) {
 			maxr = nd.Sz
 		}
 	}
-	gap := maxr * 0.7
+	gap := maxr * 1.1 // generous spacing so radii never touch, with margin to spare
 	cell := maxr*2 + gap
 	iters := 140
 	if n > 5000 {
