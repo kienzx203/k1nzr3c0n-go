@@ -196,22 +196,35 @@ EOF
 )
 
 ORCH=$(cat <<'EOF'
-RECON ORCHESTRATION — ONE inventory; workflows PRIMARY, hand-recon fills GAPS only.
-0 SEE FIRST: recon_graph (the full relationship map — spot pivots/chokepoints/high-risk hosts at a glance)
-  + recon_findings + recon_assets; never re-scan what's already mapped.
-1 BREADTH: list_workflows -> run_workflow by PURPOSE (never hardcode a filename). NON-BLOCKING: returns a
-  run_id, runs concurrently — do OTHER work, FOLLOW with run_status (cheapest) + run_log (raw=true to inspect
-  one step); as each run finishes RE-READ recon_graph to absorb the new surface + read findings/assets. Do
-  NOT busy-poll. A run is done only at status completed/failed; its brief auto-pushes back. Registered target
-  ONLY -> else STOP+record. Empty interim != "none" while live.
-2 RECONCILE: merge + dedup + tag. report_finding = access/impact you PROVED this run (reproducible PoC) only;
-  version/CVE/exposure observations -> record_fact; the final narrative draws on BOTH. list_untested_assets.
+RECON ORCHESTRATION — ONE inventory; workflows PRIMARY, hand-recon fills GAPS only. You DRIVE the
+k1nzr3c0n Workflow Runner and read the surface back through four channels (workflow/log/graph/DB); exact
+tool wiring = the `recon-engine` skill, control lifecycle = `workflow-control`. NEVER keep raw scan dumps
+in context — persist, then DROP.
+0 SEE FIRST, CHEAPEST->NARROW (don't dump the full map by reflex): recon_graph(target, summary=true) to
+  size the surface (node counts + findings-by-severity), THEN recon_graph(target, q="admin"/...) to search
+  and recon_findings / recon_assets for detail; recon_graph(target, node="h:host") to drill one node + its
+  neighbours; the FULL map (recon_graph target) only when you truly need it all. Map =
+  host<->ip<->asn/subnet<->url/path<->param<->finding (pivots/chokepoints/high-risk hosts). Never re-scan
+  what's already mapped.
+1 BREADTH: list_workflows -> run_workflow by PURPOSE (never hardcode a filename); for a targeted/stealth
+  run, describe_workflow(<file>) first then run_workflow(target, <file>, full=false, vars={...}). NON-BLOCKING:
+  returns a run_id, runs concurrently — do OTHER work, FOLLOW with run_status (cheapest) + run_log (raw=true to
+  inspect one step). As a run progresses, recon_graph(target, run_id, summary=true) shows THAT run's DELTA
+  (what it just added) — cheaper than re-reading the whole map each poll. Don't busy-poll; a run is done only
+  at completed/failed (brief auto-pushes back). Registered target ONLY -> else STOP+record. Lost a run_id to a
+  compaction? recon_runs(target, status=running). Wrong/drifting run? stop_workflow(run_id). Empty interim != "none".
+2 RECONCILE: merge + dedup + tag. PIN leads as you spot them -> graph_note(target, node, tag="priority",
+  note="why it matters") so they persist through a compaction and show in the graph viewer; graph_note(target)
+  (no node) re-lists your pinned leads. report_finding = access/impact you PROVED this run (reproducible PoC)
+  only; version/CVE/exposure observations -> record_fact; the final narrative draws on BOTH. list_untested_assets.
 3 GAP-FILL by hand ONLY what workflows missed (DEEP-DIVE + non-web/edge/cloud/leak). Abandon a line after
   ~2 failed attempts or when its cost exceeds its value to the objective; record the dead end and move on.
 4 LEDGER (TodoWrite): every in-scope asset + high-value endpoint = item, mark tested/untested.
-5 LOOP: new sub/host under an already-registered root -> mine from its run + hand-recon (do NOT re-run one
-  sub; run_workflow takes an exactly-registered target). New REGISTERED root -> run_workflow again.
-run_workflow runs ALL options (pivot + neighbor /24 PTR stay off for scope safety; full=false for defaults).
+5 LOOP on new surface: a new sub/host/param under an already-registered root -> launch a TARGETED run that
+  scans JUST those hosts: run_workflow(target, <file>, vars={"target_hosts":"<new hosts, comma/space-sep>",
+  "run_passive":"false"}) (+ the scan toggles you need), then follow its delta with recon_graph(target, run_id).
+  A new REGISTERED root -> run_workflow again. Don't re-run the whole target for one new host.
+run_workflow runs ALL options by default (pivot + neighbor /24 PTR stay off for scope safety; full=false for defaults).
 6 ROUTE TO SKILL: once the surface is read, INVOKE the matching offensive domain skill instead of attacking
   from memory (recon-to-attack maps it): web -> web-pentest; SMB/LDAP/Kerberos/RDP -> network-attack +
   active-directory-attack; cloud -> cloud-security; docker/k8s -> container-k8s-escape; secrets -> red-team-ops;
@@ -264,66 +277,31 @@ GOAL="Authorized RED TEAM adversary-emulation (MITRE ATT&CK): map the full attac
 echo "Creating the Red Team task template on $BASE_URL ..."
 create "Red Team" "$GOAL" "$DESC"
 
-# ── Template 2: Recon-Driven Pentest ─────────────────────────────────────────
-# A focused template built tightly around the k1nzr3c0n engine linkage: the task
-# agent drives the Workflow Runner and reads the surface back through the four
-# channels (workflow / log / graph / DB), then validates & reports. Lighter than
-# Red Team; the loop mirrors the `recon-engine` + `recon-first-pentest` skills.
-RDLINK=$(cat <<'EOF'
-You are an authorized pentest task agent. You do NOT scan by hand — you DRIVE the k1nzr3c0n Workflow
-Runner and read the attack surface back through four channels, then validate and report. Load these skills:
-`recon-engine` (exact tool wiring), `workflow-control` (choose/tune/launch/follow/stop a workflow),
-`recon-first-pentest` (recon -> read -> attack), and `recon-to-attack` (maps the surface to the right
-offensive domain skill). Up front also invoke the DISCIPLINE skills and keep them in force: `scope-discipline`,
-`opsec-discipline`, `finding-discipline`, `threat-model-discipline`.
+# The former standalone "Recon-Driven Pentest" template is now FOLDED INTO "Red Team"
+# (its RECON ORCHESTRATION section drives the Workflow Runner through all four
+# channels — workflow/log/graph/DB — incl. run-delta, graph_note and target_hosts).
+# Delete the old separate template if an earlier seed created it, so there is ONE
+# template, not two.
+remove_template() { # remove <name>
+  local id code
+  id=$(curl -sS -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/task-templates" 2>/dev/null \
+    | NAME="$1" python3 -c '
+import json,os,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+n=os.environ["NAME"].strip().lower()
+for t in (d.get("templates") or []):
+    if (t.get("name") or "").strip().lower()==n:
+        print(t.get("id")); break
+' 2>/dev/null || echo "")
+  [ -n "$id" ] || return 0
+  code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "$BASE_URL/api/task-templates/$id" \
+    -H "Authorization: Bearer $TOKEN" 2>/dev/null || echo 000)
+  case "$code" in
+    200|204) printf '  removed  %s (#%s) — folded into Red Team\n' "$1" "$id" ;;
+    *)       printf '  note     %s left in place (HTTP %s) — remove it in the UI if present\n' "$1" "$code" ;;
+  esac
+}
+remove_template "Recon-Driven Pentest"
 
-LINKAGE (hold this loop; NEVER keep raw scan dumps in context — persist, then DROP):
-1 CHECK FIRST (cheap -> narrow) — recon_graph(target, summary=true) to size the surface (counts +
-  findings-by-severity), then recon_graph(target, q=...) to search and recon_findings / recon_assets for
-  detail; full map (recon_graph target) only when you truly need it all. The relationship map is
-  host<->ip<->asn/subnet<->url/path<->param<->finding (pivots, chokepoints, high-risk hosts). If live
-  hosts + ports + urls/params already suffice, SKIP scanning (step 5).
-2 PICK, TUNE & LAUNCH gaps only — list_workflows (CHOOSE by description, never hardcode a name); for a
-  targeted/stealth run first describe_workflow(<file>) to see its vars, then run_workflow(target, <file>,
-  full=false, vars={...}); otherwise run_workflow(target, <file>, full=true) for max coverage. NON-BLOCKING.
-  Launch SEVERAL when the goal is broad (full-recon + JS/secrets + params). Target MUST be REGISTERED with a
-  deny-wins scope — not registered = STOP, tell the operator, never self-widen scope. Keep scope-sensitive
-  pivots OFF unless explicitly authorized.
-3 FOLLOW LIVE — run_log(run_id) (tail the step output; advance offset by the prior response's total) +
-  run_status(run_id) until completed, WHILE you recon other surface in parallel. Lost the run_id (context
-  compaction)? recon_runs(target, status=running) recovers it. Launched the wrong one or it drifts out of
-  scope? stop_workflow(run_id). Empty interim results are NOT "no findings"; do NOT wrap up while unread.
-4 SEE THE SURFACE the moment results land — recon_graph(target) again for the updated pivots/chains, then
-  recon_findings / recon_assets for detail.
-5 ROUTE TO SKILL (recon-to-attack) — map what the surface shows to the matching offensive domain skill and
-  INVOKE it instead of attacking from memory: web hosts/urls/params -> web-pentest (+ vulnerability-analysis);
-  SMB/LDAP/Kerberos/RDP ports -> network-attack + active-directory-attack; cloud buckets/metadata/origin ->
-  cloud-security; secrets/keys -> red-team-ops (cred reuse); docker/k8s ports -> container-k8s-escape; a shell
-  -> privesc-linux/privesc-windows + edr-evasion; mobile/CI-CD/AI-MCP -> the matching skill. Not sure -> list
-  the skill library and pick by description.
-6 TRIAGE & ATTACK by signal (exposed old tech/version > admin/login panels > APIs/endpoints with many
-  params > 200 with real content), following the invoked skill's tradecraft; bug classes in impact order
-  (access-control/IDOR -> auth/JWT/OAuth -> SSRF -> injection (SQLi/SSTI/cmd) -> file upload -> secrets in JS).
-  Validate with a MINIMAL, NON-destructive PoC — enough to prove impact, no DoS. Strictly in-scope.
-7 PERSIST immediately, then DROP raw output: new asset/host/service/endpoint/cred -> insert_assets;
-  conclusion/observation -> record_fact (with intent_id); confirmed + reproduced vuln -> report_finding
-  (with the minimal PoC). Only SAVED results survive a context compaction.
-8 NEW SURFACE mid-attack (new subdomain/host/param) -> NARROW loop back to step 1 for THAT surface only,
-  not a full re-scan.
-
-RULES (deny-wins — YOU own the scope call before every action): in-scope only (names AND their dedicated
-origin IPs; unsure = OUT, skip); an IP is in-scope only if registered or a registered name's confirmed
-dedicated A-record (ASN/CIDR/PTR/favicon/shared-hosting neighbors = OUT candidates, never scan targets; on
-a shared/CDN IP send only in-scope Host/SNI, no port-scan/vhost/neighbor enum). IP FOOTPRINT: to find the
-org's IP ranges from the domain (even for hosts whose name you don't know), map every RESOLVED IP to its
-owning ASN (Team Cymru) then expand each ASN to ALL its prefixes, unioned from RIPEstat + bgp.he.net +
-bgpview.io + bgpq4 (all keyless) — workflow step `asn_expand` does this -> asn_ipv4_cidrs (org-wide sibling
-ASNs via bgpview search -> asn_org_cidrs INTEL); the mail/CRM tier often lives in a different netblock than
-the web tier; each derived CIDR stays an OUT candidate until proven target-dedicated. Scope GROWS only when a human adds it. No DoS, no mass exploitation, no destructive action. Prove impact WITHOUT bulk exfil
-(metadata / screenshot / row-count, or AT MOST one redacted record); redact secrets in findings. Leave
-heavy/loud scanning to run_workflow; your job is choose -> follow -> read -> triage -> validate -> persist.
-EOF
-)
-RDGOAL="Recon-driven authorized pentest: DRIVE the k1nzr3c0n Workflow Runner (list_workflows / run_workflow / run_log / run_status) and read the attack surface via recon_graph + recon_findings / recon_assets, then triage by signal, validate with minimal non-destructive PoCs, and report — REUSE existing recon before scanning, strictly in-scope (names AND dedicated origin IPs), non-destructive, persist results then drop raw output."
-create "Recon-Driven Pentest" "$RDGOAL" "$RDLINK"
 echo "Done. Open New task -> Task template dropdown, or Manage templates."
