@@ -225,7 +225,14 @@ export default function RunDetail() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    // Definite viewport-based height (NOT h-full): the app shell uses min-h-svh with
+    // no definite-height root, so a percentage h-full collapses to content height —
+    // the log pane then never clips, the page grows as tall as the whole log, and
+    // auto-scroll drags the header/tabs off the top (leaving a black void). Sizing to
+    // the viewport minus the app header (3rem) and this content area's padding
+    // (p-4 → 2rem / md:p-6 → 3rem) bounds the page so the log pane scrolls INTERNALLY.
+    // Mirrors the app's own full-height pages (e.g. function/commands uses calc(100vh-…)).
+    <div className="flex flex-col h-[calc(100vh-5rem)] md:h-[calc(100vh-6rem)] min-h-0">
       {/* Header */}
       <div className="border-b border-[var(--border)] px-6 py-4 flex items-start justify-between">
         <div>
