@@ -112,63 +112,69 @@ func (g *Graph) Layout() {
 		sort.Strings(children[p])
 	}
 
-	// subtree weight (leaf count, min 1) drives how much of the arc each node gets.
-	weight := make(map[string]float64, n)
-	var wf func(string) float64
-	wf = func(id string) float64 {
-		if w, ok := weight[id]; ok {
-			return w
-		}
-		ch := children[id]
-		if len(ch) == 0 {
-			weight[id] = 1
-			return 1
-		}
-		s := 0.0
-		for _, c := range ch {
-			s += wf(c)
-		}
-		if s < 1 {
-			s = 1
-		}
-		weight[id] = s
-		return s
-	}
-	wf(root)
-
-	rings := []float64{0, 320, 680, 1080, 1520}
-	ringR := func(t int) float64 {
-		if t < len(rings) {
-			return rings[t]
-		}
-		return rings[len(rings)-1] + float64(t-len(rings)+1)*360
-	}
-
-	var assign func(id string, a0, a1 float64)
-	assign = func(id string, a0, a1 float64) {
-		mid := (a0 + a1) / 2
-		r := ringR(tier[id])
-		g.Nodes[id].X = r * math.Cos(mid)
-		g.Nodes[id].Y = r * math.Sin(mid)
-		ch := children[id]
-		if len(ch) == 0 {
-			return
-		}
-		tot := 0.0
-		for _, c := range ch {
-			tot += weight[c]
-		}
-		cur := a0
-		for _, c := range ch {
-			span := (a1 - a0) * weight[c] / tot
-			assign(c, cur, cur+span)
-			cur += span
+	// DFS order per tier: a parent's whole subtree is contiguous, so its children
+	// land in a block "under" the parent's wedge and edges radiate outward.
+	orderT := map[int][]string{}
+	var dfs func(string)
+	dfs = func(id string) {
+		orderT[tier[id]] = append(orderT[tier[id]], id)
+		for _, c := range children[id] {
+			dfs(c)
 		}
 	}
-	assign(root, 0, 2*math.Pi)
-	g.Nodes[root].X, g.Nodes[root].Y = 0, 0
+	dfs(root)
 
-	deOverlap(g, ids)
+	maxOverall := 1.0
+	for _, id := range ids {
+		if g.Nodes[id].Sz > maxOverall {
+			maxOverall = g.Nodes[id].Sz
+		}
+	}
+	gapArc := maxOverall * 0.9   // spacing between neighbours along a ring
+	gapRing := maxOverall*3 + 40 // clearance between concentric rings
+
+	tiers := make([]int, 0, len(orderT))
+	for t := range orderT {
+		tiers = append(tiers, t)
+	}
+	sort.Ints(tiers)
+
+	// Concentric rings around the centre: each tier on its own circle, the radius
+	// grown so the whole tier fits without overlap and clears the ring inside it;
+	// nodes are spread around the ring proportional to their footprint. Clean,
+	// deterministic, radiates outward from the domain — no collision scatter.
+	prevR, prevMax := 0.0, 0.0
+	for _, t := range tiers {
+		list := orderT[t]
+		mx, total := 0.0, 0.0
+		for _, id := range list {
+			s := g.Nodes[id].Sz
+			if s > mx {
+				mx = s
+			}
+			total += 2*s + gapArc
+		}
+		if total <= 0 {
+			total = 1
+		}
+		r := math.Max(total/(2*math.Pi), prevR+prevMax+mx+gapRing)
+		if t == tiers[0] && len(list) <= 1 { // the centre (domain) sits at the origin
+			r = 0
+		}
+		ang := 0.0
+		for _, id := range list {
+			w := (2*g.Nodes[id].Sz + gapArc) / total * 2 * math.Pi
+			mid := ang + w/2
+			if r == 0 {
+				g.Nodes[id].X, g.Nodes[id].Y = 0, 0
+			} else {
+				g.Nodes[id].X = r * math.Cos(mid)
+				g.Nodes[id].Y = r * math.Sin(mid)
+			}
+			ang += w
+		}
+		prevR, prevMax = r, mx
+	}
 }
 
 // deOverlap pushes every pair of nodes apart until (distance ≥ r1 + r2 + gap),

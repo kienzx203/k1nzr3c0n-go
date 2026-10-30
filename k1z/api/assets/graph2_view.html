@@ -510,7 +510,7 @@ function render(){
    // hidden by the depth gate). Then inspect + spotlight as before.
    if(!filter.only){ const t=g.getNodeAttribute(node,'tier'); let hasDeep=false;
      g.forEachNeighbor(node,nb=>{ const nt=g.getNodeAttribute(nb,'tier'); if(nt>t&&nt>maxTier)hasDeep=true; });
-     if(hasDeep){ expanded.has(node)?expanded.delete(node):expanded.add(node); recomputeRevealed(); updateStat(); idleDraw(); } }
+     if(hasDeep){ expanded.has(node)?expanded.delete(node):expanded.add(node); recomputeRevealed(); updateStat(); idleDraw(); fitVisible(450); } } // re-frame so the revealed outer-ring children come into view
    pathSet=null; focus=hood(node); renderer.refresh(); detail(node); });
  renderer.on('clickStage',()=>{ if(focus||pathSet){focus=null;pathSet=null;renderer.refresh();} });
  renderer.on('rightClickNode',e=>{ const o=e.event&&e.event.original; if(o)o.preventDefault(); showCtx(o?o.clientX:e.event.x,o?o.clientY:e.event.y,e.node); });
