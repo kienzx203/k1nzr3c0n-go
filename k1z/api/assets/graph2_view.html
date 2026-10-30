@@ -1,7 +1,7 @@
 <!doctype html><html><head><meta charset="utf-8">
 <title>Attack surface</title><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/graphology/0.25.4/graphology.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/graphology-library@0.8.0/dist/graphology-library.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sigma.js/2.4.0/sigma.min.js"></script>
@@ -15,7 +15,7 @@
   --hover:#f2f6fc; --hover2:#eef4ff; --scroll:#dbe2ec; --hintbg:rgba(255,255,255,.78);
   --sh-sm:0 1px 2px rgba(16,24,40,.05); --sh:0 4px 16px rgba(16,24,40,.08); --sh-lg:0 14px 36px rgba(16,24,40,.17);
   --ui:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
  }
  html[data-theme="dark"]{
   --bg:#0d1117; --surface:#161b22; --fg:#e6edf3; --fg2:#9aa5b1; --mut:#6e7781;
@@ -523,7 +523,7 @@ const hood=id=>{const s=new Set([id]); g.forEachNeighbor(id,nb=>s.add(nb)); retu
 function render(){
  if(renderer){renderer.refresh();return;}
  renderer=new Sigma(g,$('cy'),{defaultEdgeColor:EDGECOL,labelColor:{color:LABELCOL},labelSize:11,labelWeight:'600',
-   labelFont:'"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',labelRenderedSizeThreshold:9,labelDensity:0.4,labelGridCellSize:150,
+   labelFont:'"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',labelRenderedSizeThreshold:9,labelDensity:0.4,labelGridCellSize:150,
    renderEdgeLabels:false,zIndex:true,minCameraRatio:0.015,maxCameraRatio:22,
    hideEdgesOnMove:true,hideLabelsOnMove:true});
  renderer.setSetting('nodeReducer',(n,d)=>{ const a=g.getNodeAttributes(n);
@@ -973,6 +973,6 @@ function buildLegend(){ $('legend').innerHTML=LEGEND.map(([g,l])=>'<span class="
 document.addEventListener('click',hideCtx);
 applyTheme(); buildFilters(); buildLegend(); load();
 // canvas labels are drawn before the web fonts finish loading; re-render once
-// JetBrains Mono / Inter are ready so node labels pick up the pro font.
+// IBM Plex Mono / Inter are ready so node labels pick up the pro font.
 if(document.fonts&&document.fonts.ready){document.fonts.ready.then(()=>{try{renderer&&renderer.refresh();}catch(e){}});}
 </script></body></html>
