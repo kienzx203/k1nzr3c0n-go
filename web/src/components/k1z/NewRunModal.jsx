@@ -23,6 +23,7 @@ const WORKFLOW_KEY_DEPS = {
 const SUBFINDER_TOTAL = 21
 
 const PRIORITY_VARS = [
+  'target_hosts', 'subdomains_list',
   'org_name',
   'method', 'katana_depth', 'katana_concurrency', 'katana_timeout',
   'arjun_rate', 'arjun_threads', 'ffuf_threads', 'ffuf_filter_size',
@@ -32,6 +33,8 @@ const PRIORITY_VARS = [
 ]
 
 const VAR_LABEL = {
+  target_hosts: 'Target hosts — specific hosts to scan (comma/space-separated); focuses the run on these (use 05-scan-hosts for a pure targeted scan)',
+  subdomains_list: 'Subdomains list — path to a file of hosts to seed the scan',
   org_name: 'Org name — AUTO-detected from ASN (override only to force a specific org)',
   method: 'Method',
   katana_depth: 'Katana depth',
