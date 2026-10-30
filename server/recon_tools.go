@@ -149,21 +149,52 @@ func reconTools() []actool.CoreTool {
 				return "/api/v1/assets?" + q.Encode()
 			}),
 		reconReadTool("recon_graph",
-			"Read the FULL attack-surface RELATIONSHIP MAP for a target: every host with its IPs/ports/provider/URLs/paths/params/findings, every IP with its ASN/subnet/hosts, plus domain-level buckets/secrets/certs/dns/intel, node counts and findings-by-severity. The single best way to SEE the whole surface and plan pivots/chains — call it once recon workflows have landed, and again as new runs finish. Use recon_findings/recon_assets for exhaustive flat lists; run_log for a run's live progress.",
+			"Read the attack-surface RELATIONSHIP MAP for a target — 4 modes, cheapest first (prefer narrow reads; the full map of a big target is huge):\n"+
+				"• summary=true → ONLY node counts by type + findings-by-severity. START HERE to size the surface cheaply, then drill.\n"+
+				"• q=<text> → SEARCH: matching nodes (host/ip/url/param/finding…) as a flat list. Use to find e.g. admin panels, a specific host, a param — token-light.\n"+
+				"• node=<id> → DRILL ONE node and its neighbours (ids come from a prior map/search, e.g. h:example.com, ip:1.2.3.4). Walk pivots/chains step by step.\n"+
+				"• (none) → FULL map: every host with its IPs/ports/provider/URLs/paths/params/findings, every IP with ASN/subnet/hosts, plus domain buckets/secrets/certs/dns/intel. Bounded by hosts (default 400, highest-risk first); a `truncated` map reports what was dropped — narrow with q/node instead of raising it.\n"+
+				"Call again as new runs finish (it rebuilds live per completed step). Exhaustive flat lists: recon_findings/recon_assets; live run progress: run_log.",
 			rtObj(map[string]any{
-				"target": rtStr("the target host/domain, e.g. example.com (scheme/path/port are ignored)"),
-				"hosts":  rtInt("max hosts to include, highest-risk first (default 400)"),
+				"target":  rtStr("the target host/domain, e.g. example.com (scheme/path/port are ignored)"),
+				"summary": map[string]any{"type": "boolean", "description": "true = cheap overview only (counts by type + findings-by-severity). Start here."},
+				"q":       rtStr("search text → return only matching nodes as a flat list (token-light)"),
+				"node":    rtStr("a node id (e.g. h:host, ip:1.2.3.4) → return just that node + its neighbours"),
+				"hosts":   rtInt("full-map mode only: max hosts, highest-risk first (default 400)"),
+				"limit":   rtInt("q/node modes: max rows (search default 50, neighbours default 200)"),
 			}, "target"),
 			func(in json.RawMessage) string {
 				var p struct {
-					Target string `json:"target"`
-					Hosts  int    `json:"hosts"`
+					Target  string `json:"target"`
+					Summary bool   `json:"summary"`
+					Q       string `json:"q"`
+					Node    string `json:"node"`
+					Hosts   int    `json:"hosts"`
+					Limit   int    `json:"limit"`
 				}
 				_ = json.Unmarshal(in, &p)
-				if p.Hosts <= 0 {
-					p.Hosts = 400
+				base := "/api/v1/targets/" + url.PathEscape(p.Target) + "/graph2"
+				switch {
+				case p.Summary:
+					return base + "/stats"
+				case strings.TrimSpace(p.Node) != "":
+					lim := p.Limit
+					if lim <= 0 {
+						lim = 200
+					}
+					return base + "/neighbors?id=" + url.QueryEscape(p.Node) + "&limit=" + fmt.Sprint(lim)
+				case strings.TrimSpace(p.Q) != "":
+					lim := p.Limit
+					if lim <= 0 {
+						lim = 50
+					}
+					return base + "/search?q=" + url.QueryEscape(p.Q) + "&limit=" + fmt.Sprint(lim)
+				default:
+					if p.Hosts <= 0 {
+						p.Hosts = 400
+					}
+					return base + "/map?hosts=" + fmt.Sprint(p.Hosts)
 				}
-				return "/api/v1/targets/" + url.PathEscape(p.Target) + "/graph2/map?hosts=" + fmt.Sprint(p.Hosts)
 			}),
 		reconReadTool("run_status",
 			"Check a Workflow Runner run's progress (status, step counts, findings so far). Poll after run_workflow until status is completed/failed/paused, then read results with recon_findings/recon_assets.",
@@ -211,8 +242,186 @@ func reconTools() []actool.CoreTool {
 			"List the recon workflows available to run_workflow, each with a description. Call this FIRST to pick the workflow(s) that fit the current situation — then run_workflow the ones you need (you can run several). Pick by purpose: broad surface mapping, JS/secrets, parameter discovery, etc.",
 			rtObj(map[string]any{}),
 			func(json.RawMessage) string { return "/api/v1/workflows?detail=1" }),
+		reconDescribeWorkflow(),
 		reconRunWorkflow(),
+		reconListRuns(),
+		reconStopWorkflow(),
 	}
+}
+
+// reconDescribeWorkflow exposes ONE workflow's tunable variables (its run_* toggles,
+// wordlists, threads, auth/session vars, …) + description + step count, so the agent
+// can run a TARGETED or STEALTH variant (set specific vars + full=false) instead of
+// always launching the max-coverage default. Trimmed: it never dumps the hundreds of
+// raw steps — only their count.
+func reconDescribeWorkflow() actool.CoreTool {
+	return actool.Build(actool.Spec{
+		Name:        "describe_workflow",
+		Description: "Show ONE workflow's tunable variables (vars) + description + step count, so you can run a TARGETED/STEALTH variant: set specific vars and pass full=false to run_workflow (otherwise full=true turns every option on). E.g. a param-discovery workflow exposes session_cookie/auth_header/method; a full-recon workflow exposes run_portscan/run_nuclei/run_screenshot toggles you can switch off to stay quiet. Pick the workflow name from list_workflows.",
+		Schema: rtObj(map[string]any{
+			"workflow": rtStr("workflow file name, e.g. 01-full-recon-pipeline.yaml"),
+		}, "workflow"),
+		ReadOnly:   func(json.RawMessage) bool { return true },
+		Concurrent: func(json.RawMessage) bool { return true },
+		Permissions: func(context.Context, json.RawMessage, permission.Context) permission.Decision {
+			return permission.Allowed()
+		},
+		Run: func(ctx context.Context, in json.RawMessage, _ *actool.ToolContext) (actool.Result, error) {
+			var p struct {
+				Workflow string `json:"workflow"`
+			}
+			_ = json.Unmarshal(in, &p)
+			if strings.TrimSpace(p.Workflow) == "" {
+				return actool.Errorf("workflow is required"), nil
+			}
+			data, code, err := reconRaw(ctx, "GET", "/api/v1/workflows/"+url.PathEscape(p.Workflow), nil)
+			if err != nil || code != 200 {
+				return actool.Errorf(fmt.Sprintf("describe_workflow: workflow %q not found (HTTP %d)", p.Workflow, code)), nil
+			}
+			var wf struct {
+				Name        string         `json:"name"`
+				Description string         `json:"description"`
+				Vars        map[string]any `json:"vars"`
+				Steps       []any          `json:"steps"`
+			}
+			if json.Unmarshal(data, &wf) != nil {
+				return actool.Errorf("describe_workflow: could not parse workflow"), nil
+			}
+			body, _ := json.Marshal(map[string]any{
+				"workflow": p.Workflow, "name": wf.Name, "description": wf.Description,
+				"vars": wf.Vars, "step_count": len(wf.Steps),
+			})
+			return actool.Text(string(body)), nil
+		},
+	})
+}
+
+// reconStopWorkflow lets the agent CANCEL a running workflow (wrong one launched, a
+// run gone out of scope, or the operator said stop). Without this the agent could
+// launch but never stop a run.
+func reconStopWorkflow() actool.CoreTool {
+	return actool.Build(actool.Spec{
+		Name:        "stop_workflow",
+		Description: "Cancel a running Workflow Runner run by run_id (e.g. you launched the wrong workflow, a run is drifting out of scope, or the operator said stop). Use recon_runs(target, status=running) to find the run_id if you lost it. Irreversible for that run; relaunch with run_workflow if needed.",
+		Schema: rtObj(map[string]any{
+			"run_id": rtStr("the run id to cancel (from run_workflow / recon_runs)"),
+		}, "run_id"),
+		ReadOnly:   func(json.RawMessage) bool { return false },
+		Concurrent: func(json.RawMessage) bool { return false },
+		Permissions: func(context.Context, json.RawMessage, permission.Context) permission.Decision {
+			return permission.Allowed()
+		},
+		Run: func(ctx context.Context, in json.RawMessage, _ *actool.ToolContext) (actool.Result, error) {
+			var p struct {
+				RunID string `json:"run_id"`
+			}
+			_ = json.Unmarshal(in, &p)
+			if strings.TrimSpace(p.RunID) == "" {
+				return actool.Errorf("run_id is required"), nil
+			}
+			data, code, err := reconRaw(ctx, "POST", "/api/v1/runs/"+url.PathEscape(p.RunID)+"/cancel", nil)
+			if err != nil {
+				return actool.Errorf("stop_workflow failed: " + err.Error()), nil
+			}
+			if code >= 300 {
+				return actool.Errorf(fmt.Sprintf("stop_workflow failed (HTTP %d): %s", code, strings.TrimSpace(string(data)))), nil
+			}
+			return actool.Text(fmt.Sprintf("Run %s cancelled. %s", p.RunID, strings.TrimSpace(string(data)))), nil
+		},
+	})
+}
+
+// normHost canonicalises a target to its bare lowercase host (no scheme/path/port),
+// mirroring targetgraph.NormTarget so "https://x", "x" and "x:443" all match one
+// target. Kept inline to avoid pulling the k1z graph packages into server.
+func normHost(t string) string {
+	t = strings.TrimSpace(t)
+	if i := strings.Index(t, "://"); i >= 0 {
+		t = t[i+3:]
+	}
+	if i := strings.IndexAny(t, "/?#"); i >= 0 {
+		t = t[:i]
+	}
+	if !strings.Contains(t, "]") {
+		if i := strings.IndexByte(t, ':'); i >= 0 {
+			t = t[:i]
+		}
+	}
+	return strings.ToLower(strings.TrimSuffix(t, "."))
+}
+
+// reconListRuns lets the agent RE-DISCOVER a target's runs (id/workflow/status)
+// after it loses a run_id to a context compaction — so "don't wrap up while a run
+// is unread" survives. Filters the runs list by normalised target and returns a
+// compact list (not the heavy steps/vars blobs).
+func reconListRuns() actool.CoreTool {
+	return actool.Build(actool.Spec{
+		Name:        "recon_runs",
+		Description: "List this target's Workflow Runner runs (most recent first) as {run_id, workflow, status, started, finished}. USE IT to recover a run_id you lost (e.g. after a context compaction) so you can keep following an in-flight run with run_status/run_log, or to see what recon already ran. Filter by status (e.g. running) to find what is still in flight. This is how you make sure no launched run is left unread.",
+		Schema: rtObj(map[string]any{
+			"target": rtStr("target host/domain to filter by (scheme/path/port ignored)"),
+			"status": rtStr("optional: only runs in this status (queued/running/completed/failed/paused)"),
+			"limit":  rtInt("max runs to scan (default 50, max 200)"),
+		}, "target"),
+		ReadOnly:   func(json.RawMessage) bool { return true },
+		Concurrent: func(json.RawMessage) bool { return true },
+		Permissions: func(context.Context, json.RawMessage, permission.Context) permission.Decision {
+			return permission.Allowed()
+		},
+		Run: func(ctx context.Context, in json.RawMessage, _ *actool.ToolContext) (actool.Result, error) {
+			var p struct {
+				Target string `json:"target"`
+				Status string `json:"status"`
+				Limit  int    `json:"limit"`
+			}
+			_ = json.Unmarshal(in, &p)
+			if p.Limit <= 0 {
+				p.Limit = 50
+			}
+			if p.Limit > 200 {
+				p.Limit = 200
+			}
+			q := url.Values{}
+			q.Set("limit", fmt.Sprint(p.Limit))
+			if p.Status != "" {
+				q.Set("status", p.Status)
+			}
+			data, code, err := reconRaw(ctx, "GET", "/api/v1/runs?"+q.Encode(), nil)
+			if err != nil || code != 200 {
+				return actool.Errorf(fmt.Sprintf("recon_runs failed (HTTP %d)", code)), nil
+			}
+			var resp struct {
+				Items []struct {
+					ID         string `json:"id"`
+					Workflow   string `json:"workflow"`
+					Target     string `json:"target"`
+					Status     string `json:"status"`
+					StartedAt  any    `json:"started_at"`
+					FinishedAt any    `json:"finished_at"`
+				} `json:"items"`
+			}
+			if json.Unmarshal(data, &resp) != nil {
+				return actool.Errorf("recon_runs: could not parse runs"), nil
+			}
+			want := normHost(p.Target)
+			type runRow struct {
+				RunID    string `json:"run_id"`
+				Workflow string `json:"workflow"`
+				Status   string `json:"status"`
+				Started  any    `json:"started"`
+				Finished any    `json:"finished"`
+			}
+			out := []runRow{}
+			for _, it := range resp.Items {
+				if normHost(it.Target) != want {
+					continue
+				}
+				out = append(out, runRow{it.ID, it.Workflow, it.Status, it.StartedAt, it.FinishedAt})
+			}
+			body, _ := json.Marshal(map[string]any{"target": want, "count": len(out), "runs": out})
+			return actool.Text(string(body)), nil
+		},
+	})
 }
 
 // targetExists reports whether a target is registered (so it carries a deny-wins

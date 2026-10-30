@@ -68,10 +68,18 @@ elif [ -f "$SL/Discovery/Web-Content/common.txt" ]; then
 else
   echo "  WARNING: could not obtain common.txt (no network + no SecLists)"
 fi
-# in-git skills only (leave third-party hacktricks / payloads-all-the-things as-is)
-for s in recon-first-pentest api-recon scopesentry playwright-cli; do
-  [ -d "skills/$s" ] && cp -r "skills/$s" "$BASE/skills/"
+# in-git skills: every skill dir with a SKILL.md (own recon/workflow skills + the
+# vendored offensive-claude set) + the shared references/ library + attribution.
+# Skip the huge third-party corpora (hacktricks / payloads-all-the-things), which
+# are deployed once and left as-is.
+for d in skills/*/; do
+  s=$(basename "$d")
+  case "$s" in hacktricks|payloads-all-the-things) continue;; esac
+  if [ -f "${d}SKILL.md" ] || [ "$s" = "references" ]; then
+    cp -r "$d" "$BASE/skills/"
+  fi
 done
+cp skills/OFFENSIVE-CLAUDE-LICENSE skills/OFFENSIVE-CLAUDE-NOTICE.md "$BASE/skills/" 2>/dev/null || true
 
 step "Restart $SERVICE"
 systemctl stop "$SERVICE" 2>/dev/null || true
