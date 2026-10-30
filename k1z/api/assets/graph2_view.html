@@ -65,12 +65,16 @@
  .seg button{border:0;border-radius:0;box-shadow:none;border-left:1px solid var(--bd2)}
  .seg button:first-child{border-left:0}
  /* segmented pill (depth) — modern inline toggle */
- .segpill{display:inline-flex;flex:1;border:1px solid var(--bd);border-radius:9px;overflow:hidden;background:var(--card);box-shadow:var(--sh-sm)}
- .segpill button{flex:1;border:0;border-radius:0;height:28px;padding:0;font:650 11.5px Inter,system-ui;box-shadow:none;
-   border-left:1px solid var(--bd2);background:transparent;color:var(--fg2)}
- .segpill button:first-child{border-left:0}
+ .deprow{display:flex;align-items:stretch;gap:9px;margin:3px 0 0}
+ .deplabel{display:flex;align-items:center;font:700 9.5px Inter,system-ui;letter-spacing:.09em;color:var(--mut);width:38px;flex:none}
+ .segpill{display:inline-flex;flex:1;border:1px solid var(--bd);border-radius:10px;overflow:hidden;background:var(--card);box-shadow:var(--sh-sm);padding:2px;gap:2px}
+ .segpill button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+   border:0;border-radius:7px;height:36px;padding:0;box-shadow:none;background:transparent;color:var(--fg2);transition:background .12s,color .12s}
+ .segpill button b{font:700 13px Inter,system-ui;line-height:1}
+ .segpill button i{font:700 8px Inter,system-ui;letter-spacing:.06em;font-style:normal;text-transform:uppercase;opacity:.65}
  .segpill button:hover{background:var(--hover);color:var(--fg)}
- .segpill button.on{background:linear-gradient(180deg,var(--acc),var(--acc2));color:var(--accink);box-shadow:inset 0 0 0 1px var(--acc2)}
+ .segpill button.on{background:linear-gradient(180deg,var(--acc),var(--acc2));color:var(--accink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+ .segpill button.on i{opacity:.9}
  /* canvas */
  #main{position:fixed;inset:52px 0 0 0}
  #cy{position:absolute;inset:0;background:
@@ -135,6 +139,24 @@
  .menu.open .drop{display:block}
  .drop button,#ctx button{display:flex;width:100%;text-align:left;border:0;border-radius:7px;height:32px;padding:0 10px;background:transparent;font-size:12px}
  .drop button:hover,#ctx button:hover{background:var(--hover)}
+ #sfBtn.act{color:var(--acc);border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+ .drop.facets{min-width:262px;max-width:288px;padding:4px 4px 0;right:auto;left:0}
+ .fcbody{max-height:50vh;overflow:auto;padding:4px 4px 0}
+ .fcsec{margin:0 0 9px}
+ .fchd{font:800 9px Inter,system-ui;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin:3px 2px 5px}
+ .fcchips{display:flex;flex-wrap:wrap;gap:4px}
+ .fcchip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--bd2);border-radius:999px;
+   padding:3px 9px;font-size:11px;cursor:pointer;background:var(--card);color:var(--fg);user-select:none;transition:background .1s,border-color .1s}
+ .fcchip:hover{background:var(--hover)}
+ .fcchip.on{background:linear-gradient(180deg,var(--acc),var(--acc2));color:var(--accink);border-color:var(--acc2)}
+ .fcchip .d{width:8px;height:8px;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+ .fcchip small{opacity:.55;font-size:9.5px}
+ .fcchip.on small{opacity:.8}
+ .fcsearch{width:100%;box-sizing:border-box;margin:0 0 6px;height:26px;font-size:11px}
+ .fcfoot{display:flex;align-items:center;gap:6px;padding:7px 6px;border-top:1px solid var(--bd2);margin-top:2px;position:sticky;bottom:0;background:var(--surface)}
+ .fcprime{background:linear-gradient(180deg,var(--acc),var(--acc2));color:var(--accink);border:0;border-radius:8px;height:28px;padding:0 15px;font:650 12px Inter,system-ui;cursor:pointer}
+ .fcghost{background:transparent;border:1px solid var(--bd);border-radius:8px;height:28px;padding:0 12px;font:600 12px Inter,system-ui;cursor:pointer;color:var(--fg2)}
+ .fcghost:hover{background:var(--hover);color:var(--fg)}
  #ctx{display:none;position:fixed;z-index:30;background:var(--surface);border:1px solid var(--bd);border-radius:12px;box-shadow:var(--sh-lg);overflow:hidden;min-width:190px;padding:5px}
  #ctx .hd{padding:7px 10px 8px;font:650 11px ui-monospace,monospace;color:var(--brand);border-bottom:1px solid var(--bd2);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  #toast{display:none;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:40;
@@ -150,6 +172,12 @@
   <input id="q" placeholder="search…  type:ip · tech:nginx · risk:>5 · port:443 · /regex/" title="plain text matches name/id; filters (AND): type: group: tech: risk:>N port: status: label: /regex/" autocomplete="off">
   <div id="qsug"></div>
  </div>
+ <div class="menu" id="sfMenu"><button id="sfBtn" title="filter builder — tick to select facets">⚑ filter</button>
+  <div class="drop facets">
+   <div class="fcbody" id="fcBody"></div>
+   <div class="fcfoot"><span class="cnt" id="fcCount">no filters</span><span style="flex:1"></span>
+    <button id="fcClear" class="fcghost">Clear</button><button id="fcApply" class="fcprime">Apply</button></div>
+  </div></div>
  <button id="lay" title="re-run force layout">⚛ layout</button>
  <div class="seg">
   <button id="mode" title="toggle full / overview">◰ full</button>
@@ -175,15 +203,16 @@
   <div class="row"><label><input type="checkbox" id="optHulls" checked> cluster hulls</label>
    <label><input type="checkbox" id="optGlyphs" checked> icons</label></div>
   <div class="row"><span style="width:62px">node size</span><input type="range" id="optSize" min="50" max="250" value="100"><span class="cnt" id="optSizeV">1.0×</span></div>
-  <div class="row"><span style="width:62px">depth</span>
+  <div class="deprow">
+   <span class="deplabel">DEPTH</span>
    <div class="segpill" id="depthSeg" role="group" aria-label="depth levels">
-    <button data-d="0" title="domain only">1</button>
-    <button data-d="1" title="+ ASN / subnet">2</button>
-    <button data-d="2" class="on" title="+ IP">3</button>
-    <button data-d="3" title="+ hosts">4</button>
-    <button data-d="99" title="+ URLs / findings">All</button>
+    <button data-d="0" title="domain only"><b>1</b><i>domain</i></button>
+    <button data-d="1" title="+ ASN / subnet"><b>2</b><i>asn</i></button>
+    <button data-d="2" class="on" title="+ IP"><b>3</b><i>ip</i></button>
+    <button data-d="3" title="+ hosts"><b>4</b><i>host</i></button>
+    <button data-d="99" title="+ URLs / findings"><b>∞</b><i>all</i></button>
    </div></div>
-  <div class="cnt" style="margin:-2px 0 2px">domain → ASN → IP → host → leaves · click a node to drill deeper</div>
+  <div class="cnt" style="margin:-1px 0 3px">click a node to drill deeper · ＋ badge marks hidden children</div>
   <h4>Filters</h4>
   <div id="filters"></div>
   <div class="row"><span style="width:62px">min deg</span><input type="range" id="minDeg" min="0" max="15" value="0"><span class="cnt" id="minDegV">0</span></div>
@@ -833,6 +862,55 @@ $('q').addEventListener('change',e=>{ const raw=(e.target.value||'').trim(); if(
    let added=0; (d.nodes||[]).forEach(n=>{ if(!g.hasNode(n.id)){ add({nodes:[n],edges:[]}); added++; } });
    if(added)render(); run();
  }).catch(run); });
+
+// ── faceted filter builder (tick-select) ────────────────────────────────
+const FAMCOL=Object.fromEntries(FAMS);
+const facet={type:new Set(),tech:new Set(),port:new Set(),status:new Set(),risk:0};
+function statusCodes(t){ return String(t||'').match(/\b[1-5]\d\d\b/g)||[]; }
+function facetActive(){ return facet.type.size||facet.tech.size||facet.port.size||facet.status.size||facet.risk; }
+function collectFacets(){ const types={},techs={},ports={},stats={};
+ g.forEachNode((id,a)=>{ types[famOf(a.group)]=(types[famOf(a.group)]||0)+1;
+   if(a.group==='tech'){ const t=(a.rawlabel||'').trim(); if(t)techs[t]=(techs[t]||0)+1; }
+   if(Array.isArray(a.ports))a.ports.forEach(p=>{ ports[p]=(ports[p]||0)+1; });
+   statusCodes(a.title).forEach(c=>{ stats[c]=(stats[c]||0)+1; }); });
+ return {types,techs,ports,stats}; }
+function facetMatch(){ const uT=facet.type.size,uE=facet.tech.size,uP=facet.port.size,uS=facet.status.size,uR=facet.risk,out=[];
+ if(!facetActive())return out;
+ g.forEachNode((id,a)=>{ if(uT&&!facet.type.has(famOf(a.group)))return;
+   if(uR&&(a.risk||0)<uR)return;
+   if(uP&&!(Array.isArray(a.ports)&&a.ports.some(p=>facet.port.has(String(p)))))return;
+   if(uS&&!statusCodes(a.title).some(c=>facet.status.has(c)))return;
+   if(uE){ if(a.group==='tech'){ if(!facet.tech.has((a.rawlabel||'').trim()))return; }
+     else { let ok=false; g.forEachNeighbor(id,nb=>{ if(ok)return; const na=g.getNodeAttributes(nb); if(na.group==='tech'&&facet.tech.has((na.rawlabel||'').trim()))ok=true; }); if(!ok)return; } }
+   out.push(id); });
+ return out; }
+function updateFacetCount(){ const any=facetActive(); const n=any?facetMatch().length:0;
+ $('fcCount').textContent=any?(n+' match'+(n===1?'':'es')):'no filters'; $('sfBtn').classList.toggle('act',!!any); }
+function renderFacets(){ const f=collectFacets(); let h='';
+ const sec=(title,chips)=>chips?'<div class="fcsec"><div class="fchd">'+title+'</div>'+chips+'</div>':'';
+ const tk=Object.keys(f.types).sort((a,b)=>f.types[b]-f.types[a]);
+ h+=sec('Type','<div class="fcchips">'+tk.map(k=>'<span class="fcchip'+(facet.type.has(k)?' on':'')+'" data-f="type" data-v="'+esc(k)+'"><i class="d" style="background:'+(FAMCOL[k]||'#8b96a3')+'"></i>'+esc(k)+' <small>'+f.types[k]+'</small></span>').join('')+'</div>');
+ const sk=Object.keys(f.stats).sort();
+ h+=sk.length?sec('HTTP status','<div class="fcchips">'+sk.map(k=>'<span class="fcchip'+(facet.status.has(k)?' on':'')+'" data-f="status" data-v="'+k+'">'+k+' <small>'+f.stats[k]+'</small></span>').join('')+'</div>'):'';
+ const pk=Object.keys(f.ports).map(Number).sort((a,b)=>a-b);
+ h+=pk.length?sec('Port','<div class="fcchips">'+pk.map(k=>'<span class="fcchip'+(facet.port.has(String(k))?' on':'')+'" data-f="port" data-v="'+k+'">'+k+' <small>'+f.ports[k]+'</small></span>').join('')+'</div>'):'';
+ const ek=Object.keys(f.techs).sort((a,b)=>f.techs[b]-f.techs[a]);
+ h+=ek.length?sec('Technology',(ek.length>12?'<input class="fcsearch" id="fcTechQ" placeholder="filter technologies…" autocomplete="off">':'')+'<div class="fcchips" id="fcTechChips">'+ek.map(k=>'<span class="fcchip'+(facet.tech.has(k)?' on':'')+'" data-f="tech" data-v="'+esc(k)+'">'+esc(k)+' <small>'+f.techs[k]+'</small></span>').join('')+'</div>'):'';
+ h+=sec('Min risk','<div class="fcchips" id="fcRisk">'+[[0,'any'],[1,'≥1'],[4,'≥4'],[7,'≥7']].map(([v,l])=>'<span class="fcchip'+(facet.risk===v?' on':'')+'" data-f="risk" data-v="'+v+'">'+l+'</span>').join('')+'</div>');
+ $('fcBody').innerHTML=h||'<div class="cnt" style="padding:8px">no facets in this graph yet</div>';
+ $('fcBody').querySelectorAll('.fcchip').forEach(c=>c.onclick=()=>{ const ff=c.dataset.f,v=c.dataset.v;
+   if(ff==='risk'){ facet.risk=+v; $('fcRisk').querySelectorAll('.fcchip').forEach(x=>x.classList.toggle('on',x===c)); }
+   else { const s=facet[ff]; if(s.has(v)){s.delete(v);c.classList.remove('on');}else{s.add(v);c.classList.add('on');} }
+   updateFacetCount(); });
+ if($('fcTechQ'))$('fcTechQ').oninput=e=>{ const q=e.target.value.toLowerCase(); $('fcTechChips').querySelectorAll('.fcchip').forEach(c=>{ c.style.display=c.dataset.v.toLowerCase().indexOf(q)>-1?'':'none'; }); };
+ updateFacetCount(); }
+$('sfBtn').onclick=e=>{ e.stopPropagation(); const open=$('sfMenu').classList.toggle('open'); if(open)renderFacets(); };
+$('sfMenu').querySelector('.drop').onclick=e=>e.stopPropagation();
+$('fcClear').onclick=()=>{ facet.type.clear();facet.tech.clear();facet.port.clear();facet.status.clear();facet.risk=0; renderFacets(); };
+$('fcApply').onclick=()=>{ if(!facetActive()){ toast('tick at least one facet first',2500); return; }
+ const hit=facetMatch(); $('sfMenu').classList.remove('open');
+ if(highlightHits(hit)){ updateStat(); buildAllList(); toast(searchSummary(hit),4000); } else toast('no nodes match the selected filters',3500); };
+document.addEventListener('click',e=>{ if(!e.target.closest('#sfMenu'))$('sfMenu').classList.remove('open'); });
 
 // ── enrichment transforms (right-click) ─────────────────────────────────
 let toastTo=null;
