@@ -29,7 +29,6 @@ function classify(line) {
 
 export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
   const containerRef = useRef(null)
-  const bottomRef = useRef(null)
   // Synchronous "follow the tail" flag. The effect below reads THIS (not the async
   // autoScroll state) so a fast log stream can't re-snap the view to the bottom
   // in the gap before a scroll-up's setState lands — the bug that made it
@@ -57,12 +56,20 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
       })
     : buffered
 
+  // Scroll ONLY the log pane to its bottom. Must NOT use scrollIntoView: that
+  // walks every scrollable ancestor and would yank the whole run-detail page
+  // down too (the "kéo quá" over-scroll). Setting scrollTop stays inside the pane.
+  const scrollToBottom = useCallback(() => {
+    const el = containerRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [])
+
   // Stick to the bottom ONLY while the user is following the tail (stickRef).
   // stickRef is updated synchronously on scroll, so it's never stale here.
   useEffect(() => {
     if (filter || !stickRef.current) return
-    bottomRef.current?.scrollIntoView({ behavior: 'instant' })
-  }, [logs.length, filter])
+    scrollToBottom()
+  }, [logs.length, filter, scrollToBottom])
 
   // Detect manual scroll → follow the tail only when at the bottom. Setting the
   // ref is synchronous (decides the next log's behaviour immediately); the state
@@ -129,7 +136,7 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
           onChange={e => setFilter(e.target.value)}
         />
         <label className="flex items-center gap-1.5 text-xs text-[var(--text-2)] cursor-pointer select-none">
-          <input type="checkbox" checked={autoScroll} onChange={e => { const v = e.target.checked; stickRef.current = v; setAutoScroll(v); if (v) bottomRef.current?.scrollIntoView({ behavior: 'instant' }) }} className="accent-[var(--accent)]" />
+          <input type="checkbox" checked={autoScroll} onChange={e => { const v = e.target.checked; stickRef.current = v; setAutoScroll(v); if (v) scrollToBottom() }} className="accent-[var(--accent)]" />
           Auto-scroll
         </label>
         <div className="flex items-center gap-1">
@@ -194,12 +201,10 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
             ))}
           </div>
         </div>
-
-        <div ref={bottomRef} />
       </div>
       {!autoScroll && (
         <button
-          onClick={() => { stickRef.current = true; setAutoScroll(true); bottomRef.current?.scrollIntoView({ behavior: 'instant' }) }}
+          onClick={() => { stickRef.current = true; setAutoScroll(true); scrollToBottom() }}
           title="Jump to latest"
           className="absolute bottom-3 right-4 z-10 flex items-center gap-1 text-[11px] font-mono px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--bg)] text-[var(--text-2)] shadow-lg hover:text-[var(--text)] hover:border-[var(--accent)] transition-colors"
         >
