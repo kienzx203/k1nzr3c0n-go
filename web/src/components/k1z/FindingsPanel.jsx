@@ -29,7 +29,7 @@ function StatusBadge({ status, onChange }) {
   )
 }
 
-export default function FindingsPanel({ runId }) {
+export default function FindingsPanel({ runId, refreshKey = 0, active = false }) {
   const [data, setData] = useState(null)
   const [filter, setFilter] = useState({ kind: '', severity: '', status: 'open' })
   const [expanded, setExpanded] = useState(null)
@@ -57,6 +57,15 @@ export default function FindingsPanel({ runId }) {
   }, [runId, filter])
 
   useEffect(() => { load() }, [load])
+
+  // Live refresh: while the run is active, reload a short beat after each step
+  // finishes (ReparseLive has just written that tool's results into the DB),
+  // debounced so a burst of parallel steps doesn't hammer the API.
+  useEffect(() => {
+    if (!active || !refreshKey) return
+    const t = setTimeout(() => { load() }, 800)
+    return () => clearTimeout(t)
+  }, [refreshKey, active, load])
 
   const changeStatus = async (id, status) => {
     await api.patchFinding(id, { status })

@@ -22,6 +22,9 @@ export default function RunDetail() {
   const [logs, setLogs] = useState([])
   const [totalLogs, setTotalLogs] = useState(0)
   const [steps, setSteps] = useState([])
+  // bumped on every step/done event so live tabs (Findings) can reload as each
+  // tool finishes and ReparseLive writes its results into the DB.
+  const [stepTick, setStepTick] = useState(0)
   const [screenshotCount, setScreenshotCount] = useState(null)
   const [newAssets, setNewAssets] = useState(null)
   const [pausing, setPausing] = useState(false)
@@ -102,6 +105,7 @@ export default function RunDetail() {
         }
         if (data.type === 'step') {
           setSteps(data.steps)
+          setStepTick(t => t + 1)
         }
         if (data.type === 'status') {
           statusRef.current = data.status
@@ -111,6 +115,7 @@ export default function RunDetail() {
           statusRef.current = data.status
           setPausing(false)
           setResuming(false)
+          setStepTick(t => t + 1) // final reparse landed — refresh Findings
           setRun(prev => prev ? {
             ...prev,
             status: data.status,
@@ -407,7 +412,7 @@ export default function RunDetail() {
         {tab === 'Logs' && (
           <LogViewer logs={logs} running={isActive} runId={id} totalLogs={totalLogs} />
         )}
-        {tab === 'Findings' && <FindingsPanel runId={id} />}
+        {tab === 'Findings' && <FindingsPanel runId={id} refreshKey={stepTick} active={isActive} />}
         {tab === 'Screenshots' && <ScreenshotGallery runId={id} steps={steps} />}
         {tab === 'ST Intel' && (
           <div className="h-full overflow-y-auto"><STIntelPanel runId={id} /></div>
