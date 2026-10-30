@@ -1224,36 +1224,14 @@ func (g *Graph) Overview(hostCap int) SubGraph {
 // graphs (keeping the backbone + highest risk/degree nodes) so the WebGL
 // viewer can't be handed an unbounded payload that OOMs the browser.
 func (g *Graph) Full() SubGraph {
-	const maxNodes = 12000
-	if len(g.Nodes) <= maxNodes {
-		keep := make(map[string]bool, len(g.Nodes))
-		for id := range g.Nodes {
-			keep[id] = true
-		}
-		return g.slice(keep, map[string]any{"total": len(g.Nodes), "shown": len(g.Nodes), "edgeCount": len(g.Edges)})
+	// No node cap — return EVERY node so the view omits nothing. The client hides
+	// dead subdomains by default (toggle to reveal) to keep the render light, so
+	// even very large surfaces stay usable without the server dropping any data.
+	keep := make(map[string]bool, len(g.Nodes))
+	for id := range g.Nodes {
+		keep[id] = true
 	}
-	keep := map[string]bool{}
-	type sc struct {
-		id  string
-		val int
-	}
-	var all []sc
-	for id, n := range g.Nodes {
-		if n.Group == "domain" || n.Group == "asn" || n.Group == "subnet" {
-			keep[id] = true // backbone always
-			continue
-		}
-		all = append(all, sc{id, n.Risk*100 + len(g.adj[id])})
-	}
-	sort.Slice(all, func(i, j int) bool { return all[i].val > all[j].val })
-	for _, s := range all {
-		if len(keep) >= maxNodes {
-			break
-		}
-		keep[s.id] = true
-	}
-	return g.slice(keep, map[string]any{"total": len(g.Nodes), "shown": len(keep),
-		"edgeCount": len(g.Edges), "truncated": true})
+	return g.slice(keep, map[string]any{"total": len(g.Nodes), "shown": len(g.Nodes), "edgeCount": len(g.Edges)})
 }
 
 // Neighbors returns a node and its immediate neighbours, capped: a hub like the

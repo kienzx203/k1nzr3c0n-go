@@ -627,8 +627,8 @@ function detail(id){ const a=g.getNodeAttributes(id);
  let h='<h3>'+esc(a.rawlabel||id)+'</h3><div class="meta">'+esc(a.group||'')+' · risk '+(a.risk||0)+' · degree '+g.degree(id)+(a.count?' · '+a.count+' members':'')+'</div>';
  h+='<div class="act"><button data-act="copy">copy id</button></div>';
  if(a.title)h+='<pre>'+esc(a.title)+'</pre>';
- if(outs.length)h+='<h4>→ out ('+outs.length+')</h4>'+outs.slice(0,120).map(neighRow).join('');
- if(ins.length)h+='<h4>← in ('+ins.length+')</h4>'+ins.slice(0,120).map(neighRow).join('');
+ if(outs.length)h+='<h4>→ out ('+outs.length+')</h4>'+outs.map(neighRow).join(''); // list all neighbours — panel scrolls, no cap
+ if(ins.length)h+='<h4>← in ('+ins.length+')</h4>'+ins.map(neighRow).join('');
  const an=annos[id]||{};
  h+='<h4>tag / note</h4><input id="tagIn" placeholder="tag (e.g. pivot, owned)" value="'+esc(an.tag||'')+'" style="width:100%;margin-bottom:5px">'+
     '<textarea id="noteIn" placeholder="analyst note…" style="width:100%;height:56px;font:11px ui-monospace,monospace;border:1px solid var(--bd);border-radius:6px;padding:6px">'+esc(an.note||'')+'</textarea>'+
@@ -775,10 +775,11 @@ $('q').addEventListener('input',e=>{ const raw=(e.target.value||'').trim(); cons
      return; } }
  // node suggestions — respects the full DSL (type:/tech:/risk:/port:/…)
  let hits=[]; try{ hits=matchQuery(raw); }catch(x){}
- hits.sort((a,b)=>(g.getNodeAttribute(b,'risk')||0)-(g.getNodeAttribute(a,'risk')||0)); const top=hits.slice(0,10); sugSel=-1;
- if(!top.length){ box.classList.remove('open'); return; }
- box.innerHTML=top.map(id=>{ const a=g.getNodeAttributes(id); return '<div class="s" data-go="'+esc(id)+'"><span class="dot" style="background:'+(a.color||'#8c959f')+'"></span><span>'+esc(a.rawlabel||id)+'</span><small>'+esc(a.group||'')+'</small></div>'; }).join('')
-   +(hits.length>10?'<div class="cnt" style="padding:4px 10px">+'+(hits.length-10)+' more — press Enter to highlight all</div>':'');
+ hits.sort((a,b)=>(g.getNodeAttribute(b,'risk')||0)-(g.getNodeAttribute(a,'risk')||0)); sugSel=-1;
+ if(!hits.length){ box.classList.remove('open'); return; }
+ // list EVERY match (no cap) — the dropdown scrolls. Enter highlights them all.
+ box.innerHTML=hits.map(id=>{ const a=g.getNodeAttributes(id); return '<div class="s" data-go="'+esc(id)+'"><span class="dot" style="background:'+(a.color||'#8c959f')+'"></span><span>'+esc(a.rawlabel||id)+'</span><small>'+esc(a.group||'')+'</small></div>'; }).join('')
+   +(hits.length>1?'<div class="cnt" style="padding:5px 10px;position:sticky;bottom:0;background:var(--surface)">'+hits.length+' matches — press Enter to highlight all</div>':'');
  box.classList.add('open');
  box.querySelectorAll('.s').forEach(el=>el.onclick=()=>{ box.classList.remove('open'); if(el.dataset.go)focusNode(el.dataset.go); }); });
 $('q').addEventListener('keydown',e=>{ const box=$('qsug'); if(!box.classList.contains('open'))return; const items=box.querySelectorAll('.s');
