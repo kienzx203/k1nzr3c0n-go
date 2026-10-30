@@ -103,16 +103,29 @@ in context — persist, then drop.
    for the whole target; then drill with `q=`/`node=` for pivots & chains; full map only when you
    truly need it all. **Pin leads** as you spot them: `graph_note(target, node, tag="priority",
    note=…)` so they survive a compaction and you don't re-derive them.
-5. **Route & attack** — map the surface to the matching offensive domain skill and INVOKE it
+5. **VERIFY — never trust the log.** A workflow finding is a LEAD, not a fact: the tool may have
+   false-positived, or the issue may already be patched. Before you treat any signal as real — and
+   ALWAYS before `report_finding` — INDEPENDENTLY reproduce it yourself: re-run the exact check with
+   your own tools (curl, a single nuclei template, the matching offensive skill), or a TARGETED run
+   (`05-scan-hosts.yaml` / `target_hosts`) scoped to that host. Confirm it twice, non-destructively.
+   Record the verdict with `graph_note(node, tag="verified"|"false-positive", note=…)` so neither you
+   nor a later pass re-chases it. Reading the log is step 0 of verification, never the end of it.
+6. **HUNT — the workflow is a BASELINE, not the ceiling.** Actively find what it could NOT: the vhost
+   matrix (every collected name × every in-scope IP, non-resolving names INCLUDED — a dead domain is
+   often a vhost on a known IP), authenticated crawl/params after login, JS/sourcemap-derived endpoints,
+   logic & access-control flaws, and the DEEP-DIVE gap checklist. Every new host/param/endpoint →
+   `insert_assets` + loop back to step 1 for THAT surface (targeted run), so discovery COMPOUNDS instead
+   of stopping at the workflow's output.
+7. **Route & attack** — map the surface to the matching offensive domain skill and INVOKE it
    (`recon-to-attack`: web → `web-pentest`, AD/network ports → `active-directory-attack`/`network-attack`,
    cloud → `cloud-security`, secrets → `red-team-ops`, a shell → `privesc-*`/`edr-evasion`, …), driven by
    the graph not blind scanning (procedure: `recon-first-pentest`; discipline: `scope-/opsec-/finding-discipline`).
-6. **Persist immediately, then drop raw output:**
+8. **Persist immediately, then drop raw output:**
    - new asset/host/service/endpoint/cred → `insert_assets` (asset graph)
    - a conclusion/observation → `record_fact` (exploration graph, with `intent_id`)
-   - a confirmed, reproduced vuln → `report_finding` (with a minimal PoC)
+   - a confirmed, REPRODUCED vuln → `report_finding` (with a minimal PoC) — only after step 5
    Only saved results survive a context compaction — never keep scan dumps in-head.
-7. **New surface found mid-attack** (new subdomain/host/param) → narrow loop back to step 1
+9. **New surface found mid-attack** (new subdomain/host/param) → narrow loop back to step 1
    for THAT surface only, not a full re-scan — launch a TARGETED run with
    `vars={"target_hosts":"<the new hosts>", "run_passive":"false"}` (+ the scan toggles you need),
    then follow its delta with `recon_graph(target, run_id)`.

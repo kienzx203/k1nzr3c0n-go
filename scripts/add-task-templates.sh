@@ -229,8 +229,16 @@ in context — persist, then DROP.
   note="why it matters") so they persist through a compaction and show in the graph viewer; graph_note(target)
   (no node) re-lists your pinned leads. report_finding = access/impact you PROVED this run (reproducible PoC)
   only; version/CVE/exposure observations -> record_fact; the final narrative draws on BOTH. list_untested_assets.
-3 GAP-FILL by hand ONLY what workflows missed (DEEP-DIVE + non-web/edge/cloud/leak). Abandon a line after
-  ~2 failed attempts or when its cost exceeds its value to the objective; record the dead end and move on.
+2b VERIFY (reading the log is NOT verification): a workflow finding is a LEAD, not a fact — it may be a
+  false positive or already patched. Before you trust any signal, and ALWAYS before report_finding,
+  INDEPENDENTLY reproduce it yourself (curl / one nuclei template / the matching offensive skill, or a
+  TARGETED re-run via 05-scan-hosts / target_hosts scoped to that host), non-destructively, twice. Tag the
+  verdict with graph_note (verified | false-positive) so it is never re-chased.
+3 GAP-FILL / HUNT NEW SURFACE — the workflow is a BASELINE, not the ceiling. By hand, actively find what it
+  could NOT: the VHOST MATRIX (every collected name x every in-scope IP, non-resolving names included),
+  authenticated crawl/params post-login, JS/sourcemap endpoints, access-control/logic flaws, DEEP-DIVE +
+  non-web/edge/cloud/leak. Every new host/param -> insert_assets + loop back so discovery COMPOUNDS. Abandon
+  a line after ~2 failed attempts or when its cost exceeds its value to the objective; record the dead end and move on.
 4 LEDGER (TodoWrite): every in-scope asset + high-value endpoint = item, mark tested/untested.
 5 LOOP on new surface: a new sub/host/param under an already-registered root -> launch a TARGETED run that
   scans JUST those hosts: run_workflow(target, <file>, vars={"target_hosts":"<new hosts, comma/space-sep>",
