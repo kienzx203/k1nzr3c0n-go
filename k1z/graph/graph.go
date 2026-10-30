@@ -1329,7 +1329,11 @@ func (g *Graph) Search(q string, limit int) []*Node {
 	q = strings.ToLower(q)
 	var out []*Node
 	for _, n := range g.Nodes {
-		if strings.Contains(strings.ToLower(n.Label), q) || strings.Contains(strings.ToLower(n.ID), q) {
+		// match label, id AND title so every field packed into Title (status,
+		// page title, CDN/provider, ASN org, CNAME target, tech, bucket info,
+		// secret value, per-host counts) is reachable by plain-text search —
+		// keeping server-fetched hits in parity with the client predicate.
+		if strings.Contains(strings.ToLower(n.Label), q) || strings.Contains(strings.ToLower(n.ID), q) || strings.Contains(strings.ToLower(n.Title), q) {
 			out = append(out, n)
 		}
 	}

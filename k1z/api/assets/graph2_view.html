@@ -169,7 +169,7 @@
  <span class="sp"></span>
  <div class="search">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-  <input id="q" placeholder="search…  type:ip · tech:nginx · risk:>5 · port:443 · /regex/" title="plain text matches name/id; filters (AND): type: group: tech: risk:>N port: status: label: /regex/" autocomplete="off">
+  <input id="q" placeholder="search…  type:ip · tech:nginx · risk:>5 · port:443 · sev:high · alive:yes · /regex/" title="plain text matches name/id/details; filters (AND): type: group: tech: risk:>N port: status: sev: alive: internal: exposed: label: text: /regex/" autocomplete="off">
   <div id="qsug"></div>
  </div>
  <div class="menu" id="sfMenu"><button id="sfBtn" title="filter builder — tick to select facets">⚑ filter</button>
@@ -295,7 +295,7 @@ function add(sg){
    const sx=(typeof n.x==='number')?n.x:Math.cos(Math.random()*6.283)*(1+Math.random()*9);
    const sy=(typeof n.y==='number')?n.y:Math.sin(Math.random()*6.283)*(1+Math.random()*9);
    g.addNode(n.id,{label:(n.label||n.id)+(n.count?'  ('+n.count+')':''),rawlabel:n.label||n.id,group:n.group,
-     title:n.title||'',risk:n.risk||0,count:n.count||0,ports:(Array.isArray(n.ports)?n.ports:[]),color:COL[n.group]||'#8c959f',size:(n.sz>0?n.sz:sizeOf(n)),tier:tierOf(n.group),
+     title:n.title||'',risk:n.risk||0,count:n.count||0,ports:(Array.isArray(n.ports)?n.ports:[]),internal:!!n.internal,alive:!!n.alive,color:COL[n.group]||'#8c959f',size:(n.sz>0?n.sz:sizeOf(n)),tier:tierOf(n.group),
      x:sx,y:sy}); });
  (sg.edges||[]).forEach(e=>{ if(g.hasNode(e.from)&&g.hasNode(e.to)&&!g.hasEdge(e.from,e.to)){
    // finding edges pop (red, thicker, on top); infra edges are thin and follow
@@ -826,20 +826,26 @@ $('reload').onclick=load;
 // ── advanced search — a small query DSL ──────────────────────────────────────
 // Plain text matches label/id; field filters combine with AND (space):
 //   type:ip  group:subnet  tech:nginx  risk:>5  port:443  status:200  /reg.?ex/
-const SFIELDS=['type:','group:','tech:','risk:','port:','status:','label:'];
+const SFIELDS=['type:','group:','tech:','risk:','port:','status:','sev:','alive:','internal:','exposed:','label:','text:'];
 function cmpN(x,op,n){ return op==='>'?x>n:op==='<'?x<n:op==='<='?x<=n:op==='='?x===n:x>=n; }
 function techNeighbor(id,v){ let f=false; g.forEachNeighbor(id,nb=>{ if(f)return; const na=g.getNodeAttributes(nb); if(na.group==='tech'&&(na.rawlabel||'').toLowerCase().indexOf(v)>-1)f=true; }); return f; }
+const _truthy=s=>/^(y|yes|true|1|up|live|alive)$/.test(s), _falsy=s=>/^(n|no|false|0|down|dead|off)$/.test(s);
 function parseToken(t){
- if(t.length>2 && t[0]==='/' && t[t.length-1]==='/'){ try{ const re=new RegExp(t.slice(1,-1),'i'); return (id,a)=>re.test(a.rawlabel||'')||re.test(id); }catch(e){} }
+ if(t.length>2 && t[0]==='/' && t[t.length-1]==='/'){ try{ const re=new RegExp(t.slice(1,-1),'i'); return (id,a)=>re.test(a.rawlabel||'')||re.test(id)||re.test(a.title||''); }catch(e){} }
  const m=t.match(/^([a-zA-Z]+):(.*)$/);
  if(m){ const f=m[1].toLowerCase(), v=m[2].toLowerCase();
    if(f==='type'||f==='group')return (id,a)=>a.group===v||famOf(a.group)===v;
    if(f==='tech')return (id,a)=>(a.group==='tech'&&(a.rawlabel||'').toLowerCase().indexOf(v)>-1)||techNeighbor(id,v);
    if(f==='risk'){ const c=v.match(/^(>=|<=|>|<|=)?\s*(\d+)/); if(c)return (id,a)=>cmpN(a.risk||0,c[1]||'>=',+c[2]); }
    if(f==='port'){ const n=parseInt(v,10); if(!isNaN(n))return (id,a)=>Array.isArray(a.ports)&&a.ports.indexOf(n)>-1; }
-   if(f==='status')return (id,a)=>(a.title||'').indexOf(v)>-1;
-   if(f==='label'||f==='name')return (id,a)=>(a.rawlabel||'').toLowerCase().indexOf(v)>-1; }
- const q=t.toLowerCase(); return (id,a)=>(a.rawlabel||'').toLowerCase().indexOf(q)>-1||id.toLowerCase().indexOf(q)>-1;
+   if(f==='status')return (id,a)=>statusCodes(a.title).some(c=>c.indexOf(v)===0)||(a.title||'').indexOf(v)>-1;
+   if(f==='sev'||f==='severity')return (id,a)=>a.group==='vuln_'+v||(a.group.indexOf('vuln')===0&&(a.title||'').toLowerCase().indexOf(v)>-1);
+   if(f==='alive'||f==='up')return (id,a)=> _falsy(v)?a.alive!==true:a.alive===true;
+   if(f==='internal')return (id,a)=> _falsy(v)?!a.internal:!!a.internal;
+   if(f==='exposed'||f==='external')return (id,a)=> _falsy(v)?!!a.internal:!a.internal;
+   if(f==='label'||f==='name')return (id,a)=>(a.rawlabel||'').toLowerCase().indexOf(v)>-1;
+   if(f==='text'||f==='detail'||f==='in'||f==='any')return (id,a)=>(a.rawlabel||'').toLowerCase().indexOf(v)>-1||id.toLowerCase().indexOf(v)>-1||(a.title||'').toLowerCase().indexOf(v)>-1; }
+ const q=t.toLowerCase(); return (id,a)=>(a.rawlabel||'').toLowerCase().indexOf(q)>-1||id.toLowerCase().indexOf(q)>-1||(a.title||'').toLowerCase().indexOf(q)>-1;
 }
 function isFieldQuery(raw){ return /\b[a-z]+:/i.test(raw) || /\//.test(raw); }
 function matchQuery(raw){ const toks=(raw.trim().match(/\/[^/]+\/|\S+/g))||[]; if(!toks.length)return [];
@@ -865,21 +871,29 @@ $('q').addEventListener('change',e=>{ const raw=(e.target.value||'').trim(); if(
 
 // ── faceted filter builder (tick-select) ────────────────────────────────
 const FAMCOL=Object.fromEntries(FAMS);
-const facet={type:new Set(),tech:new Set(),port:new Set(),status:new Set(),risk:0};
+const facet={type:new Set(),tech:new Set(),port:new Set(),status:new Set(),sev:new Set(),reach:new Set(),risk:0};
+const SEVORD=['critical','high','medium','low','info'];
+const REACH={ alive:a=>a.alive===true, dead:a=>a.group==='sub_dead'||((famOf(a.group)==='subdomain'||famOf(a.group)==='ip')&&a.alive!==true),
+  internal:a=>a.internal===true, external:a=>!a.internal&&(famOf(a.group)==='ip'||famOf(a.group)==='subdomain') };
 function statusCodes(t){ return String(t||'').match(/\b[1-5]\d\d\b/g)||[]; }
-function facetActive(){ return facet.type.size||facet.tech.size||facet.port.size||facet.status.size||facet.risk; }
-function collectFacets(){ const types={},techs={},ports={},stats={};
+function sevOf(g){ return g&&g.indexOf('vuln_')===0?g.slice(5):''; }
+function facetActive(){ return facet.type.size||facet.tech.size||facet.port.size||facet.status.size||facet.sev.size||facet.reach.size||facet.risk; }
+function collectFacets(){ const types={},techs={},ports={},stats={},sevs={},reach={};
  g.forEachNode((id,a)=>{ types[famOf(a.group)]=(types[famOf(a.group)]||0)+1;
    if(a.group==='tech'){ const t=(a.rawlabel||'').trim(); if(t)techs[t]=(techs[t]||0)+1; }
    if(Array.isArray(a.ports))a.ports.forEach(p=>{ ports[p]=(ports[p]||0)+1; });
-   statusCodes(a.title).forEach(c=>{ stats[c]=(stats[c]||0)+1; }); });
- return {types,techs,ports,stats}; }
-function facetMatch(){ const uT=facet.type.size,uE=facet.tech.size,uP=facet.port.size,uS=facet.status.size,uR=facet.risk,out=[];
+   statusCodes(a.title).forEach(c=>{ stats[c]=(stats[c]||0)+1; });
+   const sv=sevOf(a.group); if(sv)sevs[sv]=(sevs[sv]||0)+1;
+   Object.keys(REACH).forEach(k=>{ if(REACH[k](a))reach[k]=(reach[k]||0)+1; }); });
+ return {types,techs,ports,stats,sevs,reach}; }
+function facetMatch(){ const uT=facet.type.size,uE=facet.tech.size,uP=facet.port.size,uS=facet.status.size,uV=facet.sev.size,uH=facet.reach.size,uR=facet.risk,out=[];
  if(!facetActive())return out;
  g.forEachNode((id,a)=>{ if(uT&&!facet.type.has(famOf(a.group)))return;
    if(uR&&(a.risk||0)<uR)return;
    if(uP&&!(Array.isArray(a.ports)&&a.ports.some(p=>facet.port.has(String(p)))))return;
    if(uS&&!statusCodes(a.title).some(c=>facet.status.has(c)))return;
+   if(uV&&!facet.sev.has(sevOf(a.group)))return;
+   if(uH){ let ok=false; facet.reach.forEach(k=>{ if(REACH[k]&&REACH[k](a))ok=true; }); if(!ok)return; }
    if(uE){ if(a.group==='tech'){ if(!facet.tech.has((a.rawlabel||'').trim()))return; }
      else { let ok=false; g.forEachNeighbor(id,nb=>{ if(ok)return; const na=g.getNodeAttributes(nb); if(na.group==='tech'&&facet.tech.has((na.rawlabel||'').trim()))ok=true; }); if(!ok)return; } }
    out.push(id); });
@@ -894,6 +908,10 @@ function renderFacets(){ const f=collectFacets(); let h='';
  h+=sk.length?sec('HTTP status','<div class="fcchips">'+sk.map(k=>'<span class="fcchip'+(facet.status.has(k)?' on':'')+'" data-f="status" data-v="'+k+'">'+k+' <small>'+f.stats[k]+'</small></span>').join('')+'</div>'):'';
  const pk=Object.keys(f.ports).map(Number).sort((a,b)=>a-b);
  h+=pk.length?sec('Port','<div class="fcchips">'+pk.map(k=>'<span class="fcchip'+(facet.port.has(String(k))?' on':'')+'" data-f="port" data-v="'+k+'">'+k+' <small>'+f.ports[k]+'</small></span>').join('')+'</div>'):'';
+ const vk=SEVORD.filter(s=>f.sevs[s]);
+ h+=vk.length?sec('Severity','<div class="fcchips">'+vk.map(k=>'<span class="fcchip'+(facet.sev.has(k)?' on':'')+'" data-f="sev" data-v="'+k+'"><i class="d" style="background:'+(COL['vuln_'+k]||'#cf222e')+'"></i>'+k+' <small>'+f.sevs[k]+'</small></span>').join('')+'</div>'):'';
+ const rk=['alive','dead','internal','external'].filter(k=>f.reach[k]);
+ h+=rk.length?sec('Reachability','<div class="fcchips">'+rk.map(k=>'<span class="fcchip'+(facet.reach.has(k)?' on':'')+'" data-f="reach" data-v="'+k+'">'+k+' <small>'+f.reach[k]+'</small></span>').join('')+'</div>'):'';
  const ek=Object.keys(f.techs).sort((a,b)=>f.techs[b]-f.techs[a]);
  h+=ek.length?sec('Technology',(ek.length>12?'<input class="fcsearch" id="fcTechQ" placeholder="filter technologies…" autocomplete="off">':'')+'<div class="fcchips" id="fcTechChips">'+ek.map(k=>'<span class="fcchip'+(facet.tech.has(k)?' on':'')+'" data-f="tech" data-v="'+esc(k)+'">'+esc(k)+' <small>'+f.techs[k]+'</small></span>').join('')+'</div>'):'';
  h+=sec('Min risk','<div class="fcchips" id="fcRisk">'+[[0,'any'],[1,'≥1'],[4,'≥4'],[7,'≥7']].map(([v,l])=>'<span class="fcchip'+(facet.risk===v?' on':'')+'" data-f="risk" data-v="'+v+'">'+l+'</span>').join('')+'</div>');
@@ -906,7 +924,7 @@ function renderFacets(){ const f=collectFacets(); let h='';
  updateFacetCount(); }
 $('sfBtn').onclick=e=>{ e.stopPropagation(); const open=$('sfMenu').classList.toggle('open'); if(open)renderFacets(); };
 $('sfMenu').querySelector('.drop').onclick=e=>e.stopPropagation();
-$('fcClear').onclick=()=>{ facet.type.clear();facet.tech.clear();facet.port.clear();facet.status.clear();facet.risk=0; renderFacets(); };
+$('fcClear').onclick=()=>{ facet.type.clear();facet.tech.clear();facet.port.clear();facet.status.clear();facet.sev.clear();facet.reach.clear();facet.risk=0; renderFacets(); };
 $('fcApply').onclick=()=>{ if(!facetActive()){ toast('tick at least one facet first',2500); return; }
  const hit=facetMatch(); $('sfMenu').classList.remove('open');
  if(highlightHits(hit)){ updateStat(); buildAllList(); toast(searchSummary(hit),4000); } else toast('no nodes match the selected filters',3500); };
