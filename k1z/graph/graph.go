@@ -32,6 +32,14 @@ type Node struct {
 	X        float64 `json:"x"`               // server-computed layout position
 	Y        float64 `json:"y"`
 	Sz       float64 `json:"sz,omitempty"` // server-computed node size (radius)
+	// structured security attributes (filterable in the viewer, not just title text)
+	CDN    string   `json:"cdn,omitempty"`    // CDN/WAF/cloud provider fronting this host/ip
+	Origin bool     `json:"origin,omitempty"` // confirmed origin IP (behind-CDN bypass candidate)
+	Server string   `json:"server,omitempty"` // HTTP Server header (hosts)
+	Status int      `json:"status,omitempty"` // HTTP status (hosts + dir-brute paths)
+	Attack []string `json:"attack,omitempty"` // gf attack classes on endpoints (xss/ssrf/sqli/…)
+	Secret string   `json:"secret,omitempty"` // classified secret type (aws/jwt/google/…)
+	Shared int      `json:"shared,omitempty"` // # co-located hosts on this IP (shared hosting)
 }
 
 // portsOf converts a set of port strings to a sorted []int.
@@ -245,6 +253,9 @@ func Build(dir, target string) *Graph {
 	ipOrg := map[string]string{}
 	subnets := map[string]bool{}
 	hosts := map[string]bool{}
+	sharedHost := map[string]int{}    // ip → # co-located hosts (ip_groups/shared_hosting.txt)
+	epAttack := map[string][]string{} // endpoint url/path → gf attack classes
+	epStatus := map[string]int{}      // endpoint url/path → HTTP status (feroxbuster/ffuf)
 	type finding struct{ host, name, sev, url string }
 	var findings []finding
 
@@ -617,6 +628,15 @@ func Build(dir, target string) *Graph {
 			originIP[ip] = true
 		}
 	}
+	// shared hosting: "ip\thost1,host2,…" — # of distinct hosts co-located on one IP
+	for _, ln := range lines(firstExisting(dir, "ip_groups/shared_hosting.txt")) {
+		f := strings.SplitN(ln, "\t", 2)
+		if len(f) == 2 && reIP.MatchString(strings.TrimSpace(f[0])) {
+			if n := len(strings.Split(strings.TrimSpace(f[1]), ",")); n > 1 {
+				sharedHost[strings.TrimSpace(f[0])] = n
+			}
+		}
+	}
 
 	// ── extended surface coverage (permutation/tlsx/pivot/vhost/favicon/js/ptr) ──
 	for _, p := range []string{"subdomains_all_resolved.txt", "subdomains_all.txt", "subdomains_tlsx_resolved.txt",
@@ -804,12 +824,55 @@ func Build(dir, target string) *Graph {
 			}
 		}
 	}
+	// path of a URL (scheme+host stripped) — lets dir-brute status (keyed by full
+	// URL) match endpoint nodes that are stored as bare paths from all_endpoints.
+	pathOf := func(u string) string {
+		if i := strings.Index(u, "://"); i >= 0 {
+			u = u[i+3:]
+		}
+		if i := strings.IndexByte(u, '/'); i >= 0 {
+			return u[i:]
+		}
+		return "/"
+	}
 	if ms, _ := filepath.Glob(filepath.Join(dir, "gf", "*.txt")); len(ms) > 0 {
 		for _, f := range ms {
 			cat := strings.TrimSuffix(filepath.Base(f), ".txt")
 			for _, ln := range lines(f) {
-				if strings.HasPrefix(strings.TrimSpace(ln), "http") {
-					addEP(ln, cat)
+				u := strings.TrimSpace(ln)
+				if strings.HasPrefix(u, "http") {
+					epAttack[u] = appendUniq(epAttack[u], cat)       // full-URL endpoint nodes (gf)
+					epAttack[pathOf(u)] = appendUniq(epAttack[pathOf(u)], cat) // path endpoint nodes
+					addEP(u, cat)
+				}
+			}
+		}
+	}
+	// dir-brute status (feroxbuster jsonl + ffuf json) → status on matching endpoints
+	jsonl(firstExisting(dir, "feroxbuster.json"), func(m map[string]any) {
+		if str(m["type"]) != "response" {
+			return
+		}
+		if u := strings.TrimSpace(str(m["url"])); u != "" {
+			st := intOf(m["status"])
+			epStatus[u], epStatus[pathOf(u)] = st, st
+		}
+	})
+	if b, _ := os.ReadFile(firstExisting(dir, "ffuf_paths.json")); len(b) > 0 {
+		dec := json.NewDecoder(bytes.NewReader(b)) // tolerate several runs' JSON concatenated by the merge
+		for dec.More() {
+			var ff struct {
+				Results []struct {
+					URL    string `json:"url"`
+					Status int    `json:"status"`
+				} `json:"results"`
+			}
+			if dec.Decode(&ff) != nil {
+				break
+			}
+			for _, r := range ff.Results {
+				if r.URL != "" {
+					epStatus[r.URL], epStatus[pathOf(r.URL)] = r.Status, r.Status
 				}
 			}
 		}
@@ -865,6 +928,9 @@ func Build(dir, target string) *Graph {
 		title := h
 		if hh != nil {
 			title += "\n" + hh["status"] + " " + hh["title"]
+			if hh["server"] != "" {
+				title += "\nserver: " + hh["server"]
+			}
 			if hh["cdn"] != "" {
 				title += "\nCDN: " + hh["cdn"]
 			}
@@ -879,8 +945,17 @@ func Build(dir, target string) *Graph {
 		if target != "" && strings.HasSuffix(h, "."+target) {
 			short = strings.TrimSuffix(h, "."+target)
 		}
+		hStatus, hServer, hCDN := 0, "", cdnOf[h]
+		if hh != nil {
+			hStatus, _ = strconv.Atoi(hh["status"])
+			hServer = hh["server"]
+			if hh["cdn"] != "" {
+				hCDN = hh["cdn"]
+			}
+		}
 		g.add(&Node{ID: "h:" + h, Label: short, Group: grp, Title: title,
-			Risk: riskOf["h:"+h], Internal: internal, Alive: hh != nil, Ports: portsOf(hostPorts[h])})
+			Risk: riskOf["h:"+h], Internal: internal, Alive: hh != nil, Ports: portsOf(hostPorts[h]),
+			CDN: hCDN, Server: hServer, Status: hStatus})
 	}
 	// technology nodes: one per detected technology, linked to every host that
 	// runs it — so you can pivot ("show every host on Apache APISIX / Node.js").
@@ -911,7 +986,11 @@ func Build(dir, target string) *Graph {
 			if ps := sortedKeys(ipPorts[ip]); len(ps) > 0 {
 				t += "\nports: " + strings.Join(ps, ",")
 			}
-			g.add(&Node{ID: "ip:" + ip, Label: ip, Group: grp, Title: t, Internal: isInternal(ip), Ports: portsOf(ipPorts[ip])})
+			if sharedHost[ip] > 1 {
+				t += "\nshared hosting: " + strconv.Itoa(sharedHost[ip]) + " hosts"
+			}
+			g.add(&Node{ID: "ip:" + ip, Label: ip, Group: grp, Title: t, Internal: isInternal(ip),
+				Ports: portsOf(ipPorts[ip]), Origin: originIP[ip], CDN: cdnOf[ip], Shared: sharedHost[ip]})
 			if _, ok := g.Nodes["h:"+h]; ok {
 				g.link("h:"+h, "ip:"+ip, "A")
 			}
@@ -1008,7 +1087,17 @@ func Build(dir, target string) *Graph {
 		}
 		id := pfx + lf.val
 		if g.Nodes[id] == nil {
-			g.add(&Node{ID: id, Label: shortURL(lf.val), Group: lf.group, Title: lf.title})
+			nd := &Node{ID: id, Label: shortURL(lf.val), Group: lf.group, Title: lf.title}
+			if lf.ep {
+				if cls := epAttack[lf.val]; len(cls) > 0 {
+					nd.Attack = cls
+				}
+				if s := epStatus[lf.val]; s > 0 {
+					nd.Status = s
+					nd.Title = "[" + strconv.Itoa(s) + "] " + nd.Title
+				}
+			}
+			g.add(nd)
 		}
 		a := "dom:" + target
 		if lf.host != "" {
@@ -1062,6 +1151,12 @@ func Build(dir, target string) *Graph {
 			id := "sec:x:" + strconv.Itoa(i)
 			g.add(&Node{ID: id, Label: "secret: " + m, Group: "secret", Title: m})
 			g.link("dom:"+target, id, "secret")
+		}
+		// classify every secret node by its matched value → structured secret type
+		for _, n := range g.Nodes {
+			if n.Group == "secret" && n.Secret == "" {
+				n.Secret = secretType(n.Title)
+			}
 		}
 	}
 
@@ -1378,4 +1473,32 @@ func appendUniq(s []string, v string) []string {
 		}
 	}
 	return append(s, v)
+}
+
+// secretType classifies a matched secret string into a provider/type so the
+// viewer can facet secrets (aws, google, github, jwt, …). Returns "" if unknown.
+func secretType(s string) string {
+	u := strings.ToUpper(s)
+	switch {
+	case strings.Contains(s, "AKIA"), strings.Contains(s, "ASIA"):
+		return "aws"
+	case strings.Contains(s, "AIza"), strings.Contains(s, "ya29."):
+		return "google"
+	case strings.Contains(s, "ghp_"), strings.Contains(s, "gho_"), strings.Contains(s, "github_pat_"):
+		return "github"
+	case strings.Contains(s, "xoxb-"), strings.Contains(s, "xoxp-"), strings.Contains(s, "xapp-"):
+		return "slack"
+	case strings.Contains(s, "sk_live_"), strings.Contains(s, "sk_test_"), strings.Contains(s, "rk_live_"):
+		return "stripe"
+	case strings.Contains(s, "SG."):
+		return "sendgrid"
+	case strings.Contains(s, "eyJ"):
+		return "jwt"
+	case strings.Contains(u, "PRIVATE KEY"):
+		return "privatekey"
+	case strings.Contains(u, "AWS_SECRET"), strings.Contains(u, "SECRET_KEY"), strings.Contains(u, "API_KEY"),
+		strings.Contains(u, "APIKEY"), strings.Contains(u, "ACCESS_TOKEN"), strings.Contains(u, "PASSWORD"):
+		return "credential"
+	}
+	return ""
 }

@@ -172,7 +172,7 @@
  <span class="sp"></span>
  <div class="search">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-  <input id="q" placeholder="search…  type:ip · tech:nginx · risk:>5 · port:443 · sev:high · alive:yes · /regex/" title="plain text matches name/id/details; filters (AND): type: group: tech: risk:>N port: status: sev: alive: internal: exposed: label: text: /regex/" autocomplete="off">
+  <input id="q" placeholder="search…  cdn:no · svc:rdp · gf:ssrf · status:401,403 · -tech:nginx · sev:high · /regex/" title="plain text matches name/id/details. Filters (AND): type: tech: risk:>N port:(risky) svc: status: sev: cdn: origin: server: gf: secret: alive: internal: exposed: shared: ext: label: text: /regex/ · value OR with comma (status:401,403) · negate with - or ! (-cdn:yes)" autocomplete="off">
   <div id="qsug"></div>
  </div>
  <div class="menu" id="sfMenu"><button id="sfBtn" title="filter builder — tick to select facets">⚑ filter</button>
@@ -231,6 +231,11 @@
    <button data-v="internal">🔒 internal leaks</button>
    <button data-v="findings">⚠ findings</button>
    <button data-v="choke">✂ chokepoints</button>
+   <button data-v="cdnbypass">🛡 origin exposed</button>
+   <button data-v="takeover">🎭 takeover</button>
+   <button data-v="sensitive">📄 sensitive files</button>
+   <button data-v="admin">🔑 admin / login</button>
+   <button data-v="services">⚙ exposed services</button>
   </div>
   <div class="row" style="margin-top:6px;gap:5px">
    <button id="saveView" style="flex:1">💾 save current view</button>
@@ -298,7 +303,9 @@ function add(sg){
    const sx=(typeof n.x==='number')?n.x:Math.cos(Math.random()*6.283)*(1+Math.random()*9);
    const sy=(typeof n.y==='number')?n.y:Math.sin(Math.random()*6.283)*(1+Math.random()*9);
    g.addNode(n.id,{label:(n.label||n.id)+(n.count?'  ('+n.count+')':''),rawlabel:n.label||n.id,group:n.group,
-     title:n.title||'',risk:n.risk||0,count:n.count||0,ports:(Array.isArray(n.ports)?n.ports:[]),internal:!!n.internal,alive:!!n.alive,color:COL[n.group]||'#8c959f',size:(n.sz>0?n.sz:sizeOf(n)),tier:tierOf(n.group),
+     title:n.title||'',risk:n.risk||0,count:n.count||0,ports:(Array.isArray(n.ports)?n.ports:[]),internal:!!n.internal,alive:!!n.alive,
+     cdn:n.cdn||'',origin:!!n.origin,server:n.server||'',attack:(Array.isArray(n.attack)?n.attack:[]),secret:n.secret||'',shared:n.shared||0,status:n.status||0,
+     color:COL[n.group]||'#8c959f',size:(n.sz>0?n.sz:sizeOf(n)),tier:tierOf(n.group),
      x:sx,y:sy}); });
  (sg.edges||[]).forEach(e=>{ if(g.hasNode(e.from)&&g.hasNode(e.to)&&!g.hasEdge(e.from,e.to)){
    // finding edges pop (red, thicker, on top); infra edges are thin and follow
@@ -817,8 +824,17 @@ const VIEWS={
  exposed:()=>{ filter.only=new Set(['domain','asn','sub','vhost','ip_pub']); setColorBy(''); return 'internet-exposed surface'; },
  internal:()=>{ filter.only=new Set(['sub_int','ip_int','ip_origin']); setColorBy(''); return 'internal leaks (RFC1918 / origin)'; },
  findings:()=>{ filter.only=new Set(['vuln_critical','vuln_high','vuln_medium','vuln_low','vuln_info']); setColorBy(''); return 'findings'; },
- choke:()=>{ filter.only=null; syncFilterUI(); setColorBy('chokepoints'); return 'chokepoints (red = graph splits if removed)'; }
+ choke:()=>{ filter.only=null; syncFilterUI(); setColorBy('chokepoints'); return 'chokepoints (red = graph splits if removed)'; },
+ cdnbypass:()=>{ filter.only=null; syncFilterUI(); setColorBy(''); return viewQuery('origin:yes','origin IPs (behind-CDN bypass candidates)'); },
+ takeover:()=>{ filter.only=null; syncFilterUI(); setColorBy(''); return viewQuery('text:takeover','subdomain-takeover candidates'); },
+ sensitive:()=>{ filter.only=null; syncFilterUI(); setColorBy(''); return viewQuery('ext:env,git,sql,bak,config,yml,json,zip','sensitive files'); },
+ admin:()=>{ filter.only=null; syncFilterUI(); setColorBy(''); return viewQuery('/admin|login|signin|dashboard|phpmyadmin|jenkins|grafana|kibana|console|actuator/','admin / login panels'); },
+ services:()=>{ filter.only=null; syncFilterUI(); setColorBy(''); return viewQuery('port:risky','exposed sensitive services'); }
 };
+// run a DSL query as a saved view: reveal + highlight all matches on the graph.
+function viewQuery(q,label){ const hit=matchQuery(q); $('q').value=q;
+ if(hit.length&&highlightHits(hit)){ buildAllList(); toast(searchSummary(hit),4000); return (label||q)+' — '+hit.length+' match'+(hit.length===1?'':'es'); }
+ return 'no match: '+(label||q); }
 $('views').querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ const msg=VIEWS[b.dataset.v](); $('viewMsg').textContent=msg||'';
  if(colorBy)loadMetrics(()=>renderer&&renderer.refresh()); else renderer&&renderer.refresh(); updateStat(); });
 
@@ -830,31 +846,53 @@ $('reload').onclick=load;
 // ── advanced search — a small query DSL ──────────────────────────────────────
 // Plain text matches label/id; field filters combine with AND (space):
 //   type:ip  group:subnet  tech:nginx  risk:>5  port:443  status:200  /reg.?ex/
-const SFIELDS=['type:','group:','tech:','risk:','port:','status:','sev:','alive:','internal:','exposed:','label:','text:'];
+const SFIELDS=['type:','group:','tech:','risk:','port:','svc:','status:','sev:','cdn:','origin:','server:','gf:','secret:','alive:','internal:','exposed:','shared:','ext:','label:','text:'];
 function cmpN(x,op,n){ return op==='>'?x>n:op==='<'?x<n:op==='<='?x<=n:op==='='?x===n:x>=n; }
 function techNeighbor(id,v){ let f=false; g.forEachNeighbor(id,nb=>{ if(f)return; const na=g.getNodeAttributes(nb); if(na.group==='tech'&&(na.rawlabel||'').toLowerCase().indexOf(v)>-1)f=true; }); return f; }
-const _truthy=s=>/^(y|yes|true|1|up|live|alive)$/.test(s), _falsy=s=>/^(n|no|false|0|down|dead|off)$/.test(s);
+const _truthy=s=>/^(y|yes|true|1|up|live|alive|on)$/.test(s), _falsy=s=>/^(n|no|false|0|down|dead|off|none)$/.test(s);
+// port→service groups + risky (sensitive) ports, for svc: and port:risky
+const SVC={ssh:[22],telnet:[23],ftp:[21],smtp:[25,465,587],mail:[25,465,587,110,143,993,995],dns:[53],
+ http:[80,8080,8000,8888,8008],https:[443,8443,4443],rdp:[3389],vnc:[5900,5901,5902],smb:[445,139],ldap:[389,636],
+ mysql:[3306],postgres:[5432],mssql:[1433],oracle:[1521],redis:[6379],mongodb:[27017],elastic:[9200,9300],
+ memcached:[11211],k8s:[6443,10250,2379,2380],docker:[2375,2376],winrm:[5985,5986],rpc:[135],nfs:[2049]};
+const RISKY=new Set([21,23,25,135,139,389,445,512,513,514,873,1433,1521,2049,2375,2376,2379,2380,3306,3389,5432,5900,5901,5985,5986,6379,9200,9300,10250,11211,27017]);
+const anyPort=(a,arr)=>Array.isArray(a.ports)&&a.ports.some(p=>arr.indexOf(p)>-1);
 function parseToken(t){
  if(t.length>2 && t[0]==='/' && t[t.length-1]==='/'){ try{ const re=new RegExp(t.slice(1,-1),'i'); return (id,a)=>re.test(a.rawlabel||'')||re.test(id)||re.test(a.title||''); }catch(e){} }
  const m=t.match(/^([a-zA-Z]+):(.*)$/);
  if(m){ const f=m[1].toLowerCase(), v=m[2].toLowerCase();
+   if(v.indexOf(',')>-1){ const ps=v.split(',').filter(Boolean).map(vi=>parseToken(f+':'+vi)); return (id,a)=>ps.some(p=>p(id,a)); } // value OR: status:401,403
    if(f==='type'||f==='group')return (id,a)=>a.group===v||famOf(a.group)===v;
    if(f==='tech')return (id,a)=>(a.group==='tech'&&(a.rawlabel||'').toLowerCase().indexOf(v)>-1)||techNeighbor(id,v);
    if(f==='risk'){ const c=v.match(/^(>=|<=|>|<|=)?\s*(\d+)/); if(c)return (id,a)=>cmpN(a.risk||0,c[1]||'>=',+c[2]); }
-   if(f==='port'){ const n=parseInt(v,10); if(!isNaN(n))return (id,a)=>Array.isArray(a.ports)&&a.ports.indexOf(n)>-1; }
-   if(f==='status')return (id,a)=>statusCodes(a.title).some(c=>c.indexOf(v)===0)||(a.title||'').indexOf(v)>-1;
+   if(f==='status'){ const c=v.match(/^(>=|<=|>|<|=)\s*(\d+)$/); if(c)return (id,a)=>cmpN(a.status||+(statusList(a)[0]||0),c[1],+c[2]);
+     return (id,a)=>statusList(a).some(c=>c.indexOf(v)===0); }
+   if(f==='port'){ if(v==='risky'||v==='dangerous')return (id,a)=>Array.isArray(a.ports)&&a.ports.some(p=>RISKY.has(p)); const n=parseInt(v,10); if(!isNaN(n))return (id,a)=>Array.isArray(a.ports)&&a.ports.indexOf(n)>-1; }
+   if(f==='svc'||f==='service'){ const arr=SVC[v]||[]; return (id,a)=>anyPort(a,arr); }
    if(f==='sev'||f==='severity')return (id,a)=>a.group==='vuln_'+v||(a.group.indexOf('vuln')===0&&(a.title||'').toLowerCase().indexOf(v)>-1);
    if(f==='alive'||f==='up')return (id,a)=> _falsy(v)?a.alive!==true:a.alive===true;
    if(f==='internal')return (id,a)=> _falsy(v)?!a.internal:!!a.internal;
    if(f==='exposed'||f==='external')return (id,a)=> _falsy(v)?!!a.internal:!a.internal;
+   if(f==='cdn'){ if(_truthy(v))return (id,a)=>!!a.cdn; if(_falsy(v))return (id,a)=>!a.cdn&&(famOf(a.group)==='subdomain'||famOf(a.group)==='ip'); return (id,a)=>(a.cdn||'').toLowerCase().indexOf(v)>-1; }
+   if(f==='origin')return (id,a)=> _falsy(v)?!a.origin:!!a.origin;
+   if(f==='server')return (id,a)=>(a.server||'').toLowerCase().indexOf(v)>-1||(a.title||'').toLowerCase().indexOf('server: '+v)>-1;
+   if(f==='gf'||f==='attack'||f==='class')return (id,a)=>(Array.isArray(a.attack)&&a.attack.some(c=>c.toLowerCase().indexOf(v)>-1))||(a.title||'').toLowerCase().indexOf('['+v)>-1;
+   if(f==='secret')return (id,a)=>(a.secret||'').toLowerCase().indexOf(v)>-1||(a.group==='secret'&&(a.title||'').toLowerCase().indexOf(v)>-1);
+   if(f==='shared'){ if(_truthy(v))return (id,a)=>(a.shared||0)>1; const c=v.match(/^(>=|<=|>|<|=)?\s*(\d+)/); if(c)return (id,a)=>cmpN(a.shared||0,c[1]||'>=',+c[2]); }
+   if(f==='ext'||f==='filetype')return (id,a)=>(a.rawlabel||'').toLowerCase().indexOf('.'+v)>-1;
    if(f==='label'||f==='name')return (id,a)=>(a.rawlabel||'').toLowerCase().indexOf(v)>-1;
    if(f==='text'||f==='detail'||f==='in'||f==='any')return (id,a)=>(a.rawlabel||'').toLowerCase().indexOf(v)>-1||id.toLowerCase().indexOf(v)>-1||(a.title||'').toLowerCase().indexOf(v)>-1; }
  const q=t.toLowerCase(); return (id,a)=>(a.rawlabel||'').toLowerCase().indexOf(q)>-1||id.toLowerCase().indexOf(q)>-1||(a.title||'').toLowerCase().indexOf(q)>-1;
 }
-function isFieldQuery(raw){ return /\b[a-z]+:/i.test(raw) || /\//.test(raw); }
-function matchQuery(raw){ const toks=(raw.trim().match(/\/[^/]+\/|\S+/g))||[]; if(!toks.length)return [];
- const preds=toks.map(parseToken); const out=[];
- g.forEachNode((id,a)=>{ for(let i=0;i<preds.length;i++)if(!preds[i](id,a))return; out.push(id); }); return out; }
+function isFieldQuery(raw){ return /\b[a-z]+:/i.test(raw) || /\//.test(raw) || /(^|\s)[!-]/.test(raw); }
+// a token may be negated with a leading ! (any token) or - (field:/regex tokens only,
+// so hostnames with leading dashes aren't misread). Negation inverts the predicate.
+function matchQuery(raw){ const toks=(raw.trim().match(/[!-]?\/[^/]+\/|\S+/g))||[]; if(!toks.length)return [];
+ const preds=toks.map(t=>{ let neg=false;
+   if(t[0]==='!'){ neg=true; t=t.slice(1); }
+   else if(t[0]==='-'&&t.length>1&&(t.indexOf(':')>-1||t[1]==='/')){ neg=true; t=t.slice(1); }
+   if(!t)return ()=>true; const p=parseToken(t); return neg?(id,a)=>!p(id,a):p; });
+ const out=[]; g.forEachNode((id,a)=>{ for(let i=0;i<preds.length;i++)if(!preds[i](id,a))return; out.push(id); }); return out; }
 function revealAll(ids){ let changed=false; ids.forEach(id=>{ const t=g.getNodeAttribute(id,'tier'); if(t>maxTier&&!revealed.has(id)){ g.forEachNeighbor(id,nb=>{ if(g.getNodeAttribute(nb,'tier')<t)expanded.add(nb); }); changed=true; } }); if(changed)recomputeRevealed(); return changed; }
 function fitTo(ids){ if(!renderer||!ids.length)return; let mnx=Infinity,mny=Infinity,mxx=-Infinity,mxy=-Infinity,any=false;
  ids.forEach(id=>{ const p=renderer.getNodeDisplayData(id); if(!p)return; any=true; if(p.x<mnx)mnx=p.x;if(p.x>mxx)mxx=p.x;if(p.y<mny)mny=p.y;if(p.y>mxy)mxy=p.y; });
@@ -875,29 +913,45 @@ $('q').addEventListener('change',e=>{ const raw=(e.target.value||'').trim(); if(
 
 // ── faceted filter builder (tick-select) ────────────────────────────────
 const FAMCOL=Object.fromEntries(FAMS);
-const facet={type:new Set(),tech:new Set(),port:new Set(),status:new Set(),sev:new Set(),reach:new Set(),risk:0};
+const facet={type:new Set(),tech:new Set(),port:new Set(),svc:new Set(),status:new Set(),sev:new Set(),reach:new Set(),cdn:new Set(),attack:new Set(),secret:new Set(),risk:0};
 const SEVORD=['critical','high','medium','low','info'];
 const REACH={ alive:a=>a.alive===true, dead:a=>a.group==='sub_dead'||((famOf(a.group)==='subdomain'||famOf(a.group)==='ip')&&a.alive!==true),
   internal:a=>a.internal===true, external:a=>!a.internal&&(famOf(a.group)==='ip'||famOf(a.group)==='subdomain') };
+const CDNF={ 'behind cdn':a=>!!a.cdn, 'origin ip':a=>a.origin===true,
+  'direct (no cdn)':a=>!a.cdn&&(famOf(a.group)==='subdomain'||famOf(a.group)==='ip') };
 function statusCodes(t){ return String(t||'').match(/\b[1-5]\d\d\b/g)||[]; }
+// HTTP status for a node: the structured field if present, else — ONLY for host
+// families — the status token at the start of the title's 2nd line ("<code> <page title>").
+// Never regex the whole title: IP/host titles carry ports/counts/ASN numbers that
+// would be misread as status codes.
+function statusList(a){ if(a.status)return [String(a.status)];
+ if(famOf(a.group)==='subdomain'||a.group==='domain'){ const l2=(a.title||'').split('\n')[1]||''; return statusCodes(l2.split(/\s/)[0]); }
+ return []; }
 function sevOf(g){ return g&&g.indexOf('vuln_')===0?g.slice(5):''; }
-function facetActive(){ return facet.type.size||facet.tech.size||facet.port.size||facet.status.size||facet.sev.size||facet.reach.size||facet.risk; }
-function collectFacets(){ const types={},techs={},ports={},stats={},sevs={},reach={};
+function facetActive(){ return facet.type.size||facet.tech.size||facet.port.size||facet.svc.size||facet.status.size||facet.sev.size||facet.reach.size||facet.cdn.size||facet.attack.size||facet.secret.size||facet.risk; }
+function collectFacets(){ const types={},techs={},ports={},svcs={},stats={},sevs={},reach={},cdnf={},attacks={},secrets={};
  g.forEachNode((id,a)=>{ types[famOf(a.group)]=(types[famOf(a.group)]||0)+1;
    if(a.group==='tech'){ const t=(a.rawlabel||'').trim(); if(t)techs[t]=(techs[t]||0)+1; }
-   if(Array.isArray(a.ports))a.ports.forEach(p=>{ ports[p]=(ports[p]||0)+1; });
-   statusCodes(a.title).forEach(c=>{ stats[c]=(stats[c]||0)+1; });
+   if(Array.isArray(a.ports)){ a.ports.forEach(p=>{ ports[p]=(ports[p]||0)+1; }); Object.keys(SVC).forEach(k=>{ if(anyPort(a,SVC[k]))svcs[k]=(svcs[k]||0)+1; }); }
+   statusList(a).forEach(c=>{ stats[c]=(stats[c]||0)+1; });
    const sv=sevOf(a.group); if(sv)sevs[sv]=(sevs[sv]||0)+1;
-   Object.keys(REACH).forEach(k=>{ if(REACH[k](a))reach[k]=(reach[k]||0)+1; }); });
- return {types,techs,ports,stats,sevs,reach}; }
-function facetMatch(){ const uT=facet.type.size,uE=facet.tech.size,uP=facet.port.size,uS=facet.status.size,uV=facet.sev.size,uH=facet.reach.size,uR=facet.risk,out=[];
+   Object.keys(REACH).forEach(k=>{ if(REACH[k](a))reach[k]=(reach[k]||0)+1; });
+   Object.keys(CDNF).forEach(k=>{ if(CDNF[k](a))cdnf[k]=(cdnf[k]||0)+1; });
+   if(Array.isArray(a.attack))a.attack.forEach(c=>{ if(c)attacks[c]=(attacks[c]||0)+1; });
+   if(a.secret)secrets[a.secret]=(secrets[a.secret]||0)+1; });
+ return {types,techs,ports,svcs,stats,sevs,reach,cdnf,attacks,secrets}; }
+function facetMatch(){ const uT=facet.type.size,uE=facet.tech.size,uP=facet.port.size,uSv=facet.svc.size,uS=facet.status.size,uV=facet.sev.size,uH=facet.reach.size,uC=facet.cdn.size,uA=facet.attack.size,uSe=facet.secret.size,uR=facet.risk,out=[];
  if(!facetActive())return out;
  g.forEachNode((id,a)=>{ if(uT&&!facet.type.has(famOf(a.group)))return;
    if(uR&&(a.risk||0)<uR)return;
    if(uP&&!(Array.isArray(a.ports)&&a.ports.some(p=>facet.port.has(String(p)))))return;
-   if(uS&&!statusCodes(a.title).some(c=>facet.status.has(c)))return;
+   if(uSv){ let ok=false; facet.svc.forEach(k=>{ if(anyPort(a,SVC[k]||[]))ok=true; }); if(!ok)return; }
+   if(uS&&!statusList(a).some(c=>facet.status.has(c)))return;
    if(uV&&!facet.sev.has(sevOf(a.group)))return;
    if(uH){ let ok=false; facet.reach.forEach(k=>{ if(REACH[k]&&REACH[k](a))ok=true; }); if(!ok)return; }
+   if(uC){ let ok=false; facet.cdn.forEach(k=>{ if(CDNF[k]&&CDNF[k](a))ok=true; }); if(!ok)return; }
+   if(uA&&!(Array.isArray(a.attack)&&a.attack.some(c=>facet.attack.has(c))))return;
+   if(uSe&&!facet.secret.has(a.secret))return;
    if(uE){ if(a.group==='tech'){ if(!facet.tech.has((a.rawlabel||'').trim()))return; }
      else { let ok=false; g.forEachNeighbor(id,nb=>{ if(ok)return; const na=g.getNodeAttributes(nb); if(na.group==='tech'&&facet.tech.has((na.rawlabel||'').trim()))ok=true; }); if(!ok)return; } }
    out.push(id); });
@@ -916,6 +970,14 @@ function renderFacets(){ const f=collectFacets(); let h='';
  h+=vk.length?sec('Severity','<div class="fcchips">'+vk.map(k=>'<span class="fcchip'+(facet.sev.has(k)?' on':'')+'" data-f="sev" data-v="'+k+'"><i class="d" style="background:'+(COL['vuln_'+k]||'#cf222e')+'"></i>'+k+' <small>'+f.sevs[k]+'</small></span>').join('')+'</div>'):'';
  const rk=['alive','dead','internal','external'].filter(k=>f.reach[k]);
  h+=rk.length?sec('Reachability','<div class="fcchips">'+rk.map(k=>'<span class="fcchip'+(facet.reach.has(k)?' on':'')+'" data-f="reach" data-v="'+k+'">'+k+' <small>'+f.reach[k]+'</small></span>').join('')+'</div>'):'';
+ const ck=['behind cdn','origin ip','direct (no cdn)'].filter(k=>f.cdnf[k]);
+ h+=ck.length?sec('CDN / Origin','<div class="fcchips">'+ck.map(k=>'<span class="fcchip'+(facet.cdn.has(k)?' on':'')+'" data-f="cdn" data-v="'+esc(k)+'">'+esc(k)+' <small>'+f.cdnf[k]+'</small></span>').join('')+'</div>'):'';
+ const svk=Object.keys(f.svcs).sort((a,b)=>f.svcs[b]-f.svcs[a]);
+ h+=svk.length?sec('Service','<div class="fcchips">'+svk.map(k=>'<span class="fcchip'+(facet.svc.has(k)?' on':'')+'" data-f="svc" data-v="'+esc(k)+'">'+esc(k)+' <small>'+f.svcs[k]+'</small></span>').join('')+'</div>'):'';
+ const ak=Object.keys(f.attacks).sort((a,b)=>f.attacks[b]-f.attacks[a]);
+ h+=ak.length?sec('Attack class (gf)','<div class="fcchips">'+ak.map(k=>'<span class="fcchip'+(facet.attack.has(k)?' on':'')+'" data-f="attack" data-v="'+esc(k)+'">'+esc(k)+' <small>'+f.attacks[k]+'</small></span>').join('')+'</div>'):'';
+ const sek=Object.keys(f.secrets).sort((a,b)=>f.secrets[b]-f.secrets[a]);
+ h+=sek.length?sec('Secret type','<div class="fcchips">'+sek.map(k=>'<span class="fcchip'+(facet.secret.has(k)?' on':'')+'" data-f="secret" data-v="'+esc(k)+'">'+esc(k)+' <small>'+f.secrets[k]+'</small></span>').join('')+'</div>'):'';
  const ek=Object.keys(f.techs).sort((a,b)=>f.techs[b]-f.techs[a]);
  h+=ek.length?sec('Technology',(ek.length>12?'<input class="fcsearch" id="fcTechQ" placeholder="filter technologies…" autocomplete="off">':'')+'<div class="fcchips" id="fcTechChips">'+ek.map(k=>'<span class="fcchip'+(facet.tech.has(k)?' on':'')+'" data-f="tech" data-v="'+esc(k)+'">'+esc(k)+' <small>'+f.techs[k]+'</small></span>').join('')+'</div>'):'';
  h+=sec('Min risk','<div class="fcchips" id="fcRisk">'+[[0,'any'],[1,'≥1'],[4,'≥4'],[7,'≥7']].map(([v,l])=>'<span class="fcchip'+(facet.risk===v?' on':'')+'" data-f="risk" data-v="'+v+'">'+l+'</span>').join('')+'</div>');
@@ -928,7 +990,7 @@ function renderFacets(){ const f=collectFacets(); let h='';
  updateFacetCount(); }
 $('sfBtn').onclick=e=>{ e.stopPropagation(); const open=$('sfMenu').classList.toggle('open'); if(open)renderFacets(); };
 $('sfMenu').querySelector('.drop').onclick=e=>e.stopPropagation();
-$('fcClear').onclick=()=>{ facet.type.clear();facet.tech.clear();facet.port.clear();facet.status.clear();facet.sev.clear();facet.reach.clear();facet.risk=0; renderFacets(); };
+$('fcClear').onclick=()=>{ facet.type.clear();facet.tech.clear();facet.port.clear();facet.svc.clear();facet.status.clear();facet.sev.clear();facet.reach.clear();facet.cdn.clear();facet.attack.clear();facet.secret.clear();facet.risk=0; renderFacets(); };
 $('fcApply').onclick=()=>{ if(!facetActive()){ toast('tick at least one facet first',2500); return; }
  const hit=facetMatch(); $('sfMenu').classList.remove('open');
  if(highlightHits(hit)){ updateStat(); buildAllList(); toast(searchSummary(hit),4000); } else toast('no nodes match the selected filters',3500); };

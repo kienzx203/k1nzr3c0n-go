@@ -97,7 +97,11 @@ var MergeFiles = []string{
 	"tlsx_raw.txt", "favicon_hashes.txt", "dns_records_raw.txt", "st_dns_records.txt",
 	// technology fingerprinting (webanalyze) → tech nodes
 	"webanalyze.jsonl", "webanalyze.json",
-	// NOTE: ip_groups/shared_hosting is DB-only (graph has no reader) — not merged.
+	// shared hosting (co-located domains per IP) → graph reads ip_groups/shared_hosting.txt;
+	// rel path is preserved by the merge (like gf/).
+	"ip_groups/shared_hosting.txt",
+	// dir-brute status (feroxbuster jsonl + ffuf json) → HTTP status on endpoint nodes
+	"feroxbuster.json", "ffuf_paths.json",
 }
 
 // Mu serializes merge writes into a target dir. Callers that write into the same
