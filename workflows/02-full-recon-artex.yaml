@@ -12,29 +12,17 @@ vars:
   run_asn: 'true'
   run_permutation: 'true'
   run_tlsx: 'true'
-  run_portscan: 'true'
-  run_asn_portscan: 'true'
-  run_deep_portscan: 'false'   # ARTEX lean template: skip rustscan full-range + nmap (4h tail) — agent does deep scan itself if needed
-  run_screenshot: 'true'
   # SCOPE-SENSITIVE (default OFF): also scan SecurityTrails pivot domains —
   # OTHER orgs' root domains sharing NS/MX with the target. Enable ONLY when
   # your program scope covers org-wide assets; shared NS/MX can include
   # third parties (hosting customers, providers). Runs as a SEPARATE flow 2:
   # own httpx probe + own screenshot pass merged into the gallery. It never
   # touches live_urls.txt, so katana/afrog/nuclei NEVER hit those domains.
-  run_st_pivot_scan: 'false'
   pivot_rescan_all: 'false'    # true = Flow 2 re-scans ALL pivots (ignores cross-run dedup)
-  run_cdncheck: 'true'
-  run_crawl: 'true'
-  run_js_analysis: 'true'
-  run_takeover: 'true'
-  run_s3scan: 'true'
   run_axfr: 'true'
   run_revdns: 'true'
-  run_ptr_scan: 'true'
   run_amass_active: 'false'
   run_recursive: 'false'      # recursive sub-subdomain enum on broad wildcards (slow)
-  run_dns_records: 'true'     # extract SRV/MX/NS/TXT records → new hosts
   subdomains_list: ''
   chaos_key: ''
   # API keys are auto-injected from the /keys page — no need to set them here.
@@ -75,9 +63,6 @@ vars:
   org_name: ''
   # ── Pivot techniques (off by default — enable per-engagement) ───────────────
   run_uncover_org: 'true'        # uncover org-name search on Shodan/FOFA/ZoomEye (needs org_name)
-  run_favicon_pivot: 'false'     # mmh3 favicon hash → Shodan/FOFA same-favicon hosts
-  run_vhost_ip_fuzz: 'true'      # ffuf Host-header fuzz non-CDN IPs (touches target directly)
-  run_ip_pivot: 'false'          # mapcidr PTR sweep neighboring /24 CIDR blocks
   vhost_wordlist: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/subdomains-top1million-20000.txt
   vhost_ip_fuzz_max_ips: '20'
   ip_pivot_prefix: '24'
@@ -1491,7 +1476,7 @@ steps:
   when: '{vars.run_asn}'
   shell: true
   optional: true
-  timeout: 6m
+  timeout: 15m
   run: |
     # Discovery-only flow (no bulk resolve): derive the org's IP ranges from the
     # domain itself — apex A record(s) + any IPs already seen (PTR) -> owning ASN
@@ -1538,7 +1523,7 @@ steps:
       Q=$(printf '%s' "$ORG" | jq -sRr @uri 2>/dev/null)
       { curl -s --max-time 20 -A 'recon' "https://api.bgpview.io/search?query_term=${Q}" 2>/dev/null | jq -r '.data.asns[]?.asn // empty' 2>/dev/null; \
         curl -s --max-time 20 -A 'Mozilla/5.0' "https://bgp.he.net/search?search%5Bsearch%5D=${Q}&commit=Search" 2>/dev/null | grep -oE 'AS[0-9]+' | tr -dc '0-9\n'; } \
-        | grep -E '^[0-9]+$' | sort -un | head -30 > {workspace}/.cand_asns || true
+        | grep -E '^[0-9]+$' | sort -un | head -15 > {workspace}/.cand_asns || true
       # VALIDATE: keep only ASNs whose holder shares the org's most distinctive word
       # (a loose org token otherwise matches hundreds of unrelated ASNs = scope-blast).
       TOK=$(printf '%s' "$ORG" | tr ' ' '\n' | awk '{print length,$0}' | sort -rn | head -1 | awk '{print $2}')
@@ -1550,11 +1535,12 @@ steps:
       for asn in $(cat {workspace}/.orgasns 2>/dev/null); do
         curl -s --max-time 25 "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}" 2>/dev/null \
           | jq -r '.data.prefixes[]?.prefix // empty' 2>/dev/null
-      done | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]+$' | sort -u | head -20000 > {workspace}/asn_org_cidrs.txt || true
+      done | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]+$' | sort -u | head -3000 > {workspace}/asn_org_cidrs.txt || true
     fi
     rm -f {workspace}/.asn_seed_ips.txt {workspace}/.cymru {workspace}/.orgasns {workspace}/.cand_asns
     printf '[asn_expand] IP ranges: %s CIDRs (Cymru+RIPEstat+HE+bgpview+bgpq4) | org-wide intel: %s\n' \
       "$(wc -l < {workspace}/asn_ipv4_cidrs.txt)" "$(wc -l < {workspace}/asn_org_cidrs.txt 2>/dev/null || echo 0)" >> {workspace}/asn_stats.txt
+    exit 0   # best-effort enrichment: never fail the run on a slow/missing source
   outputs:
     file: '{workspace}/asn_ipv4_cidrs.txt'
 - id: uncover_asn
@@ -1565,7 +1551,7 @@ steps:
   when: '{vars.run_asn} && {vars.run_uncover_org}'
   shell: true
   optional: true
-  timeout: 8m
+  timeout: 15m
   run: |
     # Live hosts IN the derived ranges via Shodan/Censys/FOFA keyed on asn_expand's
     # ASNs (needs API keys; uncover skips cleanly if none). In-scope hostnames merged
@@ -1586,6 +1572,7 @@ steps:
     touch {workspace}/uncover_asn_in_scope.txt
     printf '[uncover_asn] live hosts in derived ASNs: %s raw | %s in-scope\n' \
       "$(wc -l < {workspace}/uncover_asn_raw.txt)" "$(wc -l < {workspace}/uncover_asn_in_scope.txt)" >> {workspace}/asn_stats.txt
+    exit 0   # best-effort: never fail the run
   outputs:
     file: '{workspace}/uncover_asn_in_scope.txt'
 - id: reverse_dns_asn
