@@ -1,5 +1,5 @@
 name: 01-full-recon-pipeline
-description: 'Full recon pipeline: passive+active subdomain → ASN/IP recon → amass intel → org uncover → TLS SAN mining → DNS resolve → IP grouping → HTTP probe → CDN check → favicon hash pivot → vhost IP fuzz → IP/PTR pivot → URL crawl → JS analysis → takeover → cloud storage → nuclei/afrog vuln scan'
+description: 'Full recon pipeline: passive+active subdomain → ASN/IP recon (Cymru+RIPEstat+HE+bgpview) → org uncover → TLS SAN mining → DNS resolve → IP grouping → HTTP probe → CDN check → favicon hash pivot → vhost IP fuzz → IP/PTR pivot → URL crawl → JS analysis → takeover → cloud storage → nuclei/afrog vuln scan'
 # Cap on concurrent steps within a parallel level. The passive phase runs ~30
 # independent sources in one level; 8 at a time keeps RAM/CPU bounded on the
 # scan VM. These sources are API/CT queries (TCP), NOT DNS floods — safe for
@@ -79,7 +79,6 @@ vars:
   nuclei_timeout: '10'
   org_name: ''
   # ── Pivot techniques (off by default — enable per-engagement) ───────────────
-  run_amass_intel: 'false'       # amass intel removed in v5 — disabled (metabigor covers ASN)
   run_uncover_org: 'true'        # uncover org-name search on Shodan/FOFA/ZoomEye (needs org_name)
   run_favicon_pivot: 'false'     # mmh3 favicon hash → Shodan/FOFA same-favicon hosts
   run_vhost_ip_fuzz: 'true'      # ffuf Host-header fuzz non-CDN IPs (touches target directly)
@@ -1489,49 +1488,10 @@ steps:
   run: "(\n  echo '{target}' | metabigor net --domain 2>/dev/null || true;\n  test -n '{vars.org_name}' && echo '{vars.org_name}' | metabigor net --org 2>/dev/null || true\n) | grep -oE '[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}/[0-9]+' | sort -u > {workspace}/asn_ipv4_cidrs.txt || true; touch {workspace}/asn_ipv4_cidrs.txt; printf 'ASN IPv4 CIDRs discovered: %s\\n' \"$(wc -l < {workspace}/asn_ipv4_cidrs.txt)\" > {workspace}/asn_stats.txt"
   outputs:
     ipv4_cidrs: '{workspace}/asn_ipv4_cidrs.txt'
-- id: amass_intel
-  name: '[ASN] amass intel — org/WHOIS-based ASN discovery (amass v4 only; v5 uses metabigor)'
-  depends_on:
-  - asn_discover
-  run_on_failed_deps: true
-  when: '{vars.run_asn} && {vars.run_amass_intel} && {vars.org_name}'
-  shell: true
-  optional: true
-  skip_if_exists: true
-  timeout: 15m
-  run: |
-    # amass intel subcommand was removed in v5 — use metabigor as fallback
-    touch {workspace}/amass_intel.txt
-    if amass intel -org "{vars.org_name}" -o {workspace}/amass_intel.txt 2>/dev/null; then
-      echo "[amass_intel] amass intel completed"
-    else
-      # v5 fallback: use metabigor net --org for CIDR discovery
-      echo "{vars.org_name}" | metabigor net --org 2>/dev/null \
-        | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]+' \
-        > {workspace}/amass_intel.txt || true
-    fi
-    touch {workspace}/amass_intel.txt
-  outputs:
-    file: '{workspace}/amass_intel.txt'
-- id: amass_intel_extract
-  name: '[ASN] extract CIDR ranges from amass intel output'
-  depends_on:
-  - amass_intel
-  run_on_failed_deps: true
-  timeout: 5m
-  shell: true
-  optional: true
-  run: |
-    grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]+' \
-      {workspace}/amass_intel.txt 2>/dev/null | sort -u > {workspace}/amass_intel_cidrs.txt || true
-    touch {workspace}/amass_intel_cidrs.txt
-    printf 'amass intel CIDRs: %s\n' "$(wc -l < {workspace}/amass_intel_cidrs.txt)"
-  outputs:
-    file: '{workspace}/amass_intel_cidrs.txt'
 - id: reverse_dns_asn
   name: '[ASN] hakrevdns — reverse DNS on ASN IP ranges → hidden subdomains not in CT'
   depends_on:
-  - amass_intel_extract
+  - asn_expand
   run_on_failed_deps: true
   when: '{vars.run_asn} && {vars.run_revdns}'
   shell: true
@@ -2121,7 +2081,7 @@ steps:
       Q=$(printf '%s' "$ORG" | jq -sRr @uri 2>/dev/null)
       { curl -s --max-time 20 -A 'recon' "https://api.bgpview.io/search?query_term=${Q}" 2>/dev/null | jq -r '.data.asns[]?.asn // empty' 2>/dev/null; \
         curl -s --max-time 20 -A 'Mozilla/5.0' "https://bgp.he.net/search?search%5Bsearch%5D=${Q}&commit=Search" 2>/dev/null | grep -oE 'AS[0-9]+' | tr -dc '0-9\n'; } \
-        | grep -E '^[0-9]+$' | sort -un | head -60 > {workspace}/.cand_asns || true
+        | grep -E '^[0-9]+$' | sort -un | head -30 > {workspace}/.cand_asns || true
       # VALIDATE each candidate: keep ONLY ASNs whose holder shares the org's most
       # distinctive word — a loose org token otherwise matches hundreds of unrelated
       # ASNs (scope-blast). TOK = longest word in the derived org name.

@@ -74,7 +74,6 @@ vars:
   screenshot_threads: '10'
   org_name: ''
   # ── Pivot techniques (off by default — enable per-engagement) ───────────────
-  run_amass_intel: 'false'       # amass intel removed in v5 — disabled (metabigor covers ASN)
   run_uncover_org: 'true'        # uncover org-name search on Shodan/FOFA/ZoomEye (needs org_name)
   run_favicon_pivot: 'false'     # mmh3 favicon hash → Shodan/FOFA same-favicon hosts
   run_vhost_ip_fuzz: 'true'      # ffuf Host-header fuzz non-CDN IPs (touches target directly)
@@ -1539,7 +1538,7 @@ steps:
       Q=$(printf '%s' "$ORG" | jq -sRr @uri 2>/dev/null)
       { curl -s --max-time 20 -A 'recon' "https://api.bgpview.io/search?query_term=${Q}" 2>/dev/null | jq -r '.data.asns[]?.asn // empty' 2>/dev/null; \
         curl -s --max-time 20 -A 'Mozilla/5.0' "https://bgp.he.net/search?search%5Bsearch%5D=${Q}&commit=Search" 2>/dev/null | grep -oE 'AS[0-9]+' | tr -dc '0-9\n'; } \
-        | grep -E '^[0-9]+$' | sort -un | head -60 > {workspace}/.cand_asns || true
+        | grep -E '^[0-9]+$' | sort -un | head -30 > {workspace}/.cand_asns || true
       # VALIDATE: keep only ASNs whose holder shares the org's most distinctive word
       # (a loose org token otherwise matches hundreds of unrelated ASNs = scope-blast).
       TOK=$(printf '%s' "$ORG" | tr ' ' '\n' | awk '{print length,$0}' | sort -rn | head -1 | awk '{print $2}')
@@ -1589,49 +1588,10 @@ steps:
       "$(wc -l < {workspace}/uncover_asn_raw.txt)" "$(wc -l < {workspace}/uncover_asn_in_scope.txt)" >> {workspace}/asn_stats.txt
   outputs:
     file: '{workspace}/uncover_asn_in_scope.txt'
-- id: amass_intel
-  name: '[ASN] amass intel — org/WHOIS-based ASN discovery (amass v4 only; v5 uses metabigor)'
-  depends_on:
-  - asn_discover
-  run_on_failed_deps: true
-  when: '{vars.run_asn} && {vars.run_amass_intel} && {vars.org_name}'
-  shell: true
-  optional: true
-  skip_if_exists: true
-  timeout: 15m
-  run: |
-    # amass intel subcommand was removed in v5 — use metabigor as fallback
-    touch {workspace}/amass_intel.txt
-    if amass intel -org "{vars.org_name}" -o {workspace}/amass_intel.txt 2>/dev/null; then
-      echo "[amass_intel] amass intel completed"
-    else
-      # v5 fallback: use metabigor net --org for CIDR discovery
-      echo "{vars.org_name}" | metabigor net --org 2>/dev/null \
-        | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]+' \
-        > {workspace}/amass_intel.txt || true
-    fi
-    touch {workspace}/amass_intel.txt
-  outputs:
-    file: '{workspace}/amass_intel.txt'
-- id: amass_intel_extract
-  name: '[ASN] extract CIDR ranges from amass intel output'
-  depends_on:
-  - amass_intel
-  run_on_failed_deps: true
-  timeout: 5m
-  shell: true
-  optional: true
-  run: |
-    grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]+' \
-      {workspace}/amass_intel.txt 2>/dev/null | sort -u > {workspace}/amass_intel_cidrs.txt || true
-    touch {workspace}/amass_intel_cidrs.txt
-    printf 'amass intel CIDRs: %s\n' "$(wc -l < {workspace}/amass_intel_cidrs.txt)"
-  outputs:
-    file: '{workspace}/amass_intel_cidrs.txt'
 - id: reverse_dns_asn
   name: '[ASN] hakrevdns — reverse DNS on ASN IP ranges → hidden subdomains not in CT'
   depends_on:
-  - amass_intel_extract
+  - asn_expand
   run_on_failed_deps: true
   when: '{vars.run_asn} && {vars.run_revdns}'
   shell: true
