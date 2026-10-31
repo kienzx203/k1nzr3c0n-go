@@ -750,6 +750,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/llm/claude/oauth/start", s.handleClaudeOAuthStart)
 	mux.HandleFunc("POST /api/llm/claude/oauth/exchange", s.handleClaudeOAuthExchange)
 	mux.HandleFunc("POST /api/llm/claude/local", s.handleClaudeLocalImport)
+	mux.HandleFunc("POST /api/llm/claude/quickadd", s.handleClaudeQuickAdd)
 
 	// asset system
 	mux.HandleFunc("GET /api/assets", s.listAssets)

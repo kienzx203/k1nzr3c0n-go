@@ -33,6 +33,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Autumn-27/artex/db"
 )
 
 const (
@@ -321,13 +323,12 @@ func (s *Server) handleClaudeOAuthStart(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// handleClaudeLocalImport reads Claude Code's own login file from THIS server's
-// home dir (~/.claude/.credentials.json, or $CLAUDE_CONFIG_DIR) and returns a
-// normalized credentials blob the UI drops into the profile key. This is the
-// reliable path: the browser OAuth consent only succeeds when initiated by the
-// genuine Claude Code, so we reuse the token the real `claude` CLI already
-// obtained on this host — no browser, no consent.
-func (s *Server) handleClaudeLocalImport(w http.ResponseWriter, r *http.Request) {
+// readLocalClaudeCreds reads Claude Code's own login file from THIS server's home
+// dir (~/.claude/.credentials.json, or $CLAUDE_CONFIG_DIR) and returns a
+// normalized credentials blob. This is the reliable path: the browser OAuth
+// consent only succeeds when initiated by the genuine Claude Code, so we reuse
+// the token the real `claude` CLI already obtained on this host.
+func readLocalClaudeCreds() (blob, source string, ok bool) {
 	var paths []string
 	if d := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); d != "" {
 		paths = append(paths, filepath.Join(d, ".credentials.json"))
@@ -342,12 +343,67 @@ func (s *Server) handleClaudeLocalImport(w http.ResponseWriter, r *http.Request)
 		}
 		if c, ok := parseClaudeSubCreds(string(b)); ok && c.AccessToken != "" {
 			out, _ := json.Marshal(c)
-			writeJSON(w, 200, map[string]any{"ok": true, "api_key": string(out), "expires_at": c.ExpiresAt, "source": p})
-			return
+			return string(out), p, true
 		}
 	}
-	writeJSON(w, 200, map[string]any{"ok": false,
-		"error": "no readable ~/.claude/.credentials.json on the server — run `claude` and log in on this host, or paste the file contents into the key field"})
+	return "", "", false
+}
+
+const claudeLocalMissing = "no readable ~/.claude/.credentials.json on the server — run `claude` and log in on this host"
+
+func (s *Server) handleClaudeLocalImport(w http.ResponseWriter, r *http.Request) {
+	blob, src, ok := readLocalClaudeCreds()
+	if !ok {
+		writeJSON(w, 200, map[string]any{"ok": false, "error": claudeLocalMissing})
+		return
+	}
+	c, _ := parseClaudeSubCreds(blob)
+	writeJSON(w, 200, map[string]any{"ok": true, "api_key": blob, "expires_at": c.ExpiresAt, "source": src})
+}
+
+// handleClaudeQuickAdd is the one-click path: read the server's Claude Code login
+// and create (or update) a single "Claude Subscription" claude-sub profile with
+// the chosen model, then activate it. No pasting, no OAuth — the user only picks
+// a model.
+func (s *Server) handleClaudeQuickAdd(w http.ResponseWriter, r *http.Request) {
+	pg := s.pg(w)
+	if pg == nil {
+		return
+	}
+	var body struct {
+		Model string `json:"model"`
+	}
+	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body)
+	model := strings.TrimSpace(body.Model)
+	if model == "" {
+		model = "claude-sonnet-4-5"
+	}
+	blob, src, ok := readLocalClaudeCreds()
+	if !ok {
+		writeJSON(w, 200, map[string]any{"ok": false, "error": claudeLocalMissing})
+		return
+	}
+	p := &db.LLMProfile{
+		Name: "Claude Subscription", Format: "claude-sub",
+		BaseURL: "https://api.anthropic.com", Model: model, APIKey: blob, Streaming: true,
+	}
+	if profs, err := pg.ListProfiles(); err == nil { // reuse an existing claude-sub profile (idempotent)
+		for _, ex := range profs {
+			if ex != nil && ex.Format == "claude-sub" {
+				p.ID, p.Name = ex.ID, ex.Name
+				break
+			}
+		}
+	}
+	id, err := pg.SaveProfile(p)
+	if err != nil {
+		writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = pg.SetActiveProfile(id)
+	s.invalidateProfileAgents()
+	s.reapplyActiveProfile()
+	writeJSON(w, 200, map[string]any{"ok": true, "id": id, "name": p.Name, "model": model, "source": src})
 }
 
 func (s *Server) handleClaudeOAuthExchange(w http.ResponseWriter, r *http.Request) {

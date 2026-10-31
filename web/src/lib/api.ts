@@ -1017,6 +1017,10 @@ export const api = {
   // Import Claude Code's login from the SERVER host's ~/.claude/.credentials.json (no OAuth).
   claudeLocalImport: () =>
     post<{ ok: boolean; api_key?: string; expires_at?: number; source?: string; error?: string }>("/llm/claude/local", {}),
+  // One click: read the server's Claude Code login and create+activate a claude-sub profile.
+  claudeQuickAdd: (model: string) =>
+    post<{ ok: boolean; id?: number; name?: string; model?: string; source?: string; error?: string }>(
+      "/llm/claude/quickadd", { model }),
   activateLLMProfile: (id: string) => post<{ ok: boolean }>("/llm/profiles/active", { id: Number(id) }),
   // Actual rotation order and circuit-breaker state per profile.
   llmPool: () => get<LLMPoolStatus>("/llm/pool"),

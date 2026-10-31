@@ -810,17 +810,21 @@ function ProfileSheet({
             {format === "claude-sub" && (
               <div className="rounded-md border border-border/60 p-3 space-y-2.5">
                 <p className="text-muted-foreground text-xs">
-                  Use your Claude Pro/Max subscription. Reuse the login from the <b>real Claude Code</b> CLI (the
-                  in-browser consent only works for the genuine client).
+                  One click: reads the <b>Claude Code</b> login on this server (<code>~/.claude/.credentials.json</code>),
+                  then creates &amp; activates a Claude subscription profile. Just pick a model.
                   <br />⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
                 </p>
-                <p className="text-muted-foreground text-xs">
-                  <b>Import from this server:</b> if you ran <code>claude</code> and logged in on the machine hosting
-                  this app, click below to read its <code>~/.claude/.credentials.json</code>.
-                  <br /><b>Or paste:</b> run <code>cat ~/.claude/.credentials.json</code> on any machine with Claude
-                  Code and paste the whole JSON into the <b>API key</b> field above.
-                </p>
                 <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+                    value={model || "claude-sonnet-4-5"}
+                    onChange={(e) => setModel(e.target.value)}
+                  >
+                    {["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5",
+                      "claude-3-7-sonnet-latest", "claude-3-5-haiku-latest"].map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
                   <Button
                     type="button"
                     size="sm"
@@ -829,13 +833,13 @@ function ProfileSheet({
                       setCcMsg("");
                       setCcBusy(true);
                       try {
-                        const d = await api.claudeLocalImport();
-                        if (d.ok && d.api_key) {
-                          invalidateModels();
-                          setApiKey(d.api_key);
-                          setCcMsg("✓ Imported from " + (d.source || "server") + " — now Save the profile.");
+                        const d = await api.claudeQuickAdd(model || "claude-sonnet-4-5");
+                        if (d.ok && d.id != null) {
+                          setCcMsg("✓ Created & activated from " + (d.source || "server") + ".");
+                          onSaved(String(d.id));
+                          onOpenChange(false);
                         } else {
-                          setCcMsg(d.error || "no local login found");
+                          setCcMsg(d.error || "no Claude Code login found on the server");
                         }
                       } catch (e) {
                         setCcMsg("Error: " + (e as Error).message);
@@ -844,10 +848,14 @@ function ProfileSheet({
                       }
                     }}
                   >
-                    Import from this server
+                    {ccBusy ? "Creating…" : "Create from server login"}
                   </Button>
                   {ccMsg && <span className="text-muted-foreground text-xs">{ccMsg}</span>}
                 </div>
+                <p className="text-muted-foreground text-xs">
+                  No Claude Code on this server? Run <code>cat ~/.claude/.credentials.json</code> elsewhere and paste
+                  the JSON into the <b>API key</b> field above, then Save.
+                </p>
               </div>
             )}
           </div>
