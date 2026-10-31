@@ -245,6 +245,14 @@ func ConfigFrom(provider, model, baseURL, apiKey, proxy string) Config {
 		if c.Model == "" {
 			c.Model = "gpt-5"
 		}
+	case "claude-sub":
+		// Anthropic Messages API billed against a Claude subscription (Bearer OAuth
+		// token + Claude-Code billing block). Same wire shape as anthropic.
+		c.Format = llm.FormatClaudeSub
+		c.BaseURL = strings.TrimRight(strings.TrimSuffix(c.BaseURL, "/v1/messages"), "/")
+		if c.Model == "" {
+			c.Model = "claude-sonnet-4-5"
+		}
 	default:
 		c.Format = llm.FormatAnthropic
 		// provider appends "/v1/messages".

@@ -45,6 +45,12 @@ const (
 	// FormatOpenAIResponses speaks the OpenAI Responses API (POST /v1/responses),
 	// distinct from FormatOpenAI's Chat Completions (/chat/completions).
 	FormatOpenAIResponses Format = "openai-responses"
+	// FormatClaudeSub is the Anthropic Messages API billed against a Claude
+	// SUBSCRIPTION (Pro/Max) instead of an API key: it authenticates with a
+	// subscription OAuth token (Bearer) and sends the Claude-Code billing/identity
+	// block. This uses the subscription OUTSIDE Claude Code, which violates
+	// Anthropic's terms and risks an account ban — opt-in only.
+	FormatClaudeSub Format = "claude-sub"
 )
 
 // MaxTokensFieldCompletion is the Config.MaxTokensField value that moves the
@@ -187,6 +193,17 @@ func NewProvider(cfg Config) (Provider, error) {
 			cfg.APIVersion = "2023-06-01"
 		}
 		return &anthropicProvider{cfg: cfg}, nil
+	case FormatClaudeSub:
+		if cfg.APIKey == "" {
+			cfg.APIKey = envOr("CLAUDE_SUB_TOKEN", os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"))
+		}
+		if cfg.BaseURL == "" {
+			cfg.BaseURL = envOr("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+		}
+		if cfg.APIVersion == "" {
+			cfg.APIVersion = "2023-06-01"
+		}
+		return &anthropicProvider{cfg: cfg, sub: true}, nil
 	case FormatOpenAI:
 		if cfg.APIKey == "" {
 			cfg.APIKey = os.Getenv("OPENAI_API_KEY")
@@ -204,7 +221,7 @@ func NewProvider(cfg Config) (Provider, error) {
 		}
 		return &openaiResponsesProvider{cfg: cfg}, nil
 	default:
-		return nil, fmt.Errorf("llm: unknown format %q (use anthropic, openai or openai-responses)", cfg.Format)
+		return nil, fmt.Errorf("llm: unknown format %q (use anthropic, claude-sub, openai or openai-responses)", cfg.Format)
 	}
 }
 

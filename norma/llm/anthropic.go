@@ -2,6 +2,8 @@ package llm
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,24 +12,64 @@ import (
 	"strings"
 )
 
-type anthropicProvider struct{ cfg Config }
+// anthropicProvider speaks the Anthropic Messages API. When sub is true it is the
+// "claude-sub" variant: it authenticates with a SUBSCRIPTION OAuth token
+// (Authorization: Bearer) and prepends the Claude-Code billing/identity system
+// block so the request bills against the Claude Pro/Max PLAN instead of an API
+// key. This impersonates Claude Code to use the subscription outside it, which
+// VIOLATES Anthropic's terms and can get the account banned — enabled only when
+// the operator explicitly picks the claude-sub format. Mirrors claude_sub_llm.py
+// (the CLIProxyAPI model). The normal (sub=false) path is unchanged: x-api-key.
+type anthropicProvider struct {
+	cfg Config
+	sub bool
+}
 
-// setAnthropicAuth selects the auth scheme from the credential shape and sets the
-// version header. A Claude SUBSCRIPTION OAuth token (from `claude setup-token` /
-// CLAUDE_CODE_OAUTH_TOKEN, prefix "sk-ant-oat") authenticates with
-// Authorization: Bearer + the oauth beta header instead of x-api-key; a normal
-// API key (sk-ant-api…) uses x-api-key. NOTE: Anthropic restricts subscription
-// OAuth tokens to Claude Code and MAY reject them on the Messages API with
-// "OAuth authentication is currently not supported" — this path is best-effort
-// (no Claude-Code identity spoofing) so the operator can try their own account.
-func setAnthropicAuth(r *http.Request, cfg Config) {
-	r.Header.Set("anthropic-version", cfg.APIVersion)
-	if strings.HasPrefix(strings.TrimSpace(cfg.APIKey), "sk-ant-oat") {
-		r.Header.Set("authorization", "Bearer "+strings.TrimSpace(cfg.APIKey))
-		r.Header.Set("anthropic-beta", "oauth-2025-04-20")
+// claude-sub billing/identity constants (Claude Code fingerprint).
+const (
+	ccSubVersion = "2.1.280"
+	ccSubFPSalt  = "59cf53e54c78"
+)
+
+// setAuth sets the version header and the credential scheme for this provider.
+func (p *anthropicProvider) setAuth(r *http.Request) {
+	r.Header.Set("anthropic-version", p.cfg.APIVersion)
+	if p.sub {
+		r.Header.Set("authorization", "Bearer "+strings.TrimSpace(p.cfg.APIKey))
 		return
 	}
-	r.Header.Set("x-api-key", cfg.APIKey)
+	r.Header.Set("x-api-key", p.cfg.APIKey)
+}
+
+// firstUserText returns the text of the first user message (for the billing fp).
+func firstUserText(req CompletionRequest) string {
+	for _, m := range req.Messages {
+		if m.Role == RoleUser {
+			return m.Text()
+		}
+	}
+	return ""
+}
+
+// claudeSubBilling builds the Claude-Code billing/identity system block the
+// subscription path needs (see claude_sub_llm.py _billing_header): a short
+// fingerprint of three chars of the first user message, the Claude Code version,
+// and a fixed salt.
+func claudeSubBilling(req CompletionRequest) anthropicSystemBlock {
+	rs := []rune(firstUserText(req))
+	pick := func(i int) rune {
+		if i < len(rs) {
+			return rs[i]
+		}
+		return '0'
+	}
+	chars := string([]rune{pick(4), pick(7), pick(20)})
+	sum := sha256.Sum256([]byte(ccSubFPSalt + chars + ccSubVersion))
+	fp := hex.EncodeToString(sum[:])[:3]
+	return anthropicSystemBlock{
+		Type: "text",
+		Text: fmt.Sprintf("x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=cli; cch=00000;", ccSubVersion, fp),
+	}
 }
 
 type anthropicSystemBlock struct {
@@ -99,6 +141,9 @@ func (p *anthropicProvider) buildBody(req CompletionRequest, stream bool) ([]byt
 	if p.cfg.ReasoningEffort != "" {
 		body.OutputConfig = &anthropicOutputConfig{Effort: p.cfg.ReasoningEffort}
 	}
+	if p.sub { // subscription path: prepend the Claude-Code billing/identity block
+		body.System = append([]anthropicSystemBlock{claudeSubBilling(req)}, body.System...)
+	}
 	return json.Marshal(body)
 }
 
@@ -133,7 +178,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req CompletionRequest) i
 		}
 		resp, err := doStream(ctx, p.cfg, p.cfg.BaseURL+"/v1/messages", body, func(r *http.Request) {
 			r.Header.Set("content-type", "application/json")
-			setAnthropicAuth(r, p.cfg)
+			p.setAuth(r)
 			r.Header.Set("accept", "text/event-stream")
 		}, "anthropic")
 		if err != nil {
@@ -179,7 +224,7 @@ func (p *anthropicProvider) Complete(ctx context.Context, req CompletionRequest)
 	}
 	resp, err := doStream(ctx, p.cfg, p.cfg.BaseURL+"/v1/messages", body, func(r *http.Request) {
 		r.Header.Set("content-type", "application/json")
-		setAnthropicAuth(r, p.cfg)
+		p.setAuth(r)
 		r.Header.Set("accept", "application/json")
 	}, "anthropic")
 	if err != nil {

@@ -62,7 +62,7 @@ const MAX_TOKENS_FIELD_HINTS: Record<string, string> = {
   get ollama() { return swt("providers.maxTokensFieldOllama"); },
 };
 type ProfileFormat = LLMProfile["format"];
-const FORMATS: readonly string[] = ["anthropic", "openai", "openai-responses", "ollama"];
+const FORMATS: readonly string[] = ["anthropic", "claude-sub", "openai", "openai-responses", "ollama"];
 const ZAI_PRESETS = ["zai-general", "zai-coding-reference"] as const;
 const OLLAMA_PRESETS = [
   { id: "ollama-host", key: "providers.ollamaHost", help: "providers.ollamaHostHelp" },
@@ -671,6 +671,7 @@ function ProfileSheet({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="anthropic">Anthropic</SelectItem>
+                  <SelectItem value="claude-sub">Claude Subscription (Pro/Max — OAuth token)</SelectItem>
                   <SelectItem value="openai">OpenAI (Chat Completions)</SelectItem>
                   <SelectItem value="openai-responses">OpenAI (Responses API)</SelectItem>
                   <SelectItem value="ollama">{swt("providers.ollamaFormat")}</SelectItem>
