@@ -55,10 +55,10 @@ Both are orchestrated from a Next.js UI and exposed over an HTTP API.
 | ![Dashboard](screenshots/dashboard.png) | ![Chat](screenshots/chat.png) | ![Tasks](screenshots/tasks.png) |
 | **Findings** | **Traffic** | **LLM profiles** |
 | ![Findings](screenshots/findings.png) | ![Traffic](screenshots/traffic.png) | ![LLM](screenshots/llm.png) |
-| **Relationship graph** | **Recon runs** | **Targets** |
-| ![Graph](screenshots/graph.png) | ![Runs](screenshots/runs.jpg) | ![Targets](screenshots/targets.jpg) |
-| **Tool versions** | **Terminal** | **Interception** |
-| ![Tool versions](screenshots/tool-versions.jpg) | ![Terminal](screenshots/terminal.jpg) | ![Interception](screenshots/intercept.png) |
+| **Relationship graph** | **Run detail** | **Recon runs** |
+| ![Graph](screenshots/graph-live.jpg) | ![Run detail](screenshots/run-detail.jpg) | ![Runs](screenshots/runs.jpg) |
+| **Targets** | **Tool versions** | **Terminal** |
+| ![Targets](screenshots/targets.jpg) | ![Tool versions](screenshots/tool-versions.jpg) | ![Terminal](screenshots/terminal.jpg) |
 
 ## Architecture
 

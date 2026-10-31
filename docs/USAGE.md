@@ -133,7 +133,8 @@ có mật khẩu, trang sẽ yêu cầu khởi tạo (hoặc installer đã làm
 - **Upload** — tải file lên server (wordlist, danh sách host/scope, input cho workflow).
 
 ![Runs](../screenshots/runs.jpg)
-![Graph](../screenshots/graph.png)
+![Run detail](../screenshots/run-detail.jpg)
+![Graph](../screenshots/graph-live.jpg)
 ![Targets](../screenshots/targets.jpg)
 ![Tool versions](../screenshots/tool-versions.jpg)
 ![Terminal](../screenshots/terminal.jpg)
