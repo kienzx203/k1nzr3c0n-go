@@ -748,7 +748,7 @@ func (s *Server) Handler() http.Handler {
 	// Claude subscription (claude-sub) OAuth login: start → authorize URL; exchange
 	// the pasted code → stored credentials (api_key JSON) with auto-refresh.
 	mux.HandleFunc("POST /api/llm/claude/oauth/start", s.handleClaudeOAuthStart)
-	mux.HandleFunc("GET /api/llm/claude/oauth/result", s.handleClaudeOAuthResult)
+	mux.HandleFunc("POST /api/llm/claude/oauth/exchange", s.handleClaudeOAuthExchange)
 
 	// asset system
 	mux.HandleFunc("GET /api/assets", s.listAssets)

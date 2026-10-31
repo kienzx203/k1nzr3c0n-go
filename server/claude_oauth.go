@@ -3,15 +3,23 @@ package server
 // Claude SUBSCRIPTION (Pro/Max) OAuth login for the "claude-sub" LLM format.
 //
 // This performs the Claude Code OAuth Authorization-Code + PKCE flow so the
-// operator can click "Login", authorize in the browser, paste the one-time code,
-// and the app stores + AUTO-REFRESHES the subscription token (no manual token
-// pasting). The access token is used by the claude-sub provider as a Bearer
-// credential and bills against the Pro/Max PLAN.
+// operator can click "Login", authorize in the browser, paste the one-time code
+// the callback page shows, and the app stores + AUTO-REFRESHES the subscription
+// token (no manual token pasting). The access token is used by the claude-sub
+// provider as a Bearer credential and bills against the Pro/Max PLAN.
 //
 // WARNING: this uses Claude Code's OAuth client to use the subscription OUTSIDE
 // Claude Code, which VIOLATES Anthropic's terms and can get the account BANNED.
-// Opt-in, operator-authorized. The authorize/token endpoints are reverse-engineered
-// (community-sourced) and may change; the refresh params match claude_sub_llm.py.
+// Opt-in, operator-authorized.
+//
+// All endpoints/params are taken verbatim from the real `claude` binary
+// (~/.local/share/claude/versions/*, the authoritative source):
+//   buildAuthUrl: L = loginWithClaudeAi ? CLAUDE_AI_AUTHORIZE_URL : CONSOLE_AUTHORIZE_URL
+//     U.append("code","true"); redirect_uri = isManual ? MANUAL_REDIRECT_URL : http://localhost:PORT/callback
+//     scope, code_challenge, code_challenge_method=S256, state
+//   token POST: Content-Type: application/json, body {grant_type, code, redirect_uri, client_id, code_verifier, state}
+// We use the SUBSCRIPTION host (CLAUDE_AI_AUTHORIZE_URL) + the MANUAL redirect so
+// the operator just pastes the code — no local listener, works from any browser.
 
 import (
 	"crypto/rand"
@@ -20,7 +28,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -30,20 +37,12 @@ import (
 
 const (
 	claudeOAuthClientID  = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-	claudeOAuthAuthorize = "https://claude.ai/oauth/authorize"     // NOT platform.claude.com — the working CLI authorizes here
-	claudeOAuthTokenURL  = "https://platform.claude.com/v1/oauth/token"
+	claudeOAuthAuthorize = "https://claude.com/cai/oauth/authorize"         // CLAUDE_AI_AUTHORIZE_URL (subscription login)
+	claudeOAuthTokenURL  = "https://platform.claude.com/v1/oauth/token"     // TOKEN_URL
+	claudeOAuthRedirect  = "https://platform.claude.com/oauth/code/callback" // MANUAL_REDIRECT_URL
 	claudeOAuthScope     = "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
-	claudeOAuthLoopPort  = 8769 // local loopback listener that catches the browser callback
-	claudeRefreshMargin  = 300  // refresh when the token is within 5 min of expiry
+	claudeRefreshMargin  = 300 // refresh when the token is within 5 min of expiry
 )
-
-// claudeOAuthRedirect is the loopback redirect the authorize page sends the
-// browser back to. The working `claude auth login` uses a localhost loopback +
-// a local HTTP listener (NOT a manual copy-paste callback), so the whole login
-// is automatic. The browser must run on the same host as this server.
-func claudeOAuthRedirect() string {
-	return fmt.Sprintf("http://localhost:%d/callback", claudeOAuthLoopPort)
-}
 
 // claudeSubCreds is the JSON stored in a claude-sub profile's api_key column.
 type claudeSubCreds struct {
@@ -54,24 +53,13 @@ type claudeSubCreds struct {
 
 type claudePending struct {
 	verifier string
-	oauthID  string
+	state    string
 	exp      time.Time
 }
 
-// claudeResult is the completed (or failed) login, keyed by oauthID, that the
-// UI polls for after the loopback listener has caught the callback.
-type claudeResult struct {
-	creds claudeSubCreds
-	err   string
-	exp   time.Time
-}
-
 var (
-	claudeMu             sync.Mutex
-	claudePendingByState = map[string]claudePending{} // state -> pending login
-	claudeResultByID     = map[string]claudeResult{}  // oauthID -> finished result
-	claudeListenerOnce   sync.Once
-	claudeListenerErr    string
+	claudePendingMu sync.Mutex
+	claudePendingM  = map[string]claudePending{}
 )
 
 func randB64(n int) string {
@@ -89,31 +77,24 @@ func pkcePair() (verifier, challenge string) {
 	return
 }
 
-// startClaudeLogin creates a pending PKCE login, ensures the loopback listener
-// is running, and returns its id + authorize URL.
+// startClaudeLogin creates a pending PKCE login and returns its id + authorize URL.
 func startClaudeLogin() (oauthID, authURL string) {
 	verifier, challenge := pkcePair()
 	state := randB64(16)
 	oauthID = randB64(12)
-	ensureClaudeLoopListener()
-	claudeMu.Lock()
-	now := time.Now()
-	for k, v := range claudePendingByState { // gc expired
-		if now.After(v.exp) {
-			delete(claudePendingByState, k)
+	claudePendingMu.Lock()
+	for k, v := range claudePendingM { // gc expired
+		if time.Now().After(v.exp) {
+			delete(claudePendingM, k)
 		}
 	}
-	for k, v := range claudeResultByID {
-		if now.After(v.exp) {
-			delete(claudeResultByID, k)
-		}
-	}
-	claudePendingByState[state] = claudePending{verifier: verifier, oauthID: oauthID, exp: now.Add(10 * time.Minute)}
-	claudeMu.Unlock()
+	claudePendingM[oauthID] = claudePending{verifier: verifier, state: state, exp: time.Now().Add(10 * time.Minute)}
+	claudePendingMu.Unlock()
 	q := url.Values{}
+	q.Set("code", "true") // required by the real buildAuthUrl
 	q.Set("client_id", claudeOAuthClientID)
 	q.Set("response_type", "code")
-	q.Set("redirect_uri", claudeOAuthRedirect())
+	q.Set("redirect_uri", claudeOAuthRedirect)
 	q.Set("scope", claudeOAuthScope)
 	q.Set("code_challenge", challenge)
 	q.Set("code_challenge_method", "S256")
@@ -121,70 +102,15 @@ func startClaudeLogin() (oauthID, authURL string) {
 	return oauthID, claudeOAuthAuthorize + "?" + q.Encode()
 }
 
-// ensureClaudeLoopListener lazily starts the loopback HTTP server that the
-// authorize page redirects the browser to. Its /callback handler exchanges the
-// code for tokens and parks the result for the UI to poll.
-func ensureClaudeLoopListener() {
-	claudeListenerOnce.Do(func() {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/callback", claudeLoopCallback)
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", claudeOAuthLoopPort))
-		if err != nil {
-			claudeMu.Lock()
-			claudeListenerErr = err.Error()
-			claudeMu.Unlock()
-			return
-		}
-		go func() { _ = (&http.Server{Handler: mux}).Serve(ln) }()
-	})
-}
-
-func claudeLoopCallback(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	code, state := strings.TrimSpace(q.Get("code")), q.Get("state")
-	claudeMu.Lock()
-	p, ok := claudePendingByState[state]
-	if ok {
-		delete(claudePendingByState, state)
-	}
-	claudeMu.Unlock()
-	finish := func(c claudeSubCreds, errMsg string) {
-		if ok {
-			claudeMu.Lock()
-			claudeResultByID[p.oauthID] = claudeResult{creds: c, err: errMsg, exp: time.Now().Add(10 * time.Minute)}
-			claudeMu.Unlock()
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if errMsg != "" {
-			fmt.Fprintf(w, "<h2>Login failed</h2><p>%s</p><p>Return to the app and try again.</p>", errMsg)
-			return
-		}
-		_, _ = w.Write([]byte("<h2>✓ Logged in</h2><p>Return to the app tab — it will finish automatically. You can close this window.</p>"))
-	}
-	if !ok {
-		finish(claudeSubCreds{}, "login session expired or unknown — start the login again")
-		return
-	}
-	if e := q.Get("error"); e != "" {
-		finish(claudeSubCreds{}, e+": "+q.Get("error_description"))
-		return
-	}
-	c, err := exchangeClaudeCode(p.verifier, code)
-	if err != nil {
-		finish(claudeSubCreds{}, err.Error())
-		return
-	}
-	finish(c, "")
-}
-
-// claudeTokenRequest posts a form-encoded token/refresh body and parses the
-// credentials. Form encoding (not JSON) matches the working `claude auth login`.
-func claudeTokenRequest(payload url.Values) (claudeSubCreds, error) {
-	req, err := http.NewRequest("POST", claudeOAuthTokenURL, strings.NewReader(payload.Encode()))
+// claudeTokenRequest posts a token/refresh JSON body and parses the credentials.
+// Content-Type application/json matches the real `claude` binary's token POST.
+func claudeTokenRequest(payload map[string]string) (claudeSubCreds, error) {
+	b, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", claudeOAuthTokenURL, strings.NewReader(string(b)))
 	if err != nil {
 		return claudeSubCreds{}, err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	resp, err := (&http.Client{Timeout: 25 * time.Second}).Do(req)
 	if err != nil {
@@ -210,23 +136,42 @@ func claudeTokenRequest(payload url.Values) (claudeSubCreds, error) {
 	return claudeSubCreds{AccessToken: r.AccessToken, RefreshToken: r.RefreshToken, ExpiresAt: time.Now().Unix() + exp}, nil
 }
 
-// exchangeClaudeCode swaps the one-time authorization code for credentials.
-func exchangeClaudeCode(verifier, code string) (claudeSubCreds, error) {
-	return claudeTokenRequest(url.Values{
-		"grant_type":    {"authorization_code"},
-		"code":          {code},
-		"redirect_uri":  {claudeOAuthRedirect()},
-		"client_id":     {claudeOAuthClientID},
-		"code_verifier": {verifier},
+// exchangeClaudeCode swaps the one-time authorization code for credentials. The
+// manual callback page shows the code as "<code>#<state>"; we split it and send
+// both, as the real token exchange does.
+func exchangeClaudeCode(oauthID, rawCode string) (claudeSubCreds, error) {
+	claudePendingMu.Lock()
+	p, ok := claudePendingM[oauthID]
+	if ok {
+		delete(claudePendingM, oauthID)
+	}
+	claudePendingMu.Unlock()
+	if !ok || time.Now().After(p.exp) {
+		return claudeSubCreds{}, fmt.Errorf("login session expired — start the login again")
+	}
+	code, state := strings.TrimSpace(rawCode), p.state
+	if i := strings.IndexByte(code, '#'); i >= 0 {
+		if s := code[i+1:]; s != "" {
+			state = s
+		}
+		code = code[:i]
+	}
+	return claudeTokenRequest(map[string]string{
+		"grant_type":    "authorization_code",
+		"code":          code,
+		"redirect_uri":  claudeOAuthRedirect,
+		"client_id":     claudeOAuthClientID,
+		"code_verifier": p.verifier,
+		"state":         state,
 	})
 }
 
 // refreshClaudeToken exchanges a refresh token for fresh credentials.
 func refreshClaudeToken(refresh string) (claudeSubCreds, error) {
-	c, err := claudeTokenRequest(url.Values{
-		"grant_type":    {"refresh_token"},
-		"refresh_token": {refresh},
-		"client_id":     {claudeOAuthClientID},
+	c, err := claudeTokenRequest(map[string]string{
+		"grant_type":    "refresh_token",
+		"refresh_token": refresh,
+		"client_id":     claudeOAuthClientID,
 	})
 	if err == nil && c.RefreshToken == "" {
 		c.RefreshToken = refresh // some responses omit it → keep the old one
@@ -365,41 +310,28 @@ func (s *Server) refreshClaudeSubProfiles() {
 
 func (s *Server) handleClaudeOAuthStart(w http.ResponseWriter, r *http.Request) {
 	oauthID, authURL := startClaudeLogin()
-	claudeMu.Lock()
-	lerr := claudeListenerErr
-	claudeMu.Unlock()
-	if lerr != "" {
-		writeJSON(w, 500, map[string]string{"error": "cannot start local login listener on port " +
-			fmt.Sprint(claudeOAuthLoopPort) + " (" + lerr + ") — paste ~/.claude/.credentials.json into the key field instead"})
-		return
-	}
 	writeJSON(w, 200, map[string]string{
 		"oauth_id":      oauthID,
 		"authorize_url": authURL,
-		"redirect_uri":  claudeOAuthRedirect(),
+		"redirect_uri":  claudeOAuthRedirect,
 	})
 }
 
-// handleClaudeOAuthResult is polled by the UI after the browser authorizes. It
-// returns {status:"pending"} until the loopback listener has caught the
-// callback, then {status:"ok", api_key} (or {status:"error"}).
-func (s *Server) handleClaudeOAuthResult(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimSpace(r.URL.Query().Get("oauth_id"))
-	claudeMu.Lock()
-	res, ok := claudeResultByID[id]
-	if ok {
-		delete(claudeResultByID, id)
+func (s *Server) handleClaudeOAuthExchange(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		OAuthID string `json:"oauth_id"`
+		Code    string `json:"code"`
 	}
-	claudeMu.Unlock()
-	if !ok {
-		writeJSON(w, 200, map[string]string{"status": "pending"})
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&in); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "bad json"})
 		return
 	}
-	if res.err != "" {
-		writeJSON(w, 200, map[string]string{"status": "error", "error": res.err})
+	c, err := exchangeClaudeCode(strings.TrimSpace(in.OAuthID), in.Code)
+	if err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
-	b, _ := json.Marshal(res.creds)
+	b, _ := json.Marshal(c)
 	// api_key is the JSON blob the UI saves into the claude-sub profile.
-	writeJSON(w, 200, map[string]any{"status": "ok", "api_key": string(b), "expires_at": res.creds.ExpiresAt})
+	writeJSON(w, 200, map[string]any{"api_key": string(b), "expires_at": c.ExpiresAt})
 }

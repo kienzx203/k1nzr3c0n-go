@@ -338,6 +338,8 @@ function ProfileSheet({
   const [apiKey, setApiKey] = React.useState("");
   // claude-sub OAuth login state
   const [ccBusy, setCcBusy] = React.useState(false);
+  const [ccOAuthId, setCcOAuthId] = React.useState("");
+  const [ccCode, setCcCode] = React.useState("");
   const [ccMsg, setCcMsg] = React.useState("");
   const [keyHint, setKeyHint] = React.useState("");
   const [rps, setRps] = React.useState("0");
@@ -819,8 +821,8 @@ function ProfileSheet({
                   (<code>cat ~/.claude/.credentials.json</code>). No login needed.
                 </p>
                 <p className="text-muted-foreground text-xs">
-                  <b>Or log in below</b> — only works when this browser runs on the <i>same machine</i> as the server
-                  (the callback goes to <code>localhost:8769</code>).
+                  <b>Or log in below:</b> click, authorize in the new tab, then <b>copy the code the callback page
+                  shows</b> and paste it here.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
@@ -833,22 +835,9 @@ function ProfileSheet({
                       setCcBusy(true);
                       try {
                         const d = await api.claudeOAuthStart();
+                        setCcOAuthId(d.oauth_id);
                         window.open(d.authorize_url, "_blank", "noopener");
-                        setCcMsg("Authorize in the new tab… waiting for the callback.");
-                        // Poll the loopback result until the local listener finishes the exchange.
-                        const deadline = Date.now() + 5 * 60 * 1000;
-                        for (;;) {
-                          await new Promise((r) => setTimeout(r, 1500));
-                          if (Date.now() > deadline) { setCcMsg("Timed out — try again, or paste the credentials file instead."); break; }
-                          let r;
-                          try { r = await api.claudeOAuthResult(d.oauth_id); } catch { continue; }
-                          if (r.status === "pending") continue;
-                          if (r.status === "error") { setCcMsg("Error: " + (r.error || "login failed")); break; }
-                          invalidateModels();
-                          setApiKey(r.api_key || "");
-                          setCcMsg("✓ Logged in — token stored. Now Save the profile.");
-                          break;
-                        }
+                        setCcMsg("Authorize in the new tab, then paste the code it shows below.");
                       } catch (e) {
                         setCcMsg("Error: " + (e as Error).message);
                       } finally {
@@ -858,6 +847,39 @@ function ProfileSheet({
                   >
                     🔐 Login with Claude subscription
                   </Button>
+                  {ccOAuthId && (
+                    <>
+                      <Input
+                        className="w-64"
+                        placeholder="Paste the code from the callback page"
+                        value={ccCode}
+                        onChange={(e) => setCcCode(e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={ccBusy || !ccCode.trim()}
+                        onClick={async () => {
+                          setCcMsg("");
+                          setCcBusy(true);
+                          try {
+                            const d = await api.claudeOAuthExchange(ccOAuthId, ccCode.trim());
+                            invalidateModels();
+                            setApiKey(d.api_key);
+                            setCcCode("");
+                            setCcOAuthId("");
+                            setCcMsg("✓ Logged in — token stored. Now Save the profile.");
+                          } catch (e) {
+                            setCcMsg("Error: " + (e as Error).message);
+                          } finally {
+                            setCcBusy(false);
+                          }
+                        }}
+                      >
+                        Complete
+                      </Button>
+                    </>
+                  )}
                 </div>
                 {ccMsg && <p className="text-muted-foreground text-xs">{ccMsg}</p>}
               </div>
