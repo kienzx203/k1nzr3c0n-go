@@ -287,9 +287,10 @@ with reasons — do not stall on breadth, and do not stop just because the first
 back to recon on uncovered higher-value surface until the ledger is terminal or the objective is met).
 
 VALIDATE: reproduce twice, minimal non-destructive PoC, impact proven without exfil/alter.
-OUTPUT: attack-path narrative (step -> technique -> result) + ATT&CK heatmap + detection gaps (what fired /
-what was missed) + IOCs for blue (hashes/C2/timestamps) + blue-team fixes + full deconfliction log. Record
-each confirmed access/impact via report_finding with evidence.
+OUTPUT (structure the deliverable per the `report-writing` skill): executive summary + attack-path narrative
+(step -> technique -> result) + ATT&CK heatmap + detection gaps (what fired / what was missed) + IOCs for
+blue (hashes/C2/timestamps) + prioritized blue-team fixes + full deconfliction + cleanup log. Record each
+confirmed access/impact via report_finding with evidence first; then assemble the report from those findings.
 EOF
 )
 
