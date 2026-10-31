@@ -191,6 +191,18 @@ var (
 	ErrLLMProfileNotFound          = errors.New("LLM profile not found")
 )
 
+// SetProfileKey updates ONLY the api_key column (+ its hint) of a profile. Used
+// by the claude-sub OAuth path to persist a refreshed subscription token without
+// rewriting the whole profile.
+func (d *DB) SetProfileKey(id int64, key string) error {
+	hint := ""
+	if len(key) >= 4 {
+		hint = "…" + key[len(key)-4:]
+	}
+	_, err := d.Exec(`UPDATE llm_profiles SET api_key=$1, api_key_hint=$2 WHERE id=$3`, key, hint, id)
+	return err
+}
+
 func (d *DB) DeleteProfile(id int64) error {
 	return d.DeleteProfileContext(context.Background(), id)
 }

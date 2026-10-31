@@ -326,6 +326,9 @@ func (s *Server) loadLLMConfig() (agent.Config, bool) {
 		return agent.Config{}, false
 	}
 	cfg := agent.ConfigFrom(p.Format, p.Model, p.BaseURL, p.APIKey, p.Proxy)
+	if p.Format == "claude-sub" { // use the stored access token (and keep it fresh)
+		cfg.APIKey = s.claudeSubAccessToken(p.APIKey)
+	}
 	cfg.RatePerSecond, cfg.RatePerMinute = p.RatePerSecond, p.RatePerMinute
 	cfg.ContextWindowK = p.ContextWindowK
 	cfg.ThinkingType = p.ThinkingType
@@ -499,6 +502,9 @@ func (s *Server) loadProfileConfig(id int64) (agent.Config, bool) {
 		return agent.Config{}, false
 	}
 	cfg := agent.ConfigFrom(p.Format, p.Model, p.BaseURL, p.APIKey, p.Proxy)
+	if p.Format == "claude-sub" { // use the stored access token (and keep it fresh)
+		cfg.APIKey = s.claudeSubAccessToken(p.APIKey)
+	}
 	cfg.RatePerSecond, cfg.RatePerMinute = p.RatePerSecond, p.RatePerMinute
 	cfg.ContextWindowK = p.ContextWindowK
 	cfg.ThinkingType = p.ThinkingType
@@ -739,6 +745,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/llm", s.getLLM)
 	mux.HandleFunc("POST /api/llm", s.setLLM)
 	mux.HandleFunc("POST /api/llm/test", s.testLLM)
+	// Claude subscription (claude-sub) OAuth login: start → authorize URL; exchange
+	// the pasted code → stored credentials (api_key JSON) with auto-refresh.
+	mux.HandleFunc("POST /api/llm/claude/oauth/start", s.handleClaudeOAuthStart)
+	mux.HandleFunc("POST /api/llm/claude/oauth/exchange", s.handleClaudeOAuthExchange)
 
 	// asset system
 	mux.HandleFunc("GET /api/assets", s.listAssets)
