@@ -749,6 +749,7 @@ func (s *Server) Handler() http.Handler {
 	// the pasted code → stored credentials (api_key JSON) with auto-refresh.
 	mux.HandleFunc("POST /api/llm/claude/oauth/start", s.handleClaudeOAuthStart)
 	mux.HandleFunc("POST /api/llm/claude/oauth/exchange", s.handleClaudeOAuthExchange)
+	mux.HandleFunc("POST /api/llm/claude/local", s.handleClaudeLocalImport)
 
 	// asset system
 	mux.HandleFunc("GET /api/assets", s.listAssets)

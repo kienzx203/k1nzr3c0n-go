@@ -338,8 +338,6 @@ function ProfileSheet({
   const [apiKey, setApiKey] = React.useState("");
   // claude-sub OAuth login state
   const [ccBusy, setCcBusy] = React.useState(false);
-  const [ccOAuthId, setCcOAuthId] = React.useState("");
-  const [ccCode, setCcCode] = React.useState("");
   const [ccMsg, setCcMsg] = React.useState("");
   const [keyHint, setKeyHint] = React.useState("");
   const [rps, setRps] = React.useState("0");
@@ -812,9 +810,15 @@ function ProfileSheet({
             {format === "claude-sub" && (
               <div className="rounded-md border border-border/60 p-3 space-y-2.5">
                 <p className="text-muted-foreground text-xs">
-                  Sign in with your Claude Pro/Max subscription. Click <b>Sign in</b>, authorize in the new tab,
-                  then copy the code the page shows and paste it here.
+                  Use your Claude Pro/Max subscription. Reuse the login from the <b>real Claude Code</b> CLI (the
+                  in-browser consent only works for the genuine client).
                   <br />⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  <b>Import from this server:</b> if you ran <code>claude</code> and logged in on the machine hosting
+                  this app, click below to read its <code>~/.claude/.credentials.json</code>.
+                  <br /><b>Or paste:</b> run <code>cat ~/.claude/.credentials.json</code> on any machine with Claude
+                  Code and paste the whole JSON into the <b>API key</b> field above.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
@@ -825,10 +829,14 @@ function ProfileSheet({
                       setCcMsg("");
                       setCcBusy(true);
                       try {
-                        const d = await api.claudeOAuthStart();
-                        setCcOAuthId(d.oauth_id);
-                        window.open(d.authorize_url, "_blank", "noopener");
-                        setCcMsg("Authorize in the new tab, then paste the code it shows below.");
+                        const d = await api.claudeLocalImport();
+                        if (d.ok && d.api_key) {
+                          invalidateModels();
+                          setApiKey(d.api_key);
+                          setCcMsg("✓ Imported from " + (d.source || "server") + " — now Save the profile.");
+                        } else {
+                          setCcMsg(d.error || "no local login found");
+                        }
                       } catch (e) {
                         setCcMsg("Error: " + (e as Error).message);
                       } finally {
@@ -836,43 +844,10 @@ function ProfileSheet({
                       }
                     }}
                   >
-                    Sign in with Claude
+                    Import from this server
                   </Button>
-                  {ccOAuthId && (
-                    <>
-                      <Input
-                        className="w-72 font-mono"
-                        placeholder="Paste the code from the callback page"
-                        value={ccCode}
-                        onChange={(e) => setCcCode(e.target.value)}
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={ccBusy || !ccCode.trim()}
-                        onClick={async () => {
-                          setCcMsg("");
-                          setCcBusy(true);
-                          try {
-                            const d = await api.claudeOAuthExchange(ccOAuthId, ccCode.trim());
-                            invalidateModels();
-                            setApiKey(d.api_key);
-                            setCcCode("");
-                            setCcOAuthId("");
-                            setCcMsg("✓ Signed in — token stored. Now Save the profile.");
-                          } catch (e) {
-                            setCcMsg("Error: " + (e as Error).message);
-                          } finally {
-                            setCcBusy(false);
-                          }
-                        }}
-                      >
-                        Complete
-                      </Button>
-                    </>
-                  )}
+                  {ccMsg && <span className="text-muted-foreground text-xs">{ccMsg}</span>}
                 </div>
-                {ccMsg && <p className="text-muted-foreground text-xs">{ccMsg}</p>}
               </div>
             )}
           </div>
