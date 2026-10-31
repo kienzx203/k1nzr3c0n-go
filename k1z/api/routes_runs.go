@@ -38,6 +38,15 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		writeDetail(w, 500, err.Error())
 		return
 	}
+	// Auto-register an unknown target (operator-authorized): create it with a default
+	// deny-wins scope = the domain + its subdomains so the target shows up in
+	// Targets/Graph and carries a scope. Best-effort — a run is never blocked on it.
+	if t := strings.ToLower(strings.TrimSpace(body.Target)); t != "" && !strings.ContainsAny(t, "/ ") {
+		if _, gerr := s.St.GetTarget(t); gerr != nil {
+			sc, _ := json.Marshal([]string{t, "*." + t})
+			_ = s.St.CreateTarget(&store.Target{Name: t, ScopeJSON: string(sc), Mode: "bounty"})
+		}
+	}
 	in := runner.LaunchInput{
 		Workflow:        body.Workflow,
 		Target:          body.Target,
