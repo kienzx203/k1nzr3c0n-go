@@ -29,7 +29,7 @@ import (
 
 const (
 	claudeOAuthClientID  = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-	claudeOAuthAuthorize = "https://claude.ai/oauth/authorize"
+	claudeOAuthAuthorize = "https://platform.claude.com/oauth/authorize"
 	claudeOAuthTokenURL  = "https://platform.claude.com/v1/oauth/token"
 	claudeOAuthRedirect  = "https://platform.claude.com/oauth/code/callback"
 	claudeOAuthScope     = "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
