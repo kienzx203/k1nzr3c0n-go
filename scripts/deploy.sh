@@ -134,5 +134,28 @@ if [ "$RESEED" = "1" ] && [ -n "${ARTEX_PASSWORD:-}" ]; then
   fi
 fi
 
+# ── Seed Claude Pro/Max (claude-sub) LLM profiles ────────────────────────────
+# Reads the server's own Claude Code login (~/.claude/.credentials.json, i.e.
+# /root/.claude/… when the service runs as root) and creates one claude-sub
+# profile per supported model (opus-4-8 + the Claude 5 family + sonnet/haiku 4.5),
+# activating Opus 4.8. Needs ARTEX_PASSWORD to authenticate; non-fatal. Skip with
+# SKIP_CLAUDE_SEED=1. Requires `claude` to be logged in on this host.
+if [ "${SKIP_CLAUDE_SEED:-0}" != "1" ] && [ -n "${ARTEX_PASSWORD:-}" ]; then
+  step "Seed Claude Pro/Max profiles (/api/llm/claude/seed)"
+  wait_http_ready || true
+  TOKEN=$(curl -sS -X POST "$BASE_URL/api/auth/login" -H 'Content-Type: application/json' \
+    -d "{\"username\":\"ARTEX\",\"password\":\"${ARTEX_PASSWORD}\"}" \
+    | python3 -c 'import json,sys;print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)
+  if [ -n "$TOKEN" ]; then
+    curl -sS -X POST "$BASE_URL/api/llm/claude/seed" -H "Authorization: Bearer $TOKEN" \
+      | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+print("  created: "+", ".join(d.get("created",[])) if d.get("ok") else "  skipped: "+str(d.get("error")))' 2>/dev/null \
+      || echo "  (claude seed call failed — non-fatal)"
+  else
+    echo "  (login failed — skipping claude seed; check ARTEX_PASSWORD)"
+  fi
+fi
+
 step "Done — hard-refresh the browser (Ctrl+Shift+R)"
 echo "If you did NOT pass RESEED=1, re-seed the template manually when it changed."

@@ -745,12 +745,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/llm", s.getLLM)
 	mux.HandleFunc("POST /api/llm", s.setLLM)
 	mux.HandleFunc("POST /api/llm/test", s.testLLM)
-	// Claude subscription (claude-sub) OAuth login: start → authorize URL; exchange
-	// the pasted code → stored credentials (api_key JSON) with auto-refresh.
-	mux.HandleFunc("POST /api/llm/claude/oauth/start", s.handleClaudeOAuthStart)
-	mux.HandleFunc("POST /api/llm/claude/oauth/exchange", s.handleClaudeOAuthExchange)
-	mux.HandleFunc("POST /api/llm/claude/local", s.handleClaudeLocalImport)
-	mux.HandleFunc("POST /api/llm/claude/quickadd", s.handleClaudeQuickAdd)
+	// Claude subscription (claude-sub): seed one profile per supported model from
+	// the server's ~/.claude/.credentials.json (deploy.sh calls this).
+	mux.HandleFunc("POST /api/llm/claude/seed", s.handleClaudeSeed)
 
 	// asset system
 	mux.HandleFunc("GET /api/assets", s.listAssets)

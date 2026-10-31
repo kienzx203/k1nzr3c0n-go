@@ -1010,17 +1010,6 @@ export const api = {
     llm_max_concurrent?: number; // 0 inherits the global cap (Ollama: one request per endpoint).
   }) => post<{ id: number }>("/llm/profiles", p),
   deleteLLMProfile: (id: string) => del<{ deleted: number }>(`/llm/profiles/${id}`),
-  claudeOAuthStart: () =>
-    post<{ oauth_id: string; authorize_url: string; redirect_uri: string }>("/llm/claude/oauth/start", {}),
-  claudeOAuthExchange: (oauthId: string, code: string) =>
-    post<{ api_key: string; expires_at: number }>("/llm/claude/oauth/exchange", { oauth_id: oauthId, code }),
-  // Import Claude Code's login from the SERVER host's ~/.claude/.credentials.json (no OAuth).
-  claudeLocalImport: () =>
-    post<{ ok: boolean; api_key?: string; expires_at?: number; source?: string; error?: string }>("/llm/claude/local", {}),
-  // One click: read the server's Claude Code login and create+activate a claude-sub profile.
-  claudeQuickAdd: (model: string) =>
-    post<{ ok: boolean; id?: number; name?: string; model?: string; source?: string; error?: string }>(
-      "/llm/claude/quickadd", { model }),
   activateLLMProfile: (id: string) => post<{ ok: boolean }>("/llm/profiles/active", { id: Number(id) }),
   // Actual rotation order and circuit-breaker state per profile.
   llmPool: () => get<LLMPoolStatus>("/llm/pool"),

@@ -66,10 +66,10 @@ const FORMATS: readonly string[] = ["anthropic", "claude-sub", "openai", "openai
 // Models a Claude Pro/Max subscription token can call (verified), picked from a
 // dropdown — no typing. Claude 5 family + the still-current 4.x.
 const CLAUDE_SUB_MODELS = [
-  "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
-  "claude-sonnet-4-5", "claude-haiku-4-5", "claude-fable-5-1",
+  "claude-opus-4-8", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
+  "claude-fable-5-1", "claude-sonnet-4-5", "claude-haiku-4-5",
 ] as const;
-const CLAUDE_SUB_DEFAULT_MODEL = "claude-sonnet-4-5";
+const CLAUDE_SUB_DEFAULT_MODEL = "claude-opus-4-8";
 const ZAI_PRESETS = ["zai-general", "zai-coding-reference"] as const;
 const OLLAMA_PRESETS = [
   { id: "ollama-host", key: "providers.ollamaHost", help: "providers.ollamaHostHelp" },
@@ -343,9 +343,6 @@ function ProfileSheet({
   const [baseUrl, setBaseUrl] = React.useState("");
   const [proxy, setProxy] = React.useState("");
   const [apiKey, setApiKey] = React.useState("");
-  // claude-sub OAuth login state
-  const [ccBusy, setCcBusy] = React.useState(false);
-  const [ccMsg, setCcMsg] = React.useState("");
   const [keyHint, setKeyHint] = React.useState("");
   const [rps, setRps] = React.useState("0");
   const [rpm, setRpm] = React.useState("0");
@@ -831,45 +828,11 @@ function ProfileSheet({
             />
             {format === "ollama" && <p className="text-muted-foreground text-xs">{swt("providers.ollamaKeyHelp")}</p>}
             {format === "claude-sub" && (
-              <div className="rounded-md border border-border/60 p-3 space-y-2.5">
-                <p className="text-muted-foreground text-xs">
-                  One click: reads the <b>Claude Code</b> login on this server (<code>~/.claude/.credentials.json</code>),
-                  then creates &amp; activates this profile with the model chosen above.
-                  <br />⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={ccBusy}
-                    onClick={async () => {
-                      setCcMsg("");
-                      setCcBusy(true);
-                      try {
-                        const d = await api.claudeQuickAdd(model || CLAUDE_SUB_DEFAULT_MODEL);
-                        if (d.ok && d.id != null) {
-                          setCcMsg("✓ Created & activated from " + (d.source || "server") + ".");
-                          onSaved(String(d.id));
-                          onOpenChange(false);
-                        } else {
-                          setCcMsg(d.error || "no Claude Code login found on the server");
-                        }
-                      } catch (e) {
-                        setCcMsg("Error: " + (e as Error).message);
-                      } finally {
-                        setCcBusy(false);
-                      }
-                    }}
-                  >
-                    {ccBusy ? "Creating…" : "Create from server login"}
-                  </Button>
-                  {ccMsg && <span className="text-muted-foreground text-xs">{ccMsg}</span>}
-                </div>
-                <p className="text-muted-foreground text-xs">
-                  No Claude Code on this server? Run <code>cat ~/.claude/.credentials.json</code> elsewhere and paste
-                  the JSON into the <b>API key</b> field above, then Save.
-                </p>
-              </div>
+              <p className="text-muted-foreground text-xs">
+                Claude Pro/Max profiles are seeded automatically on deploy (one per model) from the server’s Claude
+                Code login. To add one by hand, paste <code>~/.claude/.credentials.json</code> into the API key above.
+                ⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
+              </p>
             )}
           </div>
 

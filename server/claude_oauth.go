@@ -1,33 +1,26 @@
 package server
 
-// Claude SUBSCRIPTION (Pro/Max) OAuth login for the "claude-sub" LLM format.
+// Claude SUBSCRIPTION (Pro/Max) support for the "claude-sub" LLM format.
 //
-// This renders the authorize URL BYTE-FOR-BYTE like the real `claude` CLI login
-// (verified by diffing the CLI's own URL): authorize at claude.com/cai, the
-// manual callback redirect, code=true, the 7 CLI scopes, PKCE S256.
+// The in-browser OAuth flow does NOT work for a third-party app (Anthropic only
+// completes consent for the genuine Claude Code client), so profiles are seeded
+// from the token the real `claude` CLI already obtained on this host
+// (~/.claude/.credentials.json). `scripts/deploy.sh` calls POST
+// /api/llm/claude/seed, which creates one claude-sub profile per supported model
+// and activates Opus by default. The stored key auto-refreshes.
 //
-//   authorize   https://claude.com/cai/oauth/authorize
-//   redirect    https://platform.claude.com/oauth/code/callback   (MANUAL — shows the code)
-//   token       https://platform.claude.com/v1/oauth/token        (JSON body, claude-cli UA)
-//   params      code=true, client_id, response_type=code, redirect_uri, scope,
-//               code_challenge, code_challenge_method=S256, state
-//   exchange    {grant_type, code, redirect_uri, client_id, code_verifier, state}
-//
-// Flow: click → authorize in the browser → the callback page shows a code →
-// paste it → exchange → store the subscription token (auto-refreshed).
+// Runtime shape (norma): Authorization: Bearer <token>, anthropic-beta:
+// oauth-2025-04-20, POST /v1/messages?beta=true, first system block = the Claude
+// Code identity line; thinking is omitted for Claude 5.x (they reject disabled).
 //
 // WARNING: using the subscription outside Claude Code VIOLATES Anthropic's terms
 // and can get the account BANNED. Opt-in, operator-authorized.
 
 import (
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,14 +31,22 @@ import (
 )
 
 const (
-	claudeOAuthClientID  = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-	claudeOAuthAuthorize = "https://claude.com/cai/oauth/authorize"
-	claudeOAuthTokenURL  = "https://platform.claude.com/v1/oauth/token"
-	claudeOAuthRedirect  = "https://platform.claude.com/oauth/code/callback"
-	claudeOAuthScope     = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload user:plugins"
-	claudeOAuthUA        = "claude-cli/2.1.314 (external, cli)"
-	claudeRefreshMargin  = 300 // refresh when the token is within 5 min of expiry
+	claudeOAuthClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+	claudeOAuthTokenURL = "https://platform.claude.com/v1/oauth/token"
+	claudeOAuthUA       = "claude-cli/2.1.314 (external, cli)"
+	claudeRefreshMargin = 300 // refresh when the token is within 5 min of expiry
 )
+
+// claudeSeedModels are the subscription-callable models seeded as profiles, in
+// order; the first (Opus 4.8) is activated on the first seed. All verified
+// against the API with a real subscription token.
+var claudeSeedModels = []string{
+	"claude-opus-4-8",
+	"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1",
+	"claude-sonnet-4-5", "claude-haiku-4-5",
+}
+
+const claudeLocalMissing = "no readable ~/.claude/.credentials.json on the server — run `claude` and log in on this host (as the service user)"
 
 // claudeSubCreds is the JSON stored in a claude-sub profile's api_key column.
 type claudeSubCreds struct {
@@ -54,61 +55,9 @@ type claudeSubCreds struct {
 	ExpiresAt    int64  `json:"expires_at"` // unix seconds
 }
 
-type claudePending struct {
-	verifier string
-	state    string
-	exp      time.Time
-}
-
-var (
-	claudePendingMu sync.Mutex
-	claudePendingM  = map[string]claudePending{}
-)
-
-func randB64(n int) string {
-	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-// pkcePair returns a PKCE verifier (48 random bytes, matching the CLI) and its
-// S256 challenge.
-func pkcePair() (verifier, challenge string) {
-	verifier = randB64(48)
-	sum := sha256.Sum256([]byte(verifier))
-	challenge = base64.RawURLEncoding.EncodeToString(sum[:])
-	return
-}
-
-// startClaudeLogin creates a pending PKCE login and returns its id + authorize URL
-// built exactly like the CLI (query keys appended in the CLI's order).
-func startClaudeLogin() (oauthID, authURL string) {
-	verifier, challenge := pkcePair()
-	state := randB64(16)
-	oauthID = randB64(12)
-	claudePendingMu.Lock()
-	for k, v := range claudePendingM {
-		if time.Now().After(v.exp) {
-			delete(claudePendingM, k)
-		}
-	}
-	claudePendingM[oauthID] = claudePending{verifier: verifier, state: state, exp: time.Now().Add(10 * time.Minute)}
-	claudePendingMu.Unlock()
-	// Build in the CLI's exact parameter order (url.Values.Encode would re-sort).
-	esc := url.QueryEscape
-	authURL = claudeOAuthAuthorize + "?" +
-		"code=true" +
-		"&client_id=" + esc(claudeOAuthClientID) +
-		"&response_type=code" +
-		"&redirect_uri=" + esc(claudeOAuthRedirect) +
-		"&scope=" + esc(claudeOAuthScope) +
-		"&code_challenge=" + esc(challenge) +
-		"&code_challenge_method=S256" +
-		"&state=" + esc(state)
-	return oauthID, authURL
-}
-
-// claudeTokenRequest posts a token/refresh JSON body and parses the credentials.
+// claudeTokenRequest posts a refresh JSON body and parses the credentials. The
+// token host is behind Cloudflare, which 403/1010-bans Go's default User-Agent,
+// so a claude-cli UA is required.
 func claudeTokenRequest(payload map[string]string) (claudeSubCreds, error) {
 	b, _ := json.Marshal(payload)
 	req, err := http.NewRequest("POST", claudeOAuthTokenURL, strings.NewReader(string(b)))
@@ -117,7 +66,6 @@ func claudeTokenRequest(payload map[string]string) (claudeSubCreds, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
-	// The token host is behind Cloudflare, which 403/1010-bans Go's default UA.
 	req.Header.Set("User-Agent", claudeOAuthUA)
 	resp, err := (&http.Client{Timeout: 25 * time.Second}).Do(req)
 	if err != nil {
@@ -143,36 +91,6 @@ func claudeTokenRequest(payload map[string]string) (claudeSubCreds, error) {
 	return claudeSubCreds{AccessToken: r.AccessToken, RefreshToken: r.RefreshToken, ExpiresAt: time.Now().Unix() + exp}, nil
 }
 
-// exchangeClaudeCode swaps the one-time authorization code for credentials. The
-// manual callback page shows the code as "<code>#<state>"; we split it and send
-// both, exactly as the CLI's exchange does.
-func exchangeClaudeCode(oauthID, rawCode string) (claudeSubCreds, error) {
-	claudePendingMu.Lock()
-	p, ok := claudePendingM[oauthID]
-	if ok {
-		delete(claudePendingM, oauthID)
-	}
-	claudePendingMu.Unlock()
-	if !ok || time.Now().After(p.exp) {
-		return claudeSubCreds{}, fmt.Errorf("login session expired — start the login again")
-	}
-	code, state := strings.TrimSpace(rawCode), p.state
-	if i := strings.IndexByte(code, '#'); i >= 0 {
-		if s := code[i+1:]; s != "" {
-			state = s
-		}
-		code = code[:i]
-	}
-	return claudeTokenRequest(map[string]string{
-		"grant_type":    "authorization_code",
-		"code":          code,
-		"redirect_uri":  claudeOAuthRedirect,
-		"client_id":     claudeOAuthClientID,
-		"code_verifier": p.verifier,
-		"state":         state,
-	})
-}
-
 // refreshClaudeToken exchanges a refresh token for fresh credentials.
 func refreshClaudeToken(refresh string) (claudeSubCreds, error) {
 	c, err := claudeTokenRequest(map[string]string{
@@ -187,7 +105,7 @@ func refreshClaudeToken(refresh string) (claudeSubCreds, error) {
 }
 
 // parseClaudeSubCreds reads the subscription credentials from the api_key field.
-// It accepts several shapes so a profile key can also be pasted by hand:
+// It accepts several shapes:
 //   - our flat JSON: {access_token, refresh_token, expires_at(sec)}
 //   - Claude Code's ~/.claude/.credentials.json: {"claudeAiOauth":{accessToken,
 //     refreshToken, expiresAt(ms)}}
@@ -247,6 +165,30 @@ func parseClaudeSubCreds(apiKey string) (claudeSubCreds, bool) {
 	return c, true
 }
 
+// readLocalClaudeCreds reads Claude Code's login file from THIS server's home dir
+// (~/.claude/.credentials.json, or $CLAUDE_CONFIG_DIR) and returns a normalized
+// credentials blob.
+func readLocalClaudeCreds() (blob, source string, ok bool) {
+	var paths []string
+	if d := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); d != "" {
+		paths = append(paths, filepath.Join(d, ".credentials.json"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, ".claude", ".credentials.json"))
+	}
+	for _, p := range paths {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		if c, ok := parseClaudeSubCreds(string(b)); ok && c.AccessToken != "" {
+			out, _ := json.Marshal(c)
+			return string(out), p, true
+		}
+	}
+	return "", "", false
+}
+
 // claudeSubAccessToken extracts the access token a claude-sub profile should use
 // and starts the background refresher. A raw (non-JSON) key is returned unchanged.
 func (s *Server) claudeSubAccessToken(apiKey string) string {
@@ -301,9 +243,20 @@ func (s *Server) refreshClaudeSubProfiles() {
 		if err != nil || nc.AccessToken == "" {
 			continue
 		}
-		if b, e := json.Marshal(nc); e == nil {
-			if s.m.pg.SetProfileKey(p.ID, string(b)) == nil {
-				changed = true
+		b, e := json.Marshal(nc)
+		if e != nil {
+			continue
+		}
+		// Update every claude-sub profile that shared this refresh token.
+		for _, q := range profs {
+			if q != nil && q.Format == "claude-sub" {
+				if qf, err := s.m.pg.ProfileByID(q.ID); err == nil && qf != nil {
+					if cc, ok := parseClaudeSubCreds(qf.APIKey); ok && cc.RefreshToken == c.RefreshToken {
+						if s.m.pg.SetProfileKey(q.ID, string(b)) == nil {
+							changed = true
+						}
+					}
+				}
 			}
 		}
 	}
@@ -312,114 +265,53 @@ func (s *Server) refreshClaudeSubProfiles() {
 	}
 }
 
-// ── HTTP handlers ───────────────────────────────────────────────────────────
+// ── HTTP handler ─────────────────────────────────────────────────────────────
 
-func (s *Server) handleClaudeOAuthStart(w http.ResponseWriter, r *http.Request) {
-	oauthID, authURL := startClaudeLogin()
-	writeJSON(w, 200, map[string]string{
-		"oauth_id":      oauthID,
-		"authorize_url": authURL,
-		"redirect_uri":  claudeOAuthRedirect,
-	})
-}
-
-// readLocalClaudeCreds reads Claude Code's own login file from THIS server's home
-// dir (~/.claude/.credentials.json, or $CLAUDE_CONFIG_DIR) and returns a
-// normalized credentials blob. This is the reliable path: the browser OAuth
-// consent only succeeds when initiated by the genuine Claude Code, so we reuse
-// the token the real `claude` CLI already obtained on this host.
-func readLocalClaudeCreds() (blob, source string, ok bool) {
-	var paths []string
-	if d := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); d != "" {
-		paths = append(paths, filepath.Join(d, ".credentials.json"))
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, filepath.Join(home, ".claude", ".credentials.json"))
-	}
-	for _, p := range paths {
-		b, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		if c, ok := parseClaudeSubCreds(string(b)); ok && c.AccessToken != "" {
-			out, _ := json.Marshal(c)
-			return string(out), p, true
-		}
-	}
-	return "", "", false
-}
-
-const claudeLocalMissing = "no readable ~/.claude/.credentials.json on the server — run `claude` and log in on this host"
-
-func (s *Server) handleClaudeLocalImport(w http.ResponseWriter, r *http.Request) {
-	blob, src, ok := readLocalClaudeCreds()
-	if !ok {
-		writeJSON(w, 200, map[string]any{"ok": false, "error": claudeLocalMissing})
-		return
-	}
-	c, _ := parseClaudeSubCreds(blob)
-	writeJSON(w, 200, map[string]any{"ok": true, "api_key": blob, "expires_at": c.ExpiresAt, "source": src})
-}
-
-// handleClaudeQuickAdd is the one-click path: read the server's Claude Code login
-// and create (or update) a single "Claude Subscription" claude-sub profile with
-// the chosen model, then activate it. No pasting, no OAuth — the user only picks
-// a model.
-func (s *Server) handleClaudeQuickAdd(w http.ResponseWriter, r *http.Request) {
+// handleClaudeSeed reads the server's Claude Code login and upserts one
+// claude-sub profile per supported model (idempotent, by model-id name),
+// activating Opus 4.8 on the first seed. Called by scripts/deploy.sh.
+func (s *Server) handleClaudeSeed(w http.ResponseWriter, r *http.Request) {
 	pg := s.pg(w)
 	if pg == nil {
 		return
 	}
-	var body struct {
-		Model string `json:"model"`
-	}
-	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body)
-	model := strings.TrimSpace(body.Model)
-	if model == "" {
-		model = "claude-sonnet-4-5"
-	}
 	blob, src, ok := readLocalClaudeCreds()
 	if !ok {
 		writeJSON(w, 200, map[string]any{"ok": false, "error": claudeLocalMissing})
 		return
 	}
-	p := &db.LLMProfile{
-		Name: "Claude Subscription", Format: "claude-sub",
-		BaseURL: "https://api.anthropic.com", Model: model, APIKey: blob, Streaming: true,
-	}
-	if profs, err := pg.ListProfiles(); err == nil { // reuse an existing claude-sub profile (idempotent)
-		for _, ex := range profs {
-			if ex != nil && ex.Format == "claude-sub" {
-				p.ID, p.Name = ex.ID, ex.Name
-				break
+	existing := map[string]*db.LLMProfile{}
+	if profs, err := pg.ListProfiles(); err == nil {
+		for _, p := range profs {
+			if p != nil {
+				existing[p.Name] = p
 			}
 		}
 	}
-	id, err := pg.SaveProfile(p)
-	if err != nil {
-		writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
-		return
+	opusExisted := existing["claude-opus-4-8"] != nil
+	var created []string
+	var opusID int64
+	for _, m := range claudeSeedModels {
+		p := &db.LLMProfile{
+			Name: m, Format: "claude-sub", BaseURL: "https://api.anthropic.com",
+			Model: m, APIKey: blob, Streaming: true,
+		}
+		if ex, okk := existing[m]; okk {
+			p.ID = ex.ID
+		}
+		id, err := pg.SaveProfile(p)
+		if err != nil {
+			continue
+		}
+		created = append(created, m)
+		if m == "claude-opus-4-8" {
+			opusID = id
+		}
 	}
-	_ = pg.SetActiveProfile(id)
+	if !opusExisted && opusID != 0 { // first seed: make Opus 4.8 the active profile
+		_ = pg.SetActiveProfile(opusID)
+	}
 	s.invalidateProfileAgents()
 	s.reapplyActiveProfile()
-	writeJSON(w, 200, map[string]any{"ok": true, "id": id, "name": p.Name, "model": model, "source": src})
-}
-
-func (s *Server) handleClaudeOAuthExchange(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		OAuthID string `json:"oauth_id"`
-		Code    string `json:"code"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&in); err != nil {
-		writeJSON(w, 400, map[string]string{"error": "bad json"})
-		return
-	}
-	c, err := exchangeClaudeCode(strings.TrimSpace(in.OAuthID), in.Code)
-	if err != nil {
-		writeJSON(w, 400, map[string]string{"error": err.Error()})
-		return
-	}
-	b, _ := json.Marshal(c)
-	writeJSON(w, 200, map[string]any{"api_key": string(b), "expires_at": c.ExpiresAt})
+	writeJSON(w, 200, map[string]any{"ok": true, "created": created, "source": src})
 }
