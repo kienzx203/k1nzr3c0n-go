@@ -2020,8 +2020,8 @@ func (s *Server) pgListModels(w http.ResponseWriter, r *http.Request) {
 	// curated list of the subscription-accessible models instead of a failed fetch.
 	if provider == "claude-sub" {
 		writeJSON(w, 200, map[string]any{"ok": true, "models": []string{
-			"claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5",
-			"claude-3-7-sonnet-latest", "claude-3-5-haiku-latest",
+			"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
+			"claude-sonnet-4-5", "claude-haiku-4-5", "claude-fable-5-1",
 		}})
 		return
 	}

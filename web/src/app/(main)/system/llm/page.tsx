@@ -63,11 +63,13 @@ const MAX_TOKENS_FIELD_HINTS: Record<string, string> = {
 };
 type ProfileFormat = LLMProfile["format"];
 const FORMATS: readonly string[] = ["anthropic", "claude-sub", "openai", "openai-responses", "ollama"];
-// Models a Claude Pro/Max subscription token can call (picked from a dropdown, no typing).
+// Models a Claude Pro/Max subscription token can call (verified), picked from a
+// dropdown — no typing. Claude 5 family + the still-current 4.x.
 const CLAUDE_SUB_MODELS = [
-  "claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5",
-  "claude-3-7-sonnet-latest", "claude-3-5-haiku-latest",
+  "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
+  "claude-sonnet-4-5", "claude-haiku-4-5", "claude-fable-5-1",
 ] as const;
+const CLAUDE_SUB_DEFAULT_MODEL = "claude-sonnet-4-5";
 const ZAI_PRESETS = ["zai-general", "zai-coding-reference"] as const;
 const OLLAMA_PRESETS = [
   { id: "ollama-host", key: "providers.ollamaHost", help: "providers.ollamaHostHelp" },
@@ -458,7 +460,7 @@ function ProfileSheet({
     if (nextFormat === "claude-sub") {
       // Subscription: fixed host + a known model from the dropdown (no typing).
       if (!baseUrl.trim()) setBaseUrl("https://api.anthropic.com");
-      if (!(CLAUDE_SUB_MODELS as readonly string[]).includes(model)) setModel("claude-sonnet-4-5");
+      if (!(CLAUDE_SUB_MODELS as readonly string[]).includes(model)) setModel(CLAUDE_SUB_DEFAULT_MODEL);
     }
     if (nextFormat === "ollama" && format !== "ollama") {
       // Drop a cloud template's URL and credential before read-only local discovery.
@@ -699,7 +701,7 @@ function ProfileSheet({
               <select
                 id="p-model"
                 className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm font-mono"
-                value={(CLAUDE_SUB_MODELS as readonly string[]).includes(model) ? model : "claude-sonnet-4-5"}
+                value={(CLAUDE_SUB_MODELS as readonly string[]).includes(model) ? model : CLAUDE_SUB_DEFAULT_MODEL}
                 onChange={(e) => setModel(e.target.value)}
               >
                 {CLAUDE_SUB_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -844,7 +846,7 @@ function ProfileSheet({
                       setCcMsg("");
                       setCcBusy(true);
                       try {
-                        const d = await api.claudeQuickAdd(model || "claude-sonnet-4-5");
+                        const d = await api.claudeQuickAdd(model || CLAUDE_SUB_DEFAULT_MODEL);
                         if (d.ok && d.id != null) {
                           setCcMsg("✓ Created & activated from " + (d.source || "server") + ".");
                           onSaved(String(d.id));

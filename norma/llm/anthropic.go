@@ -33,6 +33,19 @@ const claudeSubIdentity = "You are Claude Code, Anthropic's official CLI for Cla
 // OAuth credential (constant Fc="oauth-2025-04-20" in the binary).
 const claudeSubBeta = "oauth-2025-04-20"
 
+// isClaude5Model reports whether the model is a Claude 5.x family model
+// (claude-opus-5-*, claude-sonnet-5-*, claude-haiku-5-*, claude-fable-5-*),
+// which reject thinking.type=disabled. Matches the family token so dated
+// versions (…-5-5-20260101) are covered without catching 4.x (…-4-5).
+func isClaude5Model(m string) bool {
+	for _, fam := range []string{"opus-5", "sonnet-5", "haiku-5", "fable-5"} {
+		if strings.Contains(m, fam) {
+			return true
+		}
+	}
+	return false
+}
+
 // messagesURL is the /v1/messages endpoint. The subscription path keeps the
 // ?beta=true query the real client uses.
 func (p *anthropicProvider) messagesURL() string {
@@ -104,10 +117,12 @@ func (p *anthropicProvider) buildBody(req CompletionRequest, stream bool) ([]byt
 		thinkingType = req.Thinking
 		thinkingEnabled = req.Thinking == "enabled"
 	}
-	if p.sub && thinkingType == "" {
-		// subscription path: a prompt can trip Adaptive thinking, which burns the
-		// whole max_tokens on thinking blocks and returns empty text — default OFF
-		// unless the profile explicitly enables it (matches claude_sub_llm.py).
+	if p.sub && thinkingType == "" && !isClaude5Model(p.cfg.Model) {
+		// Claude 4.x subscription path: a prompt can trip Adaptive thinking, which
+		// burns the whole max_tokens on thinking blocks and returns empty text —
+		// default OFF. Claude 5.x models REJECT thinking.type=disabled (verified),
+		// so we leave it unset for them (the model manages thinking itself, and it
+		// does not burn the budget on a normal reply).
 		thinkingType = "disabled"
 	}
 	body := anthropicReq{
