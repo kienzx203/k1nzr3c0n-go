@@ -35,11 +35,17 @@ steps:
     shell: true
     timeout: 15m
     run: |
-      touch {workspace}/subdomains_resolved.txt {workspace}/resolved.txt
+      touch {workspace}/subdomains_resolved.txt {workspace}/resolved.txt {workspace}/unresolved_hosts.txt
       test -s {workspace}/scan_hosts.txt || exit 0
-      dnsx -l {workspace}/scan_hosts.txt -silent -a -resp-only 2>/dev/null | sort -u > {workspace}/resolved.txt || true
+      # one dnsx pass -> IPs + which names resolved; the rest are vhost candidates.
+      dnsx -l {workspace}/scan_hosts.txt -silent -a -resp 2>/dev/null > {workspace}/.dnsx || true
+      grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' {workspace}/.dnsx | sort -u > {workspace}/resolved.txt || true
+      awk '{print $1}' {workspace}/.dnsx | sort -u > {workspace}/.resolved_names
+      comm -23 <(sort -u {workspace}/scan_hosts.txt) {workspace}/.resolved_names > {workspace}/unresolved_hosts.txt || true
       cp {workspace}/scan_hosts.txt {workspace}/subdomains_resolved.txt
-      printf '[resolve] %s IPs from %s hosts\n' "$(wc -l < {workspace}/resolved.txt)" "$(wc -l < {workspace}/scan_hosts.txt)"
+      rm -f {workspace}/.dnsx {workspace}/.resolved_names
+      printf '[resolve] %s IPs | %s hosts | %s did NOT resolve (-> vhost matrix)\n' \
+        "$(wc -l < {workspace}/resolved.txt)" "$(wc -l < {workspace}/scan_hosts.txt)" "$(wc -l < {workspace}/unresolved_hosts.txt)"
       exit 0
     outputs:
       resolved: '{workspace}/resolved.txt'
@@ -63,6 +69,47 @@ steps:
     outputs:
       httpx_jsonl: '{workspace}/httpx.jsonl'
       live_urls: '{workspace}/live_urls.txt'
+  - id: vhost_matrix
+    name: 'vhost matrix — NO domain left behind: every non-resolving name as Host vs every known IP'
+    depends_on:
+    - resolve
+    run_on_failed_deps: true
+    shell: true
+    timeout: 30m
+    run: |
+      touch {workspace}/vhost_new_hosts.txt {workspace}/vhost_matrix_hits.txt
+      test -s {workspace}/unresolved_hosts.txt || { printf '[vhost-matrix] no non-resolving names -> nothing to test\n'; exit 0; }
+      test -s {workspace}/resolved.txt || { printf '[vhost-matrix] no known IPs -> skip\n'; exit 0; }
+      # A non-resolving in-scope name is most often a VHOST co-located on an IP we
+      # already know. Test each such name as a Host/SNI against each known IP (https
+      # then http). Bounded cross-product (caps) so it can't blow the timeout.
+      head -80 {workspace}/unresolved_hosts.txt > {workspace}/.vm_names
+      head -40 {workspace}/resolved.txt > {workspace}/.vm_ips
+      while read ip; do
+        echo "$ip" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' || continue
+        while read name; do
+          [ -n "$name" ] || continue
+          # HEAD and read the status line (the curl write-out status format uses
+          # braces that the template renderer would try to resolve as a variable,
+          # so parse the header instead). Any HTTP status line = the IP answered
+          # for this Host -> a live vhost.
+          line=$(curl -sk -I --resolve "$name:443:$ip" --max-time 5 "https://$name/" 2>/dev/null | head -1)
+          [ -z "$line" ] && line=$(curl -s -I --resolve "$name:80:$ip" --max-time 5 "http://$name/" 2>/dev/null | head -1)
+          code=$(printf '%s' "$line" | grep -oE 'HTTP/[0-9.]+ [0-9][0-9][0-9]' | grep -oE '[0-9][0-9][0-9]$')
+          case "$code" in
+            2*|3*|401|403|405) printf '%s [%s] %s\n' "$name" "$ip" "$code" >> {workspace}/vhost_matrix_hits.txt
+                               echo "$name" >> {workspace}/vhost_new_hosts.txt ;;
+          esac
+        done < {workspace}/.vm_names
+      done < {workspace}/.vm_ips
+      sort -u -o {workspace}/vhost_new_hosts.txt {workspace}/vhost_new_hosts.txt
+      rm -f {workspace}/.vm_names {workspace}/.vm_ips
+      printf '[vhost-matrix] %s live vhost hit(s) (non-resolving name answered on a known IP) -> vhost_new_hosts.txt\n' \
+        "$(wc -l < {workspace}/vhost_matrix_hits.txt)"
+      exit 0
+    outputs:
+      hits: '{workspace}/vhost_matrix_hits.txt'
+      new_hosts: '{workspace}/vhost_new_hosts.txt'
   - id: portscan
     name: 'port scan (naabu passive + web ports)'
     depends_on:
@@ -103,14 +150,16 @@ steps:
     name: 'targeted scan summary'
     depends_on:
     - httpx_probe
+    - vhost_matrix
     - portscan
     - nuclei_scan
     run_on_failed_deps: true
     shell: true
     run: |
-      printf '[scan-hosts] hosts=%s live=%s port_records=%s vulns=%s\n' \
+      printf '[scan-hosts] hosts=%s live=%s vhosts=%s port_records=%s vulns=%s\n' \
         "$(wc -l < {workspace}/scan_hosts.txt 2>/dev/null || echo 0)" \
         "$(wc -l < {workspace}/live_urls.txt 2>/dev/null || echo 0)" \
+        "$(wc -l < {workspace}/vhost_new_hosts.txt 2>/dev/null || echo 0)" \
         "$(wc -l < {workspace}/naabu.jsonl 2>/dev/null || echo 0)" \
         "$(wc -l < {workspace}/nuclei_results.jsonl 2>/dev/null || echo 0)"
       exit 0
