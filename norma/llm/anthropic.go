@@ -31,6 +31,15 @@ const (
 	ccSubFPSalt  = "59cf53e54c78"
 )
 
+// messagesURL is the /v1/messages endpoint. The subscription path needs the
+// ?beta=true query (as claude_sub_llm.py uses) or the OAuth token is rejected.
+func (p *anthropicProvider) messagesURL() string {
+	if p.sub {
+		return p.cfg.BaseURL + "/v1/messages?beta=true"
+	}
+	return p.cfg.BaseURL + "/v1/messages"
+}
+
 // setAuth sets the version header and the credential scheme for this provider.
 func (p *anthropicProvider) setAuth(r *http.Request) {
 	r.Header.Set("anthropic-version", p.cfg.APIVersion)
@@ -182,7 +191,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req CompletionRequest) i
 			yield(StreamEvent{}, err)
 			return
 		}
-		resp, err := doStream(ctx, p.cfg, p.cfg.BaseURL+"/v1/messages", body, func(r *http.Request) {
+		resp, err := doStream(ctx, p.cfg, p.messagesURL(), body, func(r *http.Request) {
 			r.Header.Set("content-type", "application/json")
 			p.setAuth(r)
 			r.Header.Set("accept", "text/event-stream")
@@ -228,7 +237,7 @@ func (p *anthropicProvider) Complete(ctx context.Context, req CompletionRequest)
 	if err != nil {
 		return Message{}, "", Usage{}, err
 	}
-	resp, err := doStream(ctx, p.cfg, p.cfg.BaseURL+"/v1/messages", body, func(r *http.Request) {
+	resp, err := doStream(ctx, p.cfg, p.messagesURL(), body, func(r *http.Request) {
 		r.Header.Set("content-type", "application/json")
 		p.setAuth(r)
 		r.Header.Set("accept", "application/json")
