@@ -265,7 +265,55 @@ func (s *Server) refreshClaudeSubProfiles() {
 	}
 }
 
-// ── HTTP handler ─────────────────────────────────────────────────────────────
+// ── HTTP handlers ────────────────────────────────────────────────────────────
+
+// handleClaudeAdd creates (or updates) a single claude-sub profile for a model
+// typed by hand — so a newly released model can be added without a code change —
+// using the server's Claude Code login, and activates it. Profile name = model id.
+func (s *Server) handleClaudeAdd(w http.ResponseWriter, r *http.Request) {
+	pg := s.pg(w)
+	if pg == nil {
+		return
+	}
+	var body struct {
+		Model    string `json:"model"`
+		Activate *bool  `json:"activate"`
+	}
+	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body)
+	model := strings.TrimSpace(body.Model)
+	if model == "" {
+		writeJSON(w, 200, map[string]any{"ok": false, "error": "model is required"})
+		return
+	}
+	blob, src, ok := readLocalClaudeCreds()
+	if !ok {
+		writeJSON(w, 200, map[string]any{"ok": false, "error": claudeLocalMissing})
+		return
+	}
+	p := &db.LLMProfile{
+		Name: model, Format: "claude-sub", BaseURL: "https://api.anthropic.com",
+		Model: model, APIKey: blob, Streaming: true,
+	}
+	if profs, err := pg.ListProfiles(); err == nil {
+		for _, ex := range profs {
+			if ex != nil && ex.Name == model {
+				p.ID = ex.ID
+				break
+			}
+		}
+	}
+	id, err := pg.SaveProfile(p)
+	if err != nil {
+		writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	if body.Activate == nil || *body.Activate {
+		_ = pg.SetActiveProfile(id)
+	}
+	s.invalidateProfileAgents()
+	s.reapplyActiveProfile()
+	writeJSON(w, 200, map[string]any{"ok": true, "id": id, "model": model, "source": src})
+}
 
 // handleClaudeSeed reads the server's Claude Code login and upserts one
 // claude-sub profile per supported model (idempotent, by model-id name),

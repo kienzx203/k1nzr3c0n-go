@@ -343,6 +343,9 @@ function ProfileSheet({
   const [baseUrl, setBaseUrl] = React.useState("");
   const [proxy, setProxy] = React.useState("");
   const [apiKey, setApiKey] = React.useState("");
+  // claude-sub "add model from server login" state
+  const [ccBusy, setCcBusy] = React.useState(false);
+  const [ccMsg, setCcMsg] = React.useState("");
   const [keyHint, setKeyHint] = React.useState("");
   const [rps, setRps] = React.useState("0");
   const [rpm, setRpm] = React.useState("0");
@@ -695,14 +698,19 @@ function ProfileSheet({
           <div className="grid gap-2">
             <Label htmlFor="p-model">{swt("interface.m0627")}</Label>
             {format === "claude-sub" ? (
-              <select
-                id="p-model"
-                className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm font-mono"
-                value={(CLAUDE_SUB_MODELS as readonly string[]).includes(model) ? model : CLAUDE_SUB_DEFAULT_MODEL}
-                onChange={(e) => setModel(e.target.value)}
-              >
-                {CLAUDE_SUB_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
+              <>
+                <Input
+                  id="p-model"
+                  className="font-mono"
+                  list="claude-sub-models"
+                  placeholder={CLAUDE_SUB_DEFAULT_MODEL}
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                />
+                <datalist id="claude-sub-models">
+                  {CLAUDE_SUB_MODELS.map((m) => <option key={m} value={m} />)}
+                </datalist>
+              </>
             ) : (
             <div className="flex gap-2">
               <Input
@@ -828,11 +836,40 @@ function ProfileSheet({
             />
             {format === "ollama" && <p className="text-muted-foreground text-xs">{swt("providers.ollamaKeyHelp")}</p>}
             {format === "claude-sub" && (
-              <p className="text-muted-foreground text-xs">
-                Claude Pro/Max profiles are seeded automatically on deploy (one per model) from the server’s Claude
-                Code login. To add one by hand, paste <code>~/.claude/.credentials.json</code> into the API key above.
-                ⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
-              </p>
+              <div className="rounded-md border border-border/60 p-3 space-y-2">
+                <p className="text-muted-foreground text-xs">
+                  Type any model above (e.g. a newly released one), then add it from the server’s Claude Code login —
+                  this creates &amp; activates the profile; no key needed. Profiles are also seeded on deploy.
+                  <br />⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={ccBusy || !model.trim()}
+                    onClick={async () => {
+                      setCcMsg("");
+                      setCcBusy(true);
+                      try {
+                        const d = await api.claudeAddModel(model.trim());
+                        if (d.ok && d.id != null) {
+                          onSaved(String(d.id));
+                          onOpenChange(false);
+                        } else {
+                          setCcMsg(d.error || "could not add model");
+                        }
+                      } catch (e) {
+                        setCcMsg("Error: " + (e as Error).message);
+                      } finally {
+                        setCcBusy(false);
+                      }
+                    }}
+                  >
+                    {ccBusy ? "Adding…" : "Add model from server login"}
+                  </Button>
+                  {ccMsg && <span className="text-muted-foreground text-xs">{ccMsg}</span>}
+                </div>
+              </div>
             )}
           </div>
 

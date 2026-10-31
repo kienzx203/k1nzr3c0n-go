@@ -1010,6 +1010,10 @@ export const api = {
     llm_max_concurrent?: number; // 0 inherits the global cap (Ollama: one request per endpoint).
   }) => post<{ id: number }>("/llm/profiles", p),
   deleteLLMProfile: (id: string) => del<{ deleted: number }>(`/llm/profiles/${id}`),
+  // Add a claude-sub profile for a hand-typed model, using the server's Claude Code login.
+  claudeAddModel: (model: string) =>
+    post<{ ok: boolean; id?: number; model?: string; source?: string; error?: string }>(
+      "/llm/claude/add", { model }),
   activateLLMProfile: (id: string) => post<{ ok: boolean }>("/llm/profiles/active", { id: Number(id) }),
   // Actual rotation order and circuit-breaker state per profile.
   llmPool: () => get<LLMPoolStatus>("/llm/pool"),

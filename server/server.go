@@ -748,6 +748,8 @@ func (s *Server) Handler() http.Handler {
 	// Claude subscription (claude-sub): seed one profile per supported model from
 	// the server's ~/.claude/.credentials.json (deploy.sh calls this).
 	mux.HandleFunc("POST /api/llm/claude/seed", s.handleClaudeSeed)
+	// Add one claude-sub profile for a hand-typed model (e.g. a newly released one).
+	mux.HandleFunc("POST /api/llm/claude/add", s.handleClaudeAdd)
 
 	// asset system
 	mux.HandleFunc("GET /api/assets", s.listAssets)
