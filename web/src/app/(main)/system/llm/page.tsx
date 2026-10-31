@@ -11,6 +11,7 @@ import {
   RefreshCwIcon,
   RotateCcwIcon,
   SaveIcon,
+  SparklesIcon,
   StarIcon,
   Trash2Icon,
   ZapIcon,
@@ -343,9 +344,6 @@ function ProfileSheet({
   const [baseUrl, setBaseUrl] = React.useState("");
   const [proxy, setProxy] = React.useState("");
   const [apiKey, setApiKey] = React.useState("");
-  // claude-sub "add model from server login" state
-  const [ccBusy, setCcBusy] = React.useState(false);
-  const [ccMsg, setCcMsg] = React.useState("");
   const [keyHint, setKeyHint] = React.useState("");
   const [rps, setRps] = React.useState("0");
   const [rpm, setRpm] = React.useState("0");
@@ -686,7 +684,7 @@ function ProfileSheet({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="anthropic">Anthropic</SelectItem>
-                  <SelectItem value="claude-sub">Claude Pro/Max</SelectItem>
+                  {format === "claude-sub" && <SelectItem value="claude-sub">Claude Pro/Max</SelectItem>}
                   <SelectItem value="openai">OpenAI (Chat Completions)</SelectItem>
                   <SelectItem value="openai-responses">OpenAI (Responses API)</SelectItem>
                   <SelectItem value="ollama">{swt("providers.ollamaFormat")}</SelectItem>
@@ -836,40 +834,9 @@ function ProfileSheet({
             />
             {format === "ollama" && <p className="text-muted-foreground text-xs">{swt("providers.ollamaKeyHelp")}</p>}
             {format === "claude-sub" && (
-              <div className="rounded-md border border-border/60 p-3 space-y-2">
-                <p className="text-muted-foreground text-xs">
-                  Type any model above (e.g. a newly released one), then add it from the server’s Claude Code login —
-                  this creates &amp; activates the profile; no key needed. Profiles are also seeded on deploy.
-                  <br />⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={ccBusy || !model.trim()}
-                    onClick={async () => {
-                      setCcMsg("");
-                      setCcBusy(true);
-                      try {
-                        const d = await api.claudeAddModel(model.trim());
-                        if (d.ok && d.id != null) {
-                          onSaved(String(d.id));
-                          onOpenChange(false);
-                        } else {
-                          setCcMsg(d.error || "could not add model");
-                        }
-                      } catch (e) {
-                        setCcMsg("Error: " + (e as Error).message);
-                      } finally {
-                        setCcBusy(false);
-                      }
-                    }}
-                  >
-                    {ccBusy ? "Adding…" : "Add model from server login"}
-                  </Button>
-                  {ccMsg && <span className="text-muted-foreground text-xs">{ccMsg}</span>}
-                </div>
-              </div>
+              <p className="text-muted-foreground text-xs">
+                Claude Pro/Max profiles are managed from the <b>Claude Pro/Max</b> button at the top of the LLM page.
+              </p>
             )}
           </div>
 
@@ -1101,6 +1068,88 @@ function ProfileSheet({
   );
 }
 
+// Dedicated Claude Pro/Max panel: add models from the server's Claude Code login,
+// or seed the full supported set. Kept out of the generic New-profile form.
+function ClaudeSubSheet({
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onDone: () => void;
+}) {
+  const [model, setModel] = React.useState<string>(CLAUDE_SUB_DEFAULT_MODEL);
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState("");
+
+  async function add() {
+    setMsg("");
+    setBusy(true);
+    try {
+      const d = await api.claudeAddModel(model.trim());
+      if (d.ok) { setMsg(`✓ Added ${d.model} (active).`); onDone(); }
+      else setMsg(d.error || "could not add model");
+    } catch (e) { setMsg("Error: " + (e as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function seedAll() {
+    setMsg("");
+    setBusy(true);
+    try {
+      const d = await api.claudeSeed();
+      if (d.ok) { setMsg(`✓ Seeded: ${(d.created || []).join(", ")}`); onDone(); }
+      else setMsg(d.error || "could not seed");
+    } catch (e) { setMsg("Error: " + (e as Error).message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex flex-col gap-0 data-[side=right]:sm:max-w-md">
+        <SheetHeader className="px-1">
+          <SheetTitle>Claude Pro/Max</SheetTitle>
+          <SheetDescription>
+            Create subscription profiles from this server’s Claude Code login — no key needed.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="space-y-4 px-1 py-4">
+          <div className="grid gap-2">
+            <Label htmlFor="cs-model">Model</Label>
+            <Input
+              id="cs-model"
+              className="font-mono"
+              list="claude-sub-models"
+              placeholder={CLAUDE_SUB_DEFAULT_MODEL}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            />
+            <datalist id="claude-sub-models">
+              {CLAUDE_SUB_MODELS.map((m) => <option key={m} value={m} />)}
+            </datalist>
+            <p className="text-muted-foreground text-xs">
+              Pick a known model or type a new one (e.g. a newly released id).
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" disabled={busy || !model.trim()} onClick={add}>
+              {busy ? "Working…" : "Add model"}
+            </Button>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={seedAll}>
+              Seed all models
+            </Button>
+          </div>
+          {msg && <p className="text-muted-foreground text-xs">{msg}</p>}
+          <p className="text-muted-foreground text-xs">
+            Needs <code>claude</code> logged in on the server. ⚠️ Using the subscription outside Claude Code
+            violates Anthropic’s terms and can get the account banned.
+          </p>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function LLMPage() {
@@ -1110,6 +1159,7 @@ export default function LLMPage() {
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [pool, setPool] = React.useState<LLMPoolStatus | null>(null);
   const [poolOpen, setPoolOpen] = React.useState(false);
+  const [claudeOpen, setClaudeOpen] = React.useState(false);
   // Store drawer visibility separately from editing data to avoid the closing animation changing
   // the title from Edit X to New. editing=null means creation.
   const [editOpen, setEditOpen] = React.useState(false);
@@ -1185,6 +1235,9 @@ export default function LLMPage() {
               <Badge variant="outline" className="ml-1 border-emerald-500/50 text-emerald-600 dark:text-emerald-400">
                 {swt("interface.m1425")}</Badge>
             )}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setClaudeOpen(true)}>
+            <SparklesIcon /> Claude Pro/Max
           </Button>
           <Button size="sm" variant="outline" onClick={() => openEditor(null)}>
             <PlusIcon /> {swt("interface.m0728")}</Button>
@@ -1298,6 +1351,7 @@ export default function LLMPage() {
       </Tabs>
 
       <ProfileSheet profile={editing} open={editOpen} onOpenChange={setEditOpen} onSaved={() => void load()} />
+      <ClaudeSubSheet open={claudeOpen} onOpenChange={setClaudeOpen} onDone={() => void load()} />
       <PoolSheet open={poolOpen} onOpenChange={setPoolOpen} pool={pool} onReload={loadPool} />
     </div>
   );

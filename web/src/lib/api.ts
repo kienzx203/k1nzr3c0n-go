@@ -1014,6 +1014,9 @@ export const api = {
   claudeAddModel: (model: string) =>
     post<{ ok: boolean; id?: number; model?: string; source?: string; error?: string }>(
       "/llm/claude/add", { model }),
+  // Seed one claude-sub profile per supported model from the server's Claude Code login.
+  claudeSeed: () =>
+    post<{ ok: boolean; created?: string[]; source?: string; error?: string }>("/llm/claude/seed", {}),
   activateLLMProfile: (id: string) => post<{ ok: boolean }>("/llm/profiles/active", { id: Number(id) }),
   // Actual rotation order and circuit-breaker state per profile.
   llmPool: () => get<LLMPoolStatus>("/llm/pool"),
