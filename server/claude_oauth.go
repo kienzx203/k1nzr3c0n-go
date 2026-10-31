@@ -189,14 +189,52 @@ func readLocalClaudeCreds() (blob, source string, ok bool) {
 	return "", "", false
 }
 
-// claudeSubAccessToken extracts the access token a claude-sub profile should use
-// and starts the background refresher. A raw (non-JSON) key is returned unchanged.
+// claudeSubAccessToken returns the access token a claude-sub profile should use.
+// It PREFERS the server's LIVE Claude Code token (~/.claude/.credentials.json):
+// the CLI and our refresher keep that file fresh, and refreshing an OAuth grant
+// rotates/revokes older copies — so a token stored in the profile goes stale and
+// Anthropic answers 401 "OAuth access token has been revoked" once the CLI
+// refreshes. Reading live keeps the app on whatever token is currently valid.
+// Falls back to the stored key when the server has no Claude Code login.
 func (s *Server) claudeSubAccessToken(apiKey string) string {
+	s.ensureClaudeRefresher()
+	if blob, _, ok := readLocalClaudeCreds(); ok {
+		if c, ok2 := parseClaudeSubCreds(blob); ok2 && c.AccessToken != "" {
+			return c.AccessToken
+		}
+	}
 	if c, ok := parseClaudeSubCreds(apiKey); ok {
-		s.ensureClaudeRefresher()
 		return c.AccessToken
 	}
 	return apiKey
+}
+
+// writeLocalClaudeCreds writes refreshed tokens back into the Claude Code file,
+// preserving its other claudeAiOauth fields (scopes, subscriptionType, …), so
+// the CLI and the app share one up-to-date credential. Written atomically.
+func writeLocalClaudeCreds(path string, c claudeSubCreds) error {
+	raw := map[string]json.RawMessage{}
+	if b, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(b, &raw)
+	}
+	inner := map[string]json.RawMessage{}
+	if v, ok := raw["claudeAiOauth"]; ok {
+		_ = json.Unmarshal(v, &inner)
+	}
+	set := func(k string, v any) { b, _ := json.Marshal(v); inner[k] = b }
+	set("accessToken", c.AccessToken)
+	if c.RefreshToken != "" {
+		set("refreshToken", c.RefreshToken)
+	}
+	set("expiresAt", c.ExpiresAt*1000) // the file stores ms
+	ib, _ := json.Marshal(inner)
+	raw["claudeAiOauth"] = ib
+	out, _ := json.MarshalIndent(raw, "", "  ")
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, out, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 var claudeRefresherOnce sync.Once
@@ -219,6 +257,25 @@ func (s *Server) refreshClaudeSubProfiles() {
 	if s.m == nil || s.m.pg == nil {
 		return
 	}
+	// Shared source of truth: when the server has a Claude Code login file, keep
+	// THAT fresh (and write it back) rather than minting app-only tokens that
+	// would revoke the CLI's. Providers read the live file token at build time.
+	if blob, path, ok := readLocalClaudeCreds(); ok {
+		c, _ := parseClaudeSubCreds(blob)
+		if c.RefreshToken == "" || time.Now().Unix() <= c.ExpiresAt-claudeRefreshMargin {
+			return // no refresh token, or still fresh (the CLI or we refreshed it)
+		}
+		nc, err := refreshClaudeToken(c.RefreshToken)
+		if err != nil || nc.AccessToken == "" {
+			return
+		}
+		if writeLocalClaudeCreds(path, nc) == nil {
+			s.invalidateProfileAgents() // providers rebuild and read the fresh live token
+		}
+		return
+	}
+	// Fallback (no server login file — e.g. a hand-pasted key): refresh the token
+	// stored in each claude-sub profile.
 	profs, err := s.m.pg.ListProfiles()
 	if err != nil {
 		return
@@ -228,40 +285,26 @@ func (s *Server) refreshClaudeSubProfiles() {
 		if p == nil || p.Format != "claude-sub" {
 			continue
 		}
-		pf, err := s.m.pg.ProfileByID(p.ID) // ListProfiles omits the key; refetch with it
+		pf, err := s.m.pg.ProfileByID(p.ID)
 		if err != nil || pf == nil {
 			continue
 		}
 		c, ok := parseClaudeSubCreds(pf.APIKey)
-		if !ok || c.RefreshToken == "" {
+		if !ok || c.RefreshToken == "" || time.Now().Unix() <= c.ExpiresAt-claudeRefreshMargin {
 			continue
-		}
-		if time.Now().Unix() <= c.ExpiresAt-claudeRefreshMargin {
-			continue // still fresh
 		}
 		nc, err := refreshClaudeToken(c.RefreshToken)
 		if err != nil || nc.AccessToken == "" {
 			continue
 		}
-		b, e := json.Marshal(nc)
-		if e != nil {
-			continue
-		}
-		// Update every claude-sub profile that shared this refresh token.
-		for _, q := range profs {
-			if q != nil && q.Format == "claude-sub" {
-				if qf, err := s.m.pg.ProfileByID(q.ID); err == nil && qf != nil {
-					if cc, ok := parseClaudeSubCreds(qf.APIKey); ok && cc.RefreshToken == c.RefreshToken {
-						if s.m.pg.SetProfileKey(q.ID, string(b)) == nil {
-							changed = true
-						}
-					}
-				}
+		if b, e := json.Marshal(nc); e == nil {
+			if s.m.pg.SetProfileKey(p.ID, string(b)) == nil {
+				changed = true
 			}
 		}
 	}
 	if changed {
-		s.invalidateProfileAgents() // rebuild providers with the fresh token
+		s.invalidateProfileAgents()
 	}
 }
 
