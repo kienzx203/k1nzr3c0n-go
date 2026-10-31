@@ -32,7 +32,7 @@ const (
 	claudeOAuthAuthorize = "https://claude.ai/oauth/authorize"
 	claudeOAuthTokenURL  = "https://platform.claude.com/v1/oauth/token"
 	claudeOAuthRedirect  = "https://platform.claude.com/oauth/code/callback"
-	claudeOAuthScope     = "user:inference user:profile user:sessions:claude_code user:mcp_servers"
+	claudeOAuthScope     = "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
 	claudeRefreshMargin  = 300 // refresh when the token is within 5 min of expiry
 )
 
@@ -93,14 +93,15 @@ func startClaudeLogin() (oauthID, authURL string) {
 	return oauthID, claudeOAuthAuthorize + "?" + q.Encode()
 }
 
-// claudeTokenRequest posts a token/refresh form and parses the credentials. The
-// endpoint expects application/x-www-form-urlencoded (JSON can time out).
-func claudeTokenRequest(form url.Values) (claudeSubCreds, error) {
-	req, err := http.NewRequest("POST", claudeOAuthTokenURL, strings.NewReader(form.Encode()))
+// claudeTokenRequest posts a token/refresh JSON body and parses the credentials.
+// JSON (not form) matches the working claude_sub_llm.py refresh call.
+func claudeTokenRequest(payload map[string]string) (claudeSubCreds, error) {
+	b, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", claudeOAuthTokenURL, strings.NewReader(string(b)))
 	if err != nil {
 		return claudeSubCreds{}, err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("User-Agent", "axios/1.15.2")
 	resp, err := (&http.Client{Timeout: 25 * time.Second}).Do(req)
@@ -143,39 +144,87 @@ func exchangeClaudeCode(oauthID, rawCode string) (claudeSubCreds, error) {
 		state = code[i+1:]
 		code = code[:i]
 	}
-	form := url.Values{}
-	form.Set("grant_type", "authorization_code")
-	form.Set("code", code)
-	form.Set("state", state)
-	form.Set("client_id", claudeOAuthClientID)
-	form.Set("redirect_uri", claudeOAuthRedirect)
-	form.Set("code_verifier", p.verifier)
-	return claudeTokenRequest(form)
+	return claudeTokenRequest(map[string]string{
+		"grant_type":    "authorization_code",
+		"code":          code,
+		"state":         state,
+		"client_id":     claudeOAuthClientID,
+		"redirect_uri":  claudeOAuthRedirect,
+		"code_verifier": p.verifier,
+	})
 }
 
 // refreshClaudeToken exchanges a refresh token for fresh credentials.
 func refreshClaudeToken(refresh string) (claudeSubCreds, error) {
-	form := url.Values{}
-	form.Set("grant_type", "refresh_token")
-	form.Set("refresh_token", refresh)
-	form.Set("client_id", claudeOAuthClientID)
-	form.Set("scope", claudeOAuthScope)
-	c, err := claudeTokenRequest(form)
+	c, err := claudeTokenRequest(map[string]string{
+		"grant_type":    "refresh_token",
+		"refresh_token": refresh,
+		"client_id":     claudeOAuthClientID,
+		"scope":         claudeOAuthScope,
+	})
 	if err == nil && c.RefreshToken == "" {
 		c.RefreshToken = refresh // some responses omit it → keep the old one
 	}
 	return c, err
 }
 
-// parseClaudeSubCreds returns the JSON credentials stored in api_key (if any).
+// parseClaudeSubCreds reads the subscription credentials from the api_key field.
+// It accepts several shapes so the operator can paste whatever they have:
+//   - our flat JSON: {access_token, refresh_token, expires_at(sec)}
+//   - Claude Code's ~/.claude/.credentials.json: {"claudeAiOauth":{accessToken,
+//     refreshToken, expiresAt(ms)}}
+//   - the CLIProxyAPI auth json: {access_token, refresh_token, expired(ISO8601)}
 func parseClaudeSubCreds(apiKey string) (claudeSubCreds, bool) {
 	s := strings.TrimSpace(apiKey)
 	if !strings.HasPrefix(s, "{") {
 		return claudeSubCreds{}, false
 	}
-	var c claudeSubCreds
-	if json.Unmarshal([]byte(s), &c) != nil || c.AccessToken == "" {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal([]byte(s), &raw) != nil {
 		return claudeSubCreds{}, false
+	}
+	if v, ok := raw["claudeAiOauth"]; ok { // unwrap Claude Code's credentials file
+		var inner map[string]json.RawMessage
+		if json.Unmarshal(v, &inner) == nil {
+			raw = inner
+		}
+	}
+	getStr := func(keys ...string) string {
+		for _, k := range keys {
+			if v, ok := raw[k]; ok {
+				var sv string
+				if json.Unmarshal(v, &sv) == nil && sv != "" {
+					return sv
+				}
+			}
+		}
+		return ""
+	}
+	c := claudeSubCreds{
+		AccessToken:  getStr("access_token", "accessToken"),
+		RefreshToken: getStr("refresh_token", "refreshToken"),
+	}
+	if c.AccessToken == "" {
+		return claudeSubCreds{}, false
+	}
+	for _, k := range []string{"expires_at", "expiresAt"} {
+		if v, ok := raw[k]; ok {
+			var n int64
+			if json.Unmarshal(v, &n) == nil && n > 0 {
+				if n > 1_000_000_000_000 { // milliseconds → seconds
+					n /= 1000
+				}
+				c.ExpiresAt = n
+				break
+			}
+		}
+	}
+	if c.ExpiresAt == 0 {
+		if iso := getStr("expired"); iso != "" {
+			if t, err := time.Parse(time.RFC3339, iso); err == nil {
+				c.ExpiresAt = t.Unix()
+			}
+		}
 	}
 	return c, true
 }

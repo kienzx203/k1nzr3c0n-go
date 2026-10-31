@@ -123,6 +123,12 @@ func (p *anthropicProvider) buildBody(req CompletionRequest, stream bool) ([]byt
 		thinkingType = req.Thinking
 		thinkingEnabled = req.Thinking == "enabled"
 	}
+	if p.sub && thinkingType == "" {
+		// subscription path: a prompt can trip Adaptive thinking, which burns the
+		// whole max_tokens on thinking blocks and returns empty text — default OFF
+		// unless the profile explicitly enables it (matches claude_sub_llm.py).
+		thinkingType = "disabled"
+	}
 	body := anthropicReq{
 		Model:         p.cfg.Model,
 		Messages:      mergeAdjacentSameRole(filterThinkingBlocks(req.Messages, thinkingEnabled)),
