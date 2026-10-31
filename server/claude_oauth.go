@@ -42,7 +42,10 @@ const (
 	claudeOAuthAuthorize = "https://claude.com/cai/oauth/authorize"         // CLAUDE_AI_AUTHORIZE_URL (subscription login)
 	claudeOAuthTokenURL  = "https://platform.claude.com/v1/oauth/token"     // TOKEN_URL
 	claudeOAuthRedirect  = "https://platform.claude.com/oauth/code/callback" // MANUAL_REDIRECT_URL
-	claudeOAuthScope     = "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
+	// EXACT scope string the real `claude` login emits (captured from the live CLI
+	// authorize URL): Xao() = org:create_api_key + the 5 claude.ai scopes + plugins.
+	// Must match the registered client's scopes or the exchange fails.
+	claudeOAuthScope = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload user:plugins"
 	claudeRefreshMargin  = 300 // refresh when the token is within 5 min of expiry
 )
 
