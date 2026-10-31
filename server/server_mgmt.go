@@ -1885,6 +1885,19 @@ func (s *Server) pgDeleteProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := pathInt(r, "id")
+	// Deleting the active profile is otherwise refused. If another profile exists,
+	// hand "active" to it first so the delete succeeds (the UI need not force a
+	// manual switch). If it is the only profile, the refusal below still stands.
+	if tgt, err := pg.ProfileByID(id); err == nil && tgt != nil && tgt.IsDefault {
+		if profs, err := pg.ListProfiles(); err == nil {
+			for _, p := range profs {
+				if p != nil && p.ID != id {
+					_ = pg.SetActiveProfile(p.ID)
+					break
+				}
+			}
+		}
+	}
 	if err := pg.DeleteProfileContext(r.Context(), id); err != nil {
 		switch {
 		case errors.Is(err, db.ErrActiveLLMProfileDelete):

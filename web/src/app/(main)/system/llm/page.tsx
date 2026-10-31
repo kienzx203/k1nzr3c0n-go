@@ -1158,10 +1158,8 @@ export default function LLMPage() {
   }
 
   async function remove(p: LLMProfile) {
-    if (p.is_default) {
-      toast.error(swt("interface.m1421"));
-      return;
-    }
+    // The active profile can be deleted too: the server hands "active" to another
+    // profile first (it only refuses when this is the only profile left).
     try {
       await api.deleteLLMProfile(p.id);
       toast.success(swt("interface.m1422", { p0: p.name }));
