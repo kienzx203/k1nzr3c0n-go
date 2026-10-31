@@ -14,7 +14,10 @@ import (
 
 const (
 	MaxTaskTemplateNameRunes = 120
-	MaxTaskTemplateTextRunes = 16000
+	// Raised 16000 -> 24000: the Red Team template's description grew (VHOST MATRIX,
+	// VERIFY/HUNT, auto-register, run-delta/graph_note guidance). The DB columns are
+	// TEXT, so this app-level cap is only a prompt-size guard.
+	MaxTaskTemplateTextRunes = 24000
 )
 
 var (
