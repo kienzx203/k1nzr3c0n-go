@@ -113,6 +113,18 @@ có mật khẩu, trang sẽ yêu cầu khởi tạo (hoặc installer đã làm
   | `03-js-secrets-recon.yaml` | Crawl JS, moi secret. |
   | `04-param-discovery.yaml` | Dò tham số. |
   | `05-scan-hosts.yaml` | Quét sâu 1 tập host + **VHOST matrix** (mọi tên không resolve × mọi IP qua Host header). |
+- **Targets** — danh sách mục tiêu recon: đăng ký domain gốc, đặt **scope**
+  (vd `example.com`, `*.example.com`), xem/sửa/xoá. Mở target để vào graph/runs của nó.
+- **Schedules** — đặt lịch chạy workflow định kỳ (cron) cho một target.
+- **Inventory** — kho tài sản phát hiện được từ các run (host, IP, port, URL…), tổng
+  hợp theo target để tra cứu nhanh.
+- **Tool versions** — liệt kê các tool recon đã cài trên server + phiên bản (kiểm
+  tra thiếu tool nào mà workflow cần).
+- **API Keys** — quản lý key cho các nguồn passive (SecurityTrails, Shodan…). Nạp
+  tự động khi deploy từ `scripts/api-keys.env`, hoặc nhập tại đây.
+- **Terminal** — terminal trong trình duyệt để chạy lệnh trên server (tiện debug/
+  chạy tool thủ công). ⚠️ quyền mạnh — dùng cẩn thận.
+- **Upload** — tải file lên server (wordlist, danh sách host/scope, input cho workflow).
 
 ### System
 - **LLM** — xem [mục 3](#3-cấu-hình-llm--claude-promax).
@@ -123,6 +135,8 @@ có mật khẩu, trang sẽ yêu cầu khởi tạo (hoặc installer đã làm
 - **Tool** — quản lý custom tool (định nghĩa lệnh + schema) cho agent.
 - **Notifications** — thông báo sự kiện (task xong, finding mới…).
 - **Interception rules** — luật chặn/duyệt hành động của agent (an toàn/kiểm soát).
+- **Asset blocking** — chặn các asset không được phép đụng tới (loại trừ khỏi scope):
+  agent/workflow sẽ bỏ qua domain/IP/host trong danh sách chặn.
 - **Approval records** — nhật ký các hành động cần người duyệt.
 - **Logs** — log hệ thống.
 - **System settings** — cấu hình chung, đổi mật khẩu, tuỳ chọn vận hành.

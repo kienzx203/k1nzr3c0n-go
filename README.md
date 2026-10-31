@@ -5,6 +5,8 @@
 **Autonomous offensive-security platform** — an LLM pentest agent fused with a
 deterministic recon **workflow runner**, one web UI, one Go binary.
 
+📖 **[Documentation](docs/USAGE.md)** · [Quick start](#quick-start-kali) · [Claude Pro/Max](#claude-promax-subscription-llm)
+
 </div>
 
 ---
@@ -16,6 +18,9 @@ deterministic recon **workflow runner**, one web UI, one Go binary.
 ---
 
 ## What it is
+
+> 📖 **[Full documentation → docs/USAGE.md](docs/USAGE.md)** — install, every feature
+> explained by menu, end-to-end workflow, deploy and troubleshooting.
 
 k1nzr3c0n is a fork of **ARTEX** (an autonomous penetration-testing agent) with a
 built-in **recon workflow engine**. Two capabilities share one database and UI:
