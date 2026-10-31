@@ -97,6 +97,12 @@ có mật khẩu, trang sẽ yêu cầu khởi tạo (hoặc installer đã làm
 - **Asset sync** — đồng bộ/cập nhật tài sản.
 - **Workspace** — không gian làm việc per-engagement (file, ghi chú, sản phẩm).
 
+![Dashboard](../screenshots/dashboard.png)
+![Chat](../screenshots/chat.png)
+![Tasks](../screenshots/tasks.png)
+![Findings](../screenshots/findings.png)
+![Traffic](../screenshots/traffic.png)
+
 ### Workflow Runner
 - **Runs** — danh sách & tạo *run* recon. **New run**: chọn **Target** (domain gốc;
   target chưa đăng ký tự tạo), chọn **Workflow**, tuỳ chọn `target_hosts`/
@@ -126,6 +132,12 @@ có mật khẩu, trang sẽ yêu cầu khởi tạo (hoặc installer đã làm
   chạy tool thủ công). ⚠️ quyền mạnh — dùng cẩn thận.
 - **Upload** — tải file lên server (wordlist, danh sách host/scope, input cho workflow).
 
+![Runs](../screenshots/runs.jpg)
+![Graph](../screenshots/graph.png)
+![Targets](../screenshots/targets.jpg)
+![Tool versions](../screenshots/tool-versions.jpg)
+![Terminal](../screenshots/terminal.jpg)
+
 ### System
 - **LLM** — xem [mục 3](#3-cấu-hình-llm--claude-promax).
 - **Agent** — cấu hình agent (prompt hệ thống, catalog tool/skill, biến).
@@ -140,6 +152,11 @@ có mật khẩu, trang sẽ yêu cầu khởi tạo (hoặc installer đã làm
 - **Approval records** — nhật ký các hành động cần người duyệt.
 - **Logs** — log hệ thống.
 - **System settings** — cấu hình chung, đổi mật khẩu, tuỳ chọn vận hành.
+
+![LLM](../screenshots/llm.png)
+![Agents](../screenshots/agents.png)
+![Interception](../screenshots/intercept.png)
+![Logs](../screenshots/logs.png)
 
 ---
 

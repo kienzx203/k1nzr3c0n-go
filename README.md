@@ -48,6 +48,18 @@ Both are orchestrated from a Next.js UI and exposed over an HTTP API.
 | **Assets & workspace** | Asset inventory, asset sync, a per-engagement workspace. |
 | **Skills** | A large offensive-skills library (AD, cloud, k8s escape, API recon, red-team, AI security, …) the agent can load on demand. |
 
+## Screenshots
+
+| Dashboard | Chat (agent) | Tasks |
+| :---: | :---: | :---: |
+| ![Dashboard](screenshots/dashboard.png) | ![Chat](screenshots/chat.png) | ![Tasks](screenshots/tasks.png) |
+| **Findings** | **Traffic** | **LLM profiles** |
+| ![Findings](screenshots/findings.png) | ![Traffic](screenshots/traffic.png) | ![LLM](screenshots/llm.png) |
+| **Relationship graph** | **Recon runs** | **Targets** |
+| ![Graph](screenshots/graph.png) | ![Runs](screenshots/runs.jpg) | ![Targets](screenshots/targets.jpg) |
+| **Tool versions** | **Terminal** | **Interception** |
+| ![Tool versions](screenshots/tool-versions.jpg) | ![Terminal](screenshots/terminal.jpg) | ![Interception](screenshots/intercept.png) |
+
 ## Architecture
 
 ```
