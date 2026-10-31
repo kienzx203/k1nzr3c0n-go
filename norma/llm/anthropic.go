@@ -7,9 +7,28 @@ import (
 	"io"
 	"iter"
 	"net/http"
+	"strings"
 )
 
 type anthropicProvider struct{ cfg Config }
+
+// setAnthropicAuth selects the auth scheme from the credential shape and sets the
+// version header. A Claude SUBSCRIPTION OAuth token (from `claude setup-token` /
+// CLAUDE_CODE_OAUTH_TOKEN, prefix "sk-ant-oat") authenticates with
+// Authorization: Bearer + the oauth beta header instead of x-api-key; a normal
+// API key (sk-ant-api…) uses x-api-key. NOTE: Anthropic restricts subscription
+// OAuth tokens to Claude Code and MAY reject them on the Messages API with
+// "OAuth authentication is currently not supported" — this path is best-effort
+// (no Claude-Code identity spoofing) so the operator can try their own account.
+func setAnthropicAuth(r *http.Request, cfg Config) {
+	r.Header.Set("anthropic-version", cfg.APIVersion)
+	if strings.HasPrefix(strings.TrimSpace(cfg.APIKey), "sk-ant-oat") {
+		r.Header.Set("authorization", "Bearer "+strings.TrimSpace(cfg.APIKey))
+		r.Header.Set("anthropic-beta", "oauth-2025-04-20")
+		return
+	}
+	r.Header.Set("x-api-key", cfg.APIKey)
+}
 
 type anthropicSystemBlock struct {
 	Type         string         `json:"type"`
@@ -114,8 +133,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req CompletionRequest) i
 		}
 		resp, err := doStream(ctx, p.cfg, p.cfg.BaseURL+"/v1/messages", body, func(r *http.Request) {
 			r.Header.Set("content-type", "application/json")
-			r.Header.Set("x-api-key", p.cfg.APIKey)
-			r.Header.Set("anthropic-version", p.cfg.APIVersion)
+			setAnthropicAuth(r, p.cfg)
 			r.Header.Set("accept", "text/event-stream")
 		}, "anthropic")
 		if err != nil {
@@ -161,8 +179,7 @@ func (p *anthropicProvider) Complete(ctx context.Context, req CompletionRequest)
 	}
 	resp, err := doStream(ctx, p.cfg, p.cfg.BaseURL+"/v1/messages", body, func(r *http.Request) {
 		r.Header.Set("content-type", "application/json")
-		r.Header.Set("x-api-key", p.cfg.APIKey)
-		r.Header.Set("anthropic-version", p.cfg.APIVersion)
+		setAnthropicAuth(r, p.cfg)
 		r.Header.Set("accept", "application/json")
 	}, "anthropic")
 	if err != nil {
