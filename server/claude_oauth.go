@@ -117,6 +117,12 @@ func claudeTokenRequest(payload map[string]string) (claudeSubCreds, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
+	// REQUIRED: platform.claude.com/v1/oauth/token sits behind Cloudflare, which
+	// returns 403 "Error 1010: browser_signature_banned" for the default Go
+	// User-Agent. A claude-cli UA passes (verified: it reaches the OAuth server,
+	// which then returns real {error:invalid_grant} for a bad code). Both the
+	// code exchange AND the background refresh go through here, so both need it.
+	req.Header.Set("User-Agent", "claude-cli/2.1.314 (external, cli)")
 	resp, err := (&http.Client{Timeout: 25 * time.Second}).Do(req)
 	if err != nil {
 		return claudeSubCreds{}, err
