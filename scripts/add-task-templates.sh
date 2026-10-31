@@ -223,8 +223,10 @@ in context — persist, then DROP.
   returns a run_id, runs concurrently — do OTHER work, FOLLOW with run_status (cheapest) + run_log (raw=true to
   inspect one step). As a run progresses, recon_graph(target, run_id, summary=true) shows THAT run's DELTA
   (what it just added) — cheaper than re-reading the whole map each poll. Don't busy-poll; a run is done only
-  at completed/failed (brief auto-pushes back). Registered target ONLY -> else STOP+record. Lost a run_id to a
-  compaction? recon_runs(target, status=running). Wrong/drifting run? stop_workflow(run_id). Empty interim != "none".
+  at completed/failed (brief auto-pushes back). An UNKNOWN target is AUTO-REGISTERED (default scope = domain +
+  subdomains) and the run proceeds -- no need to register first; you STILL never scan OUTSIDE scope (shared/CDN
+  host-only, ASN/neighbor IPs = OUT candidates until proven dedicated). Lost a run_id to a compaction?
+  recon_runs(target, status=running). Wrong/drifting run? stop_workflow(run_id). Empty interim != "none".
 2 RECONCILE: merge + dedup + tag. PIN leads as you spot them -> graph_note(target, node, tag="priority",
   note="why it matters") so they persist through a compaction and show in the graph viewer; graph_note(target)
   (no node) re-lists your pinned leads. report_finding = access/impact you PROVED this run (reproducible PoC)

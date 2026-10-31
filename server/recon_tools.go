@@ -626,9 +626,9 @@ func mergeMaxVars(ctx context.Context, workflow string, vars []string) []string 
 func reconRunWorkflow() actool.CoreTool {
 	return actool.Build(actool.Spec{
 		Name:        "run_workflow",
-		Description: "Launch a Workflow Runner recon workflow against a REGISTERED target (a deny-wins scope must already exist for it). By DEFAULT it is NON-BLOCKING: it returns a run_id immediately and the workflow runs CONCURRENTLY while you keep reconning — follow it in REAL TIME with run_log(run_id) (tail the step output) and run_status(run_id), and read recon_findings/recon_assets as results land. The full brief is ALSO pushed back into the task when the run finishes, so nothing is missed — but do not wrap up while a run is still unread. Pass wait=true to block until it finishes and get the brief inline instead. CHOOSE the workflow via list_workflows. Check recon_findings first — only run recon you don't already have.",
+		Description: "Launch a Workflow Runner recon workflow against a target. If the target is NOT yet registered it is AUTO-REGISTERED with a default scope (the domain + its subdomains) and the run proceeds — the operator authorized this, so you never stop to register first. By DEFAULT it is NON-BLOCKING: it returns a run_id immediately and the workflow runs CONCURRENTLY while you keep reconning — follow it in REAL TIME with run_log(run_id) (tail the step output) and run_status(run_id), and read recon_findings/recon_assets as results land. The full brief is ALSO pushed back into the task when the run finishes, so nothing is missed — but do not wrap up while a run is still unread. Pass wait=true to block until it finishes and get the brief inline instead. CHOOSE the workflow via list_workflows. Check recon_findings first — only run recon you don't already have.",
 		Schema: rtObj(map[string]any{
-			"target":   rtStr("registered target domain, e.g. example.com"),
+			"target":   rtStr("target domain, e.g. example.com (auto-registered with a default domain+subdomains scope if not yet registered)"),
 			"workflow": rtStr("workflow file name, e.g. 01-full-recon-pipeline.yaml"),
 			"vars":     map[string]any{"type": "object", "description": "optional variable overrides (key -> value)"},
 			"wait":     map[string]any{"type": "boolean", "description": "default false (non-blocking): return the run_id immediately and run CONCURRENTLY — follow with run_log/run_status while you keep reconning. true: block until the run finishes and return its recon brief inline."},
@@ -651,8 +651,25 @@ func reconRunWorkflow() actool.CoreTool {
 			if p.Target == "" || p.Workflow == "" {
 				return actool.Errorf("target and workflow are required"), nil
 			}
-			if !targetExists(ctx, strings.ToLower(p.Target)) {
-				return actool.Errorf("Target '" + p.Target + "' is not registered. Register it with a scope first (POST /api/v1/targets) — autonomous scans must stay inside a defined deny-wins scope. Ask the operator if unsure."), nil
+			tgt := strings.ToLower(strings.TrimSpace(p.Target))
+			if !targetExists(ctx, tgt) {
+				// Operator-authorized AUTO-REGISTRATION: an unregistered target no
+				// longer blocks the run — create it with a default deny-wins scope =
+				// the domain itself + its subdomains (the natural in-scope surface),
+				// then proceed. 409 (a concurrent create) is treated as success.
+				reg, _ := json.Marshal(map[string]any{
+					"name":  tgt,
+					"mode":  "bounty",
+					"scope": []string{tgt, "*." + tgt},
+					"notes": "auto-registered by the task agent (operator-authorized)",
+				})
+				rd, code, err := reconRaw(ctx, "POST", "/api/v1/targets", bytes.NewReader(reg))
+				if err != nil {
+					return actool.Errorf("auto-register target '" + tgt + "' failed: " + err.Error()), nil
+				}
+				if code >= 300 && code != 409 {
+					return actool.Errorf(fmt.Sprintf("auto-register target '%s' failed (HTTP %d): %s", tgt, code, strings.TrimSpace(string(rd)))), nil
+				}
 			}
 			var vars []string
 			for k, v := range p.Vars {

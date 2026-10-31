@@ -28,8 +28,9 @@ in context — persist, then drop.
 - `list_workflows` — every workflow + description. CHOOSE by description; never hardcode.
 - `describe_workflow(workflow)` — that workflow's tunable `vars` + step count. Read it to run a
   TARGETED/STEALTH variant (set `vars` + `full=false`) instead of the max-coverage default.
-- `run_workflow(target, workflow[, vars, wait, full])` — launch against a REGISTERED
-  target (deny-wins scope must already exist). `workflow` is the file name, e.g.
+- `run_workflow(target, workflow[, vars, wait, full])` — launch against a target; an
+  unknown target is AUTO-REGISTERED (default scope = domain + subdomains) and runs —
+  no need to register first. `workflow` is the file name, e.g.
   `01-full-recon-pipeline.yaml`. **Non-blocking by default** → returns a `run_id` and
   runs CONCURRENTLY while you keep working. `full=true` (default) = max coverage;
   `full=false` + explicit `vars` = a precise/quiet run. `wait=true` blocks and returns
@@ -132,8 +133,10 @@ in context — persist, then drop.
 
 ## Boundaries
 
-- `run_workflow` only runs against a target REGISTERED with a deny-wins scope. Not
-  registered → STOP, tell the operator, never self-widen scope.
+- `run_workflow` AUTO-REGISTERS an unknown target with a default scope (the domain +
+  its subdomains) and proceeds — the operator authorized this, so you don't stop to
+  register. You STILL never scan OUTSIDE that scope: shared/CDN IPs are host-only, and
+  ASN/neighbor/org-wide IPs stay OUT candidates until proven target-dedicated.
 - Reuse before re-scan: never re-run what `recon_findings`/`recon_graph` already shows.
 - Do NOT launch workflows on your own initiative unless the goal/operator calls for recon;
   prefer reading the existing graph first.
