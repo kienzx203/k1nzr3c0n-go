@@ -141,9 +141,12 @@ UNIT
 systemctl daemon-reload
 systemctl enable "$SERVICE"
 
-# ── 8. Build + deploy (frontend + backend + runtime assets) ─────────────────
-step "Build & deploy via scripts/deploy.sh"
-SRC="$SRC" K1NZR3C0N_BASE="$BASE" SERVICE="$SERVICE" BASE_URL="$BASE_URL" \
+# ── 8. Build + deploy (backend + runtime assets) ────────────────────────────
+# SKIP_FE=1: the compiled frontend is committed (server/webui/dist) and embedded,
+# so install never depends on a server-side Next.js build. Rebuild the FE later
+# only if you change web/ (then: bash scripts/deploy.sh without SKIP_FE).
+step "Build & deploy via scripts/deploy.sh (SKIP_FE=1, using committed frontend)"
+SRC="$SRC" K1NZR3C0N_BASE="$BASE" SERVICE="$SERVICE" BASE_URL="$BASE_URL" SKIP_FE=1 \
   bash "$SRC/scripts/deploy.sh"
 
 # ── 9. Initialise the admin password (first run only) ───────────────────────
