@@ -3138,9 +3138,9 @@ function CreateTaskSheet({
   const [timeoutMin, setTimeoutMin] = React.useState(""); // Task timeout in minutes; blank/0 means unlimited.
   const [heartbeatMin, setHeartbeatMin] = React.useState("10"); // Planner heartbeat in minutes; default/minimum 10, matching the backend.
   const [seedFirstIntent, setSeedFirstIntent] = React.useState(false); // Seed intent lets Workers start before initial planning; off by default for standard plan-then-execute flow.
-  const [reconFirst, setReconFirst] = React.useState(true); // Recon-first: run a recon workflow before pentest (default ON; untick to opt out).
-  const [reconTarget, setReconTarget] = React.useState(""); // Optional explicit recon target; empty = derive domain from goal/description.
-  const [reconWorkflow, setReconWorkflow] = React.useState("all"); // Which recon workflow(s) to run first: "all" = every workflow.
+  const [reconFirst] = React.useState(false); // Recon-first disabled: the agent drives recon itself (recon-engine loop); no operator pre-run.
+  const [reconTarget] = React.useState(""); // unused (recon-first removed); kept so the submit payload stays stable.
+  const [reconWorkflow] = React.useState("all"); // unused (recon-first removed); kept so the submit payload stays stable.
   const [coverageEnabled, setCoverageEnabled] = React.useState(true); // Coverage defaults on. Off disables calculation/display, scope accumulation, and scope tools; company links remain.
   const [interceptRules, setInterceptRules] = React.useState<AssetInterceptRuleInput[]>([]); // Task-specific asset interception rules, never written to the global table.
   // Before task creation, stage uploads in drafts/<draftId>/uploads/ and append returned absolute paths to description.
@@ -3228,9 +3228,6 @@ function CreateTaskSheet({
       setTimeoutMin("");
       setHeartbeatMin("10");
       setSeedFirstIntent(false);
-      setReconFirst(false);
-      setReconTarget("");
-      setReconWorkflow("all");
       setCoverageEnabled(true);
       setInterceptRules([]);
       setUploadCount(0);
@@ -3430,42 +3427,9 @@ function CreateTaskSheet({
                   <p className="text-muted-foreground text-xs">
                     {swt("interface.m1055")}</p>
                 </div>
-                <div className="grid gap-2">
-                  <label htmlFor="recon-first" className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      id="recon-first"
-                      checked={reconFirst}
-                      onCheckedChange={(v) => setReconFirst(!!v)}
-                    />
-                    🔭 Recon-first — run a recon workflow before pentesting
-                  </label>
-                  <p className="text-muted-foreground text-xs">
-                    Only for targets registered with a scope (Targets). Leave the field below empty to derive the domain from the goal.
-                  </p>
-                  {reconFirst && (
-                    <>
-                      <Input
-                        id="recon-target"
-                        className="w-full"
-                        placeholder="Recon target (e.g. example.com) — empty = derive from the description/goal"
-                        value={reconTarget}
-                        onChange={(e) => setReconTarget(e.target.value)}
-                      />
-                      <select
-                        id="recon-workflow"
-                        className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
-                        value={reconWorkflow}
-                        onChange={(e) => setReconWorkflow(e.target.value)}
-                      >
-                        <option value="all">All workflows (all)</option>
-                        <option value="01-full-recon-pipeline.yaml">01 — Full recon pipeline (+ vuln scan)</option>
-                        <option value="02-full-recon-artex.yaml">02 — Full recon (ARTEX, no vuln scan)</option>
-                        <option value="03-js-secrets-recon.yaml">03 — JS & secrets</option>
-                        <option value="04-param-discovery.yaml">04 — Param discovery</option>
-                      </select>
-                    </>
-                  )}
-                </div>
+                {/* Recon-first removed: the agent drives recon itself (recon-engine
+                    loop + run_workflow + auto-register) and runs whatever is missing —
+                    no operator pre-config. */}
                 <div className="grid gap-2">
                   <label htmlFor="coverage-enabled" className="flex items-center gap-2 text-sm">
                     <Checkbox
