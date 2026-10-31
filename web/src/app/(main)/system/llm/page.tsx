@@ -338,6 +338,8 @@ function ProfileSheet({
   const [apiKey, setApiKey] = React.useState("");
   // claude-sub OAuth login state
   const [ccBusy, setCcBusy] = React.useState(false);
+  const [ccOAuthId, setCcOAuthId] = React.useState("");
+  const [ccCode, setCcCode] = React.useState("");
   const [ccMsg, setCcMsg] = React.useState("");
   const [keyHint, setKeyHint] = React.useState("");
   const [rps, setRps] = React.useState("0");
@@ -810,11 +812,11 @@ function ProfileSheet({
             {format === "claude-sub" && (
               <div className="rounded-md border border-border/60 p-3 space-y-2.5">
                 <p className="text-muted-foreground text-xs">
-                  Sign in with your Claude Pro/Max subscription. The token is stored and auto-refreshed.
-                  Open this page on the same machine as the server (the sign-in returns to <code>localhost</code>).
+                  Sign in with your Claude Pro/Max subscription. Click <b>Sign in</b>, authorize in the new tab,
+                  then copy the code the page shows and paste it here.
                   <br />⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
                     size="sm"
@@ -824,21 +826,9 @@ function ProfileSheet({
                       setCcBusy(true);
                       try {
                         const d = await api.claudeOAuthStart();
+                        setCcOAuthId(d.oauth_id);
                         window.open(d.authorize_url, "_blank", "noopener");
-                        setCcMsg("Authorizing… complete the sign-in in the new tab.");
-                        const deadline = Date.now() + 5 * 60 * 1000;
-                        for (;;) {
-                          await new Promise((r) => setTimeout(r, 1500));
-                          if (Date.now() > deadline) { setCcMsg("Timed out — try signing in again."); break; }
-                          let res;
-                          try { res = await api.claudeOAuthResult(d.oauth_id); } catch { continue; }
-                          if (res.status === "pending") continue;
-                          if (res.status === "error") { setCcMsg("Sign-in failed: " + (res.error || "unknown error")); break; }
-                          invalidateModels();
-                          setApiKey(res.api_key || "");
-                          setCcMsg("✓ Signed in — token stored. Now Save the profile.");
-                          break;
-                        }
+                        setCcMsg("Authorize in the new tab, then paste the code it shows below.");
                       } catch (e) {
                         setCcMsg("Error: " + (e as Error).message);
                       } finally {
@@ -846,10 +836,43 @@ function ProfileSheet({
                       }
                     }}
                   >
-                    {ccBusy ? "Signing in…" : "Sign in with Claude"}
+                    Sign in with Claude
                   </Button>
-                  {ccMsg && <span className="text-muted-foreground text-xs">{ccMsg}</span>}
+                  {ccOAuthId && (
+                    <>
+                      <Input
+                        className="w-72 font-mono"
+                        placeholder="Paste the code from the callback page"
+                        value={ccCode}
+                        onChange={(e) => setCcCode(e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={ccBusy || !ccCode.trim()}
+                        onClick={async () => {
+                          setCcMsg("");
+                          setCcBusy(true);
+                          try {
+                            const d = await api.claudeOAuthExchange(ccOAuthId, ccCode.trim());
+                            invalidateModels();
+                            setApiKey(d.api_key);
+                            setCcCode("");
+                            setCcOAuthId("");
+                            setCcMsg("✓ Signed in — token stored. Now Save the profile.");
+                          } catch (e) {
+                            setCcMsg("Error: " + (e as Error).message);
+                          } finally {
+                            setCcBusy(false);
+                          }
+                        }}
+                      >
+                        Complete
+                      </Button>
+                    </>
+                  )}
                 </div>
+                {ccMsg && <p className="text-muted-foreground text-xs">{ccMsg}</p>}
               </div>
             )}
           </div>
