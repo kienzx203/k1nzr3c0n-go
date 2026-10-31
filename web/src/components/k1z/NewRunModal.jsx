@@ -90,7 +90,11 @@ export default function NewRunModal({ onClose, onCreated, initialTarget = '', in
   useEffect(() => {
     api.getWorkflows().then(wfs => {
       setWorkflows(wfs)
-      if (wfs.length) setWorkflow(initialWorkflow && wfs.includes(initialWorkflow) ? initialWorkflow : wfs[0])
+      // default to 02 (fast discovery-only) over 01 (heavy full+vuln, very slow)
+      if (wfs.length) setWorkflow(
+        initialWorkflow && wfs.includes(initialWorkflow)
+          ? initialWorkflow
+          : (wfs.includes('02-full-recon-artex.yaml') ? '02-full-recon-artex.yaml' : wfs[0]))
     })
     // Load which keys are configured — used to detect auto-injected vars
     api.getKeys().then(keys => {

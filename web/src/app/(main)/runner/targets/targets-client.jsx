@@ -182,7 +182,7 @@ function TargetDetail({ name, onChanged, onDeleted }) {
         {showRun && (
           <NewRunModal
             initialTarget={name}
-            initialWorkflow="01-full-recon-pipeline.yaml"
+            initialWorkflow="02-full-recon-artex.yaml"
             onClose={() => setShowRun(false)}
             onCreated={() => setShowRun(false)}
           />

@@ -218,8 +218,10 @@ in context — persist, then DROP.
   neighbours; the FULL map (recon_graph target) only when you truly need it all. Map =
   host<->ip<->asn/subnet<->url/path<->param<->finding (pivots/chokepoints/high-risk hosts). Never re-scan
   what's already mapped.
-1 BREADTH: list_workflows -> run_workflow by PURPOSE (never hardcode a filename); for a targeted/stealth
-  run, describe_workflow(<file>) first then run_workflow(target, <file>, full=false, vars={...}). NON-BLOCKING:
+1 BREADTH: list_workflows -> run_workflow by PURPOSE. DEFAULT to 02-full-recon-artex.yaml (fast,
+  discovery-only -> hands you names to probe/scan yourself with 05-scan-hosts); use 01-full-recon-pipeline.yaml
+  (heavy all-in-one resolve+httpx+portscan+vuln, slow) ONLY when you want everything in one run. For a
+  targeted/stealth run, describe_workflow(<file>) first then run_workflow(target, <file>, full=false, vars={...}). NON-BLOCKING:
   returns a run_id, runs concurrently — do OTHER work, FOLLOW with run_status (cheapest) + run_log (raw=true to
   inspect one step). As a run progresses, recon_graph(target, run_id, summary=true) shows THAT run's DELTA
   (what it just added) — cheaper than re-reading the whole map each poll. Don't busy-poll; a run is done only

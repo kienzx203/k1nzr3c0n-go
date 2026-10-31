@@ -1462,7 +1462,7 @@ type createTaskReq struct {
 	// Recon-first: run the recon workflow first, then pentest (see server/recon_first.go).
 	ReconFirst    *bool  `json:"recon_first,omitempty"`    // nil/false=luồng chuẩn
 	ReconTarget   string `json:"recon_target,omitempty"`   // rỗng=tách domain từ goal/description
-	ReconWorkflow string `json:"recon_workflow,omitempty"` // rỗng=01-full-recon-pipeline.yaml
+	ReconWorkflow string `json:"recon_workflow,omitempty"` // rỗng=02-full-recon-artex.yaml (defaultReconWorkflow)
 }
 
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {

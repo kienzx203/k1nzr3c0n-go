@@ -95,7 +95,11 @@ in context — persist, then drop.
    then `recon_graph(target, q=…)` / `recon_findings` / `recon_assets` to inspect what's there.
    If it already has live hosts + ports + urls/params enough to attack, SKIP scanning (step 5).
 2. **Pick & launch** only the gaps. `list_workflows` → `run_workflow(target, <chosen>)`
-   (non-blocking). Launch SEVERAL when the goal is broad (full-recon + JS/secrets + params).
+   (non-blocking). **Default to `02-full-recon-artex.yaml`** for broad recon — it is fast
+   (discovery-only: all passive sources, no heavy scans) and hands you the names to probe/
+   scan yourself (`05-scan-hosts.yaml` on the interesting hosts). Reach for
+   `01-full-recon-pipeline.yaml` (resolve+httpx+portscan+vuln all-in-one) ONLY when you want
+   the heavy pipeline and can afford the long runtime. Launch SEVERAL when broad (02 + JS/secrets + params).
 3. **Follow live.** While it runs, `run_log(run_id)` + `run_status(run_id)`; keep reconning in
    parallel. Lost the run_id (compaction)? `recon_runs(target, status=running)` to recover it —
    never leave a launched run unread.

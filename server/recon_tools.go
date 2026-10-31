@@ -321,7 +321,7 @@ func reconDescribeWorkflow() actool.CoreTool {
 		Name:        "describe_workflow",
 		Description: "Show ONE workflow's tunable variables (vars) + description + step count, so you can run a TARGETED/STEALTH variant: set specific vars and pass full=false to run_workflow (otherwise full=true turns every option on). E.g. a param-discovery workflow exposes session_cookie/auth_header/method; a full-recon workflow exposes run_portscan/run_nuclei/run_screenshot toggles you can switch off to stay quiet. Pick the workflow name from list_workflows.",
 		Schema: rtObj(map[string]any{
-			"workflow": rtStr("workflow file name, e.g. 01-full-recon-pipeline.yaml"),
+			"workflow": rtStr("workflow file name. DEFAULT to 02-full-recon-artex.yaml (fast, discovery-only — hands you names to probe/scan yourself; has the most passive sources). Use 01-full-recon-pipeline.yaml (resolve+httpx+portscan+vuln, all-in-one) ONLY when you want the heavy pipeline and can afford the long runtime; 05-scan-hosts.yaml for a targeted host set; 03/04 for JS-secrets/params."),
 		}, "workflow"),
 		ReadOnly:   func(json.RawMessage) bool { return true },
 		Concurrent: func(json.RawMessage) bool { return true },
@@ -629,7 +629,7 @@ func reconRunWorkflow() actool.CoreTool {
 		Description: "Launch a Workflow Runner recon workflow against a target. If the target is NOT yet registered it is AUTO-REGISTERED with a default scope (the domain + its subdomains) and the run proceeds — the operator authorized this, so you never stop to register first. By DEFAULT it is NON-BLOCKING: it returns a run_id immediately and the workflow runs CONCURRENTLY while you keep reconning — follow it in REAL TIME with run_log(run_id) (tail the step output) and run_status(run_id), and read recon_findings/recon_assets as results land. The full brief is ALSO pushed back into the task when the run finishes, so nothing is missed — but do not wrap up while a run is still unread. Pass wait=true to block until it finishes and get the brief inline instead. CHOOSE the workflow via list_workflows. Check recon_findings first — only run recon you don't already have.",
 		Schema: rtObj(map[string]any{
 			"target":   rtStr("target domain, e.g. example.com (auto-registered with a default domain+subdomains scope if not yet registered)"),
-			"workflow": rtStr("workflow file name, e.g. 01-full-recon-pipeline.yaml"),
+			"workflow": rtStr("workflow file name. DEFAULT to 02-full-recon-artex.yaml (fast, discovery-only — hands you names to probe/scan yourself; has the most passive sources). Use 01-full-recon-pipeline.yaml (resolve+httpx+portscan+vuln, all-in-one) ONLY when you want the heavy pipeline and can afford the long runtime; 05-scan-hosts.yaml for a targeted host set; 03/04 for JS-secrets/params."),
 			"vars":     map[string]any{"type": "object", "description": "optional variable overrides (key -> value)"},
 			"wait":     map[string]any{"type": "boolean", "description": "default false (non-blocking): return the run_id immediately and run CONCURRENTLY — follow with run_log/run_status while you keep reconning. true: block until the run finishes and return its recon brief inline."},
 			"full":     map[string]any{"type": "boolean", "description": "default true: enable ALL of the workflow's options for maximum coverage (except the pivot scan and neighbor /24 PTR sweep, which stay off for scope safety). false: use the workflow's own defaults."},
