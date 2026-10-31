@@ -749,6 +749,7 @@ func (s *Server) Handler() http.Handler {
 	// the pasted code → stored credentials (api_key JSON) with auto-refresh.
 	mux.HandleFunc("POST /api/llm/claude/oauth/start", s.handleClaudeOAuthStart)
 	mux.HandleFunc("POST /api/llm/claude/oauth/exchange", s.handleClaudeOAuthExchange)
+	mux.HandleFunc("POST /api/llm/claude/local", s.handleClaudeLocalImport)
 
 	// asset system
 	mux.HandleFunc("GET /api/assets", s.listAssets)
@@ -1427,6 +1428,13 @@ func (s *Server) testLLM(w http.ResponseWriter, r *http.Request) {
 	if cfg.APIKey == "" {
 		writeJSON(w, 200, map[string]any{"ok": false, "error": "API Key not provided"})
 		return
+	}
+	// claude-sub: the key field holds a credentials JSON blob (or Claude Code's
+	// ~/.claude/.credentials.json). Extract the Bearer access token exactly like
+	// the production path (loadProfileConfig), or the test sends the whole JSON
+	// as the token and fails with 401 ("verify fail").
+	if cfg.Format == "claude-sub" {
+		cfg.APIKey = s.claudeSubAccessToken(cfg.APIKey)
 	}
 	// Retry parameters are NOT carried into the connection test: the test has a hard 30s timeout, and piling the profile's retry count/long interval on top
 	// would only make a usable endpoint test as "timeout failure". The test checks "is this endpoint reachable"; retry cadence

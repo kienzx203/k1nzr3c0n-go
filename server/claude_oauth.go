@@ -30,6 +30,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -315,6 +317,34 @@ func (s *Server) handleClaudeOAuthStart(w http.ResponseWriter, r *http.Request) 
 		"authorize_url": authURL,
 		"redirect_uri":  claudeOAuthRedirect,
 	})
+}
+
+// handleClaudeLocalImport reads Claude Code's own login file from THIS server's
+// home dir (~/.claude/.credentials.json, or $CLAUDE_CONFIG_DIR) and returns a
+// normalized credentials blob the UI drops into the profile key — the most
+// reliable path when `claude` is logged in on the server host: no browser, no
+// OAuth callback.
+func (s *Server) handleClaudeLocalImport(w http.ResponseWriter, r *http.Request) {
+	var paths []string
+	if d := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); d != "" {
+		paths = append(paths, filepath.Join(d, ".credentials.json"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, ".claude", ".credentials.json"))
+	}
+	for _, p := range paths {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		if c, ok := parseClaudeSubCreds(string(b)); ok && c.AccessToken != "" {
+			out, _ := json.Marshal(c)
+			writeJSON(w, 200, map[string]any{"ok": true, "api_key": string(out), "expires_at": c.ExpiresAt, "source": p})
+			return
+		}
+	}
+	writeJSON(w, 200, map[string]any{"ok": false,
+		"error": "no readable ~/.claude/.credentials.json on the server — run `claude` and log in on this host, or paste the file contents into the key field"})
 }
 
 func (s *Server) handleClaudeOAuthExchange(w http.ResponseWriter, r *http.Request) {

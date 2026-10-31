@@ -2015,6 +2015,17 @@ func (s *Server) pgListModels(w http.ResponseWriter, r *http.Request) {
 	baseURL := strings.TrimRight(strings.TrimSpace(req.BaseURL), "/")
 	provider := strings.TrimSpace(req.Provider)
 
+	// claude-sub: a subscription OAuth token cannot call /v1/models (that needs an
+	// API key), and the key field holds a JSON blob, not a bearer string. Return a
+	// curated list of the subscription-accessible models instead of a failed fetch.
+	if provider == "claude-sub" {
+		writeJSON(w, 200, map[string]any{"ok": true, "models": []string{
+			"claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5",
+			"claude-3-7-sonnet-latest", "claude-3-5-haiku-latest",
+		}})
+		return
+	}
+
 	// Candidate endpoints to try in order. Some Anthropic-compatible providers
 	// (e.g. DeepSeek) implement /v1/messages under an /anthropic path but expose
 	// the model list only on their OpenAI-format path — so for anthropic we fall
