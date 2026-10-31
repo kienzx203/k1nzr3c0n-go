@@ -14,7 +14,6 @@ package server
 // (community-sourced) and may change; the refresh params match claude_sub_llm.py.
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -33,7 +32,7 @@ const (
 	claudeOAuthAuthorize = "https://claude.ai/oauth/authorize"
 	claudeOAuthTokenURL  = "https://platform.claude.com/v1/oauth/token"
 	claudeOAuthRedirect  = "https://platform.claude.com/oauth/code/callback"
-	claudeOAuthScope     = "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
+	claudeOAuthScope     = "user:inference user:profile user:sessions:claude_code user:mcp_servers"
 	claudeRefreshMargin  = 300 // refresh when the token is within 5 min of expiry
 )
 
@@ -94,13 +93,14 @@ func startClaudeLogin() (oauthID, authURL string) {
 	return oauthID, claudeOAuthAuthorize + "?" + q.Encode()
 }
 
-// claudeTokenRequest posts a token/refresh body and parses the credentials.
-func claudeTokenRequest(body []byte) (claudeSubCreds, error) {
-	req, err := http.NewRequest("POST", claudeOAuthTokenURL, bytes.NewReader(body))
+// claudeTokenRequest posts a token/refresh form and parses the credentials. The
+// endpoint expects application/x-www-form-urlencoded (JSON can time out).
+func claudeTokenRequest(form url.Values) (claudeSubCreds, error) {
+	req, err := http.NewRequest("POST", claudeOAuthTokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return claudeSubCreds{}, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("User-Agent", "axios/1.15.2")
 	resp, err := (&http.Client{Timeout: 25 * time.Second}).Do(req)
@@ -143,26 +143,24 @@ func exchangeClaudeCode(oauthID, rawCode string) (claudeSubCreds, error) {
 		state = code[i+1:]
 		code = code[:i]
 	}
-	body, _ := json.Marshal(map[string]string{
-		"grant_type":    "authorization_code",
-		"code":          code,
-		"state":         state,
-		"client_id":     claudeOAuthClientID,
-		"redirect_uri":  claudeOAuthRedirect,
-		"code_verifier": p.verifier,
-	})
-	return claudeTokenRequest(body)
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	form.Set("state", state)
+	form.Set("client_id", claudeOAuthClientID)
+	form.Set("redirect_uri", claudeOAuthRedirect)
+	form.Set("code_verifier", p.verifier)
+	return claudeTokenRequest(form)
 }
 
 // refreshClaudeToken exchanges a refresh token for fresh credentials.
 func refreshClaudeToken(refresh string) (claudeSubCreds, error) {
-	body, _ := json.Marshal(map[string]string{
-		"grant_type":    "refresh_token",
-		"refresh_token": refresh,
-		"client_id":     claudeOAuthClientID,
-		"scope":         claudeOAuthScope,
-	})
-	c, err := claudeTokenRequest(body)
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", refresh)
+	form.Set("client_id", claudeOAuthClientID)
+	form.Set("scope", claudeOAuthScope)
+	c, err := claudeTokenRequest(form)
 	if err == nil && c.RefreshToken == "" {
 		c.RefreshToken = refresh // some responses omit it → keep the old one
 	}
