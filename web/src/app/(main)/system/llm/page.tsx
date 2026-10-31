@@ -63,6 +63,11 @@ const MAX_TOKENS_FIELD_HINTS: Record<string, string> = {
 };
 type ProfileFormat = LLMProfile["format"];
 const FORMATS: readonly string[] = ["anthropic", "claude-sub", "openai", "openai-responses", "ollama"];
+// Models a Claude Pro/Max subscription token can call (picked from a dropdown, no typing).
+const CLAUDE_SUB_MODELS = [
+  "claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5",
+  "claude-3-7-sonnet-latest", "claude-3-5-haiku-latest",
+] as const;
 const ZAI_PRESETS = ["zai-general", "zai-coding-reference"] as const;
 const OLLAMA_PRESETS = [
   { id: "ollama-host", key: "providers.ollamaHost", help: "providers.ollamaHostHelp" },
@@ -450,6 +455,11 @@ function ProfileSheet({
   function changeFormat(nextFormat: ProfileFormat) {
     invalidateModels();
     setFormat(nextFormat);
+    if (nextFormat === "claude-sub") {
+      // Subscription: fixed host + a known model from the dropdown (no typing).
+      if (!baseUrl.trim()) setBaseUrl("https://api.anthropic.com");
+      if (!(CLAUDE_SUB_MODELS as readonly string[]).includes(model)) setModel("claude-sonnet-4-5");
+    }
     if (nextFormat === "ollama" && format !== "ollama") {
       // Drop a cloud template's URL and credential before read-only local discovery.
       const cloudTemplateURL = (ZAI_PRESETS as readonly string[]).includes(preset)
@@ -674,7 +684,7 @@ function ProfileSheet({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="anthropic">Anthropic</SelectItem>
-                  <SelectItem value="claude-sub">Claude Subscription (Pro/Max — OAuth token)</SelectItem>
+                  <SelectItem value="claude-sub">Claude Pro/Max</SelectItem>
                   <SelectItem value="openai">OpenAI (Chat Completions)</SelectItem>
                   <SelectItem value="openai-responses">OpenAI (Responses API)</SelectItem>
                   <SelectItem value="ollama">{swt("providers.ollamaFormat")}</SelectItem>
@@ -685,6 +695,16 @@ function ProfileSheet({
 
           <div className="grid gap-2">
             <Label htmlFor="p-model">{swt("interface.m0627")}</Label>
+            {format === "claude-sub" ? (
+              <select
+                id="p-model"
+                className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm font-mono"
+                value={(CLAUDE_SUB_MODELS as readonly string[]).includes(model) ? model : "claude-sonnet-4-5"}
+                onChange={(e) => setModel(e.target.value)}
+              >
+                {CLAUDE_SUB_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            ) : (
             <div className="flex gap-2">
               <Input
                 id="p-model"
@@ -752,6 +772,7 @@ function ProfileSheet({
                 )}
               </Popover>
             </div>
+            )}
             {modelsError && <p role="alert" className="text-destructive text-xs">{modelsError}</p>}
             {modelLacksTools && (
               <p role="alert" className="text-amber-700 text-xs dark:text-amber-400">
@@ -811,20 +832,10 @@ function ProfileSheet({
               <div className="rounded-md border border-border/60 p-3 space-y-2.5">
                 <p className="text-muted-foreground text-xs">
                   One click: reads the <b>Claude Code</b> login on this server (<code>~/.claude/.credentials.json</code>),
-                  then creates &amp; activates a Claude subscription profile. Just pick a model.
+                  then creates &amp; activates this profile with the model chosen above.
                   <br />⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
-                    value={model || "claude-sonnet-4-5"}
-                    onChange={(e) => setModel(e.target.value)}
-                  >
-                    {["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5",
-                      "claude-3-7-sonnet-latest", "claude-3-5-haiku-latest"].map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
                   <Button
                     type="button"
                     size="sm"
