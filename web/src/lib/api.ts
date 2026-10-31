@@ -1011,12 +1011,12 @@ export const api = {
   }) => post<{ id: number }>("/llm/profiles", p),
   deleteLLMProfile: (id: string) => del<{ deleted: number }>(`/llm/profiles/${id}`),
   claudeOAuthStart: () =>
-    post<{ oauth_id: string; authorize_url: string; redirect_uri: string }>("/llm/claude/oauth/start", {}),
-  claudeOAuthExchange: (oauthId: string, code: string) =>
-    post<{ api_key: string; expires_at: number }>("/llm/claude/oauth/exchange", { oauth_id: oauthId, code }),
-  // Import Claude Code's login from the SERVER host's ~/.claude/.credentials.json (no OAuth).
-  claudeLocalImport: () =>
-    post<{ ok: boolean; api_key?: string; expires_at?: number; source?: string; error?: string }>("/llm/claude/local", {}),
+    post<{ oauth_id: string; authorize_url: string }>("/llm/claude/oauth/start", {}),
+  // Polled after the browser authorizes; the local loopback listener finishes the exchange.
+  claudeOAuthResult: (oauthId: string) =>
+    get<{ status: "pending" | "ok" | "error"; api_key?: string; expires_at?: number; error?: string }>(
+      `/llm/claude/oauth/result?oauth_id=${encodeURIComponent(oauthId)}`,
+    ),
   activateLLMProfile: (id: string) => post<{ ok: boolean }>("/llm/profiles/active", { id: Number(id) }),
   // Actual rotation order and circuit-breaker state per profile.
   llmPool: () => get<LLMPoolStatus>("/llm/pool"),
