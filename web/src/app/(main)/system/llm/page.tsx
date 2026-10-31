@@ -1106,43 +1106,75 @@ function ClaudeSubSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex flex-col gap-0 data-[side=right]:sm:max-w-md">
-        <SheetHeader className="px-1">
-          <SheetTitle>Claude Pro/Max</SheetTitle>
+      <SheetContent side="right" className="flex flex-col gap-0 p-0 data-[side=right]:sm:max-w-lg">
+        <SheetHeader className="px-4">
+          <SheetTitle className="flex items-center gap-2">
+            <SparklesIcon className="size-4" /> Claude Pro/Max
+          </SheetTitle>
           <SheetDescription>
-            Create subscription profiles from this server’s Claude Code login — no key needed.
+            Create subscription profiles from this server’s Claude Code login — no API key needed.
           </SheetDescription>
         </SheetHeader>
-        <div className="space-y-4 px-1 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="cs-model">Model</Label>
-            <Input
-              id="cs-model"
-              className="font-mono"
-              list="claude-sub-models"
-              placeholder={CLAUDE_SUB_DEFAULT_MODEL}
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-            />
-            <datalist id="claude-sub-models">
-              {CLAUDE_SUB_MODELS.map((m) => <option key={m} value={m} />)}
-            </datalist>
-            <p className="text-muted-foreground text-xs">
-              Pick a known model or type a new one (e.g. a newly released id).
+
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6">
+          <div className="grid gap-3 rounded-lg border p-3">
+            <div className="grid gap-0.5">
+              <Label htmlFor="cs-model" className="text-sm">Add a model</Label>
+              <p className="text-muted-foreground text-xs">
+                Pick a known model or type a new id (e.g. a newly released one), then add it.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                id="cs-model"
+                className="font-mono"
+                list="claude-sub-models"
+                placeholder={CLAUDE_SUB_DEFAULT_MODEL}
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+              />
+              <datalist id="claude-sub-models">
+                {CLAUDE_SUB_MODELS.map((m) => <option key={m} value={m} />)}
+              </datalist>
+              <Button type="button" size="sm" className="shrink-0" disabled={busy || !model.trim()} onClick={add}>
+                <PlusIcon /> Add
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {CLAUDE_SUB_MODELS.map((m) => (
+                <Badge
+                  key={m}
+                  variant="outline"
+                  className={cn("cursor-pointer font-mono font-normal hover:bg-accent", model === m && "border-foreground/40")}
+                  onClick={() => setModel(m)}
+                >
+                  {m}
+                </Badge>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+            <div className="grid gap-0.5">
+              <Label className="text-sm">Seed all models</Label>
+              <p className="text-muted-foreground text-xs">
+                Create a profile for every supported model at once ({CLAUDE_SUB_MODELS.length}).
+              </p>
+            </div>
+            <Button type="button" size="sm" variant="outline" className="shrink-0" disabled={busy} onClick={seedAll}>
+              {busy ? "Working…" : "Seed all"}
+            </Button>
+          </div>
+
+          {msg && (
+            <p className={cn("text-xs", msg.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
+              {msg}
             </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" disabled={busy || !model.trim()} onClick={add}>
-              {busy ? "Working…" : "Add model"}
-            </Button>
-            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={seedAll}>
-              Seed all models
-            </Button>
-          </div>
-          {msg && <p className="text-muted-foreground text-xs">{msg}</p>}
-          <p className="text-muted-foreground text-xs">
-            Needs <code>claude</code> logged in on the server. ⚠️ Using the subscription outside Claude Code
-            violates Anthropic’s terms and can get the account banned.
+          )}
+
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            Requires <code>claude</code> logged in on the server host. The stored token auto-refreshes.
+            <br />⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
           </p>
         </div>
       </SheetContent>
