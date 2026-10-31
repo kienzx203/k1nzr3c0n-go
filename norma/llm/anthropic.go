@@ -2,8 +2,6 @@ package llm
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,14 +23,18 @@ type anthropicProvider struct {
 	sub bool
 }
 
-// claude-sub billing/identity constants (Claude Code fingerprint).
-const (
-	ccSubVersion = "2.1.280"
-	ccSubFPSalt  = "59cf53e54c78"
-)
+// claudeSubIdentity is the exact first system block the real `claude` binary
+// sends with a subscription OAuth token. Anthropic authorizes an OAuth
+// (Bearer) token only for Claude Code, so the FIRST system block must be this
+// string verbatim (verified: a 200 reply with it, extracted from the binary).
+const claudeSubIdentity = "You are Claude Code, Anthropic's official CLI for Claude."
 
-// messagesURL is the /v1/messages endpoint. The subscription path needs the
-// ?beta=true query (as claude_sub_llm.py uses) or the OAuth token is rejected.
+// claudeSubBeta is the anthropic-beta flag the real binary sends to unlock the
+// OAuth credential (constant Fc="oauth-2025-04-20" in the binary).
+const claudeSubBeta = "oauth-2025-04-20"
+
+// messagesURL is the /v1/messages endpoint. The subscription path keeps the
+// ?beta=true query the real client uses.
 func (p *anthropicProvider) messagesURL() string {
 	if p.sub {
 		return p.cfg.BaseURL + "/v1/messages?beta=true"
@@ -45,40 +47,10 @@ func (p *anthropicProvider) setAuth(r *http.Request) {
 	r.Header.Set("anthropic-version", p.cfg.APIVersion)
 	if p.sub {
 		r.Header.Set("authorization", "Bearer "+strings.TrimSpace(p.cfg.APIKey))
+		r.Header.Set("anthropic-beta", claudeSubBeta) // required for the OAuth credential
 		return
 	}
 	r.Header.Set("x-api-key", p.cfg.APIKey)
-}
-
-// firstUserText returns the text of the first user message (for the billing fp).
-func firstUserText(req CompletionRequest) string {
-	for _, m := range req.Messages {
-		if m.Role == RoleUser {
-			return m.Text()
-		}
-	}
-	return ""
-}
-
-// claudeSubBilling builds the Claude-Code billing/identity system block the
-// subscription path needs (see claude_sub_llm.py _billing_header): a short
-// fingerprint of three chars of the first user message, the Claude Code version,
-// and a fixed salt.
-func claudeSubBilling(req CompletionRequest) anthropicSystemBlock {
-	rs := []rune(firstUserText(req))
-	pick := func(i int) rune {
-		if i < len(rs) {
-			return rs[i]
-		}
-		return '0'
-	}
-	chars := string([]rune{pick(4), pick(7), pick(20)})
-	sum := sha256.Sum256([]byte(ccSubFPSalt + chars + ccSubVersion))
-	fp := hex.EncodeToString(sum[:])[:3]
-	return anthropicSystemBlock{
-		Type: "text",
-		Text: fmt.Sprintf("x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=cli; cch=00000;", ccSubVersion, fp),
-	}
 }
 
 type anthropicSystemBlock struct {
@@ -157,7 +129,7 @@ func (p *anthropicProvider) buildBody(req CompletionRequest, stream bool) ([]byt
 		body.OutputConfig = &anthropicOutputConfig{Effort: p.cfg.ReasoningEffort}
 	}
 	if p.sub { // subscription path: prepend the Claude-Code billing/identity block
-		body.System = append([]anthropicSystemBlock{claudeSubBilling(req)}, body.System...)
+		body.System = append([]anthropicSystemBlock{{Type: "text", Text: claudeSubIdentity}}, body.System...)
 	}
 	return json.Marshal(body)
 }
