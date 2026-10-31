@@ -816,15 +816,44 @@ function ProfileSheet({
                   ⚠️ Using the subscription outside Claude Code violates Anthropic’s terms and can get the account banned.
                 </p>
                 <p className="text-muted-foreground text-xs">
-                  <b>Easiest (works anywhere):</b> on a machine where you run Claude Code, paste the contents of{" "}
-                  <code>~/.claude/.credentials.json</code> into the API key field above
-                  (<code>cat ~/.claude/.credentials.json</code>). No login needed.
+                  <b>Recommended — Import from this server:</b> if you ran <code>claude</code> and logged in on the
+                  machine hosting this app, click <b>Import</b> to read its <code>~/.claude/.credentials.json</code>.
+                  No browser login, no callback.
                 </p>
                 <p className="text-muted-foreground text-xs">
-                  <b>Or log in below:</b> click, authorize in the new tab, then <b>copy the code the callback page
-                  shows</b> and paste it here.
+                  <b>Or paste manually:</b> on any machine with Claude Code, run
+                  <code> cat ~/.claude/.credentials.json</code> and paste the whole JSON into the API key field above.
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  <b>Or OAuth login:</b> click Login, authorize in the new tab, then paste the code the callback page shows.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    disabled={ccBusy}
+                    onClick={async () => {
+                      setCcMsg("");
+                      setCcBusy(true);
+                      try {
+                        const d = await api.claudeLocalImport();
+                        if (d.ok && d.api_key) {
+                          invalidateModels();
+                          setApiKey(d.api_key);
+                          setCcMsg("✓ Imported from " + (d.source || "server") + " — now Save the profile.");
+                        } else {
+                          setCcMsg("Error: " + (d.error || "no local login found"));
+                        }
+                      } catch (e) {
+                        setCcMsg("Error: " + (e as Error).message);
+                      } finally {
+                        setCcBusy(false);
+                      }
+                    }}
+                  >
+                    📥 Import from this server
+                  </Button>
                   <Button
                     type="button"
                     variant="secondary"
@@ -845,7 +874,7 @@ function ProfileSheet({
                       }
                     }}
                   >
-                    🔐 Login with Claude subscription
+                    🔐 OAuth login
                   </Button>
                   {ccOAuthId && (
                     <>

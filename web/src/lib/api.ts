@@ -1014,6 +1014,9 @@ export const api = {
     post<{ oauth_id: string; authorize_url: string; redirect_uri: string }>("/llm/claude/oauth/start", {}),
   claudeOAuthExchange: (oauthId: string, code: string) =>
     post<{ api_key: string; expires_at: number }>("/llm/claude/oauth/exchange", { oauth_id: oauthId, code }),
+  // Import Claude Code's login from the SERVER host's ~/.claude/.credentials.json (no OAuth).
+  claudeLocalImport: () =>
+    post<{ ok: boolean; api_key?: string; expires_at?: number; source?: string; error?: string }>("/llm/claude/local", {}),
   activateLLMProfile: (id: string) => post<{ ok: boolean }>("/llm/profiles/active", { id: Number(id) }),
   // Actual rotation order and circuit-breaker state per profile.
   llmPool: () => get<LLMPoolStatus>("/llm/pool"),
