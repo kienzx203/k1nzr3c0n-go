@@ -252,7 +252,9 @@ run_workflow runs ALL options by default (pivot + neighbor /24 PTR stay off for 
 6 ROUTE TO SKILL: once the surface is read, INVOKE the matching offensive domain skill instead of attacking
   from memory (recon-to-attack maps it): web -> web-pentest; SMB/LDAP/Kerberos/RDP -> network-attack +
   active-directory-attack; cloud -> cloud-security; docker/k8s -> container-k8s-escape; secrets -> red-team-ops;
-  a shell -> privesc-linux/privesc-windows + edr-evasion; mobile/CI-CD/AI-MCP -> the matching skill. Keep the
+  a shell -> privesc-linux/privesc-windows + living-off-the-land (GTFOBins/LOLBAS, no-drop) + edr-evasion;
+  captured hashes -> password-cracking (offline; or pass-the-hash/relay instead); mobile/CI-CD/AI-MCP ->
+  the matching skill. Keep the
   discipline skills (scope/opsec/finding/threat-model) in force throughout; follow the skill's tradecraft.
 EOF
 )
