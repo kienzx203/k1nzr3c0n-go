@@ -641,7 +641,8 @@ func Build(dir, target string) *Graph {
 	// ── extended surface coverage (permutation/tlsx/pivot/vhost/favicon/js/ptr) ──
 	for _, p := range []string{"subdomains_all_resolved.txt", "subdomains_all.txt", "subdomains_tlsx_resolved.txt",
 		"tlsx_new_subs.txt", "js_subs.txt", "jsubfinder_subs.txt", "st_intel_subs.txt", "reverse_dns_subs.txt",
-		"ptr_subs.txt", "dns_records_subs.txt", "http_redirect_subs.txt", "recursive_parents.txt", "uncover_asn_in_scope.txt"} {
+		"ptr_subs.txt", "dns_records_subs.txt", "http_redirect_subs.txt", "recursive_parents.txt", "uncover_asn_in_scope.txt",
+		"ip_cert_subs.txt"} {
 		for _, h := range lines(firstExisting(dir, p)) {
 			h = strings.ToLower(strings.Trim(h, "."))
 			if reHost.MatchString(h) {
@@ -651,7 +652,7 @@ func Build(dir, target string) *Graph {
 	}
 	// hosts found via vhost/favicon/pivot = non-standard (interesting) surface
 	for _, p := range []string{"vhost_new_hosts.txt", "favicon_in_scope.txt", "pivot_new_resolved.txt",
-		"http_redirect_resolved.txt", "dns_svc_new_hosts.txt"} {
+		"http_redirect_resolved.txt", "dns_svc_new_hosts.txt", "ip_pivot_names.txt"} {
 		for _, ln := range lines(firstExisting(dir, p)) {
 			f := strings.Fields(ln)
 			if len(f) == 0 {

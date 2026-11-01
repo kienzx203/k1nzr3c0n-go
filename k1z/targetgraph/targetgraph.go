@@ -67,10 +67,10 @@ var MergeFiles = []string{
 	// host name sources
 	"subdomains.txt", "subdomains_resolved.txt", "subdomains_all_resolved.txt", "subdomains_all.txt",
 	"passive_merged.txt", "subdomains_resolved_resp.txt", "subdomains_tlsx_resolved.txt", "tlsx_new_subs.txt",
-	"js_subs.txt", "jsubfinder_subs.txt", "st_intel_subs.txt", "reverse_dns_subs.txt", "ptr_subs.txt",
+	"js_subs.txt", "jsubfinder_subs.txt", "st_intel_subs.txt", "reverse_dns_subs.txt", "ptr_subs.txt", "ip_cert_subs.txt",
 	"dns_records_subs.txt", "http_redirect_subs.txt", "recursive_parents.txt", "uncover_asn_in_scope.txt",
 	// edge/interesting surface
-	"vhost_new_hosts.txt", "favicon_in_scope.txt", "pivot_new_resolved.txt", "http_redirect_resolved.txt",
+	"vhost_new_hosts.txt", "favicon_in_scope.txt", "pivot_new_resolved.txt", "http_redirect_resolved.txt", "ip_pivot_names.txt",
 	"dns_svc_new_hosts.txt", "interesting.txt",
 	// resolve / ip
 	"resolved.txt", "dns_resolved.txt", "ptr_resolved.txt", "dns_ptr.txt",
