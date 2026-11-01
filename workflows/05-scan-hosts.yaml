@@ -11,6 +11,10 @@ vars:
   httpx_timeout: '10'
   nuclei_severity: 'critical,high,medium'
   web_ports: '80,443,8080,8443,8000,8888,3000,5000,9000,9443,2083,8006,10250'
+  # vhost-matrix cross-product caps (name x IP). Raise for a big target so no
+  # non-resolving name / IP is left untested; the step's 30m timeout still bounds it.
+  vhost_max_names: '200'
+  vhost_max_ips: '80'
 steps:
   - id: seed_hosts
     name: 'build the in-scope host set (target_hosts + subdomains_list, scope-filtered)'
@@ -132,8 +136,11 @@ steps:
       # A non-resolving in-scope name is most often a VHOST co-located on an IP we
       # already know. Test each such name as a Host/SNI against each known IP (https
       # then http). Bounded cross-product (caps) so it can't blow the timeout.
-      head -80 {workspace}/unresolved_hosts.txt > {workspace}/.vm_names
-      head -40 {workspace}/resolved.txt > {workspace}/.vm_ips
+      head -{vars.vhost_max_names} {workspace}/unresolved_hosts.txt > {workspace}/.vm_names
+      head -{vars.vhost_max_ips} {workspace}/resolved.txt > {workspace}/.vm_ips
+      tot_n=$(wc -l < {workspace}/unresolved_hosts.txt); tot_i=$(wc -l < {workspace}/resolved.txt)
+      [ "$tot_n" -gt {vars.vhost_max_names} ] && printf '[vhost-matrix] NOTE: %s non-resolving names > cap %s — raise vhost_max_names to cover all\n' "$tot_n" "{vars.vhost_max_names}"
+      [ "$tot_i" -gt {vars.vhost_max_ips} ] && printf '[vhost-matrix] NOTE: %s IPs > cap %s — raise vhost_max_ips to cover all\n' "$tot_i" "{vars.vhost_max_ips}"
       status() { # $1=name $2=ip -> 3-digit code (https then http). Parse the status
         # line from curl -I, NOT the curl write-out format (its percent-brace syntax
         # would be read as a template variable by the workflow renderer).
