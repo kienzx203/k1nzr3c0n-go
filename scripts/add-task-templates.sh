@@ -212,6 +212,17 @@ EOF
 )
 
 ORCH=$(cat <<'EOF'
+FAN-OUT — ONE WORKER PER DOMAIN (nothing left behind): if the engagement scope has MORE THAN ONE root
+domain, do NOT cram them into one worker. For EACH in-scope root domain, spawn_task(description="<that
+domain>", goal="Red-team <that domain> per this template — full surface, exploit, objective, report") so
+every domain gets a DEDICATED worker whose TITLE (the description) IS that domain name. You stay the
+orchestrator: fan out, then supervise + reconcile (list_tasks / get_task_worker_trace). Keep a LEDGER —
+every in-scope domain -> its own worker, and every discovered IP -> the worker that owns it (a domain's
+dedicated IPs belong to its domain-worker; a shared/CDN/ASN IP is assigned to ONE worker and
+cross-referenced to the others). NOT "done" until the ledger is complete: EVERY domain has a worker and
+EVERY IP is covered by some worker's port-scan + vhost matrix — no domain and no IP skipped. (Single-domain
+scope = one worker titled with that domain; no fan-out needed.)
+
 RECON ORCHESTRATION — ONE inventory; workflows PRIMARY, hand-recon fills GAPS only. You DRIVE the
 k1nzr3c0n Workflow Runner and read the surface back through four channels (workflow/log/graph/DB); exact
 tool wiring = the `recon-engine` skill, control lifecycle = `workflow-control`. NEVER keep raw scan dumps
