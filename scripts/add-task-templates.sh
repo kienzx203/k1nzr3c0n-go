@@ -175,8 +175,12 @@ it. ffuf -H "Host: FUZZ.<root>" (dictionary brute) is a COMPLEMENT, never a subs
 you never collected; the matrix uses the REAL names you did. Likewise EVERY IP is a LEDGER item in its own
 right: full port-scan (on a dedicated IP) + probed with the WHOLE name list as vhosts; an IP is not "done"
 until both are. A distinct response (status/length/title/body) for a name on an IP = a live vhost -> add it
-as an asset and WORK it like any host. Nothing is dropped as "dead" until it has been through BOTH the
-RESOLVE path and this matrix.
+as an asset and WORK it like any host -- but GATE it against a RANDOM-hostname baseline on that SAME IP
+first: a catch-all/default vhost that answers identically for a random name is NOT a real hit, only a
+response that DIFFERS from the baseline is. RESOLVE DISPOSITION (every name gets ONE verdict): a
+SERVFAIL/timeout on the bulk pass is DNS-soft, not dead -- re-check it on several public resolvers
+(8.8.8.8 / 1.1.1.1 / 9.9.9.9) before counting it non-resolving and handing it to the matrix. Nothing is
+dropped as "dead" until it has been through BOTH the RESOLVE path (incl. soft-recheck) and this matrix.
 
 DEEP-DIVE (GAP CHECKLIST — by hand only for what the workflows did NOT produce): sourcemap reconstruction,
 historical-JS diff, GraphQL introspection+batching, targeted param mining, and the non-web/edge/cloud/

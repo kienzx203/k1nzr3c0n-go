@@ -41,14 +41,62 @@ steps:
       dnsx -l {workspace}/scan_hosts.txt -silent -a -resp 2>/dev/null > {workspace}/.dnsx || true
       grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' {workspace}/.dnsx | sort -u > {workspace}/resolved.txt || true
       awk '{print $1}' {workspace}/.dnsx | sort -u > {workspace}/.resolved_names
-      comm -23 <(sort -u {workspace}/scan_hosts.txt) {workspace}/.resolved_names > {workspace}/unresolved_hosts.txt || true
+      comm -23 <(sort -u {workspace}/scan_hosts.txt) {workspace}/.resolved_names > {workspace}/.soft || true
+      # SOFT recheck (disposition): a name that failed the bulk pass is often
+      # SERVFAIL/timeout, NOT truly dead. Recheck each on 3 public resolvers before
+      # calling it unresolved -> fewer false "dead" names handed to the vhost matrix.
+      : > {workspace}/unresolved_hosts.txt
+      while read n; do
+        [ -n "$n" ] || continue
+        got=""
+        for srv in 8.8.8.8 1.0.0.1 9.9.9.9; do
+          v=$(dig +short +time=3 +tries=1 "$n" A "@$srv" 2>/dev/null | grep -E '^[0-9]+\.' | head -1)
+          [ -n "$v" ] && { echo "$v" >> {workspace}/resolved.txt; got=1; break; }
+        done
+        [ -z "$got" ] && echo "$n" >> {workspace}/unresolved_hosts.txt
+      done < {workspace}/.soft
+      sort -u -o {workspace}/resolved.txt {workspace}/resolved.txt
       cp {workspace}/scan_hosts.txt {workspace}/subdomains_resolved.txt
-      rm -f {workspace}/.dnsx {workspace}/.resolved_names
-      printf '[resolve] %s IPs | %s hosts | %s did NOT resolve (-> vhost matrix)\n' \
+      rm -f {workspace}/.dnsx {workspace}/.resolved_names {workspace}/.soft
+      printf '[resolve] %s IPs | %s hosts | %s unresolved after soft-recheck (-> vhost matrix)\n' \
         "$(wc -l < {workspace}/resolved.txt)" "$(wc -l < {workspace}/scan_hosts.txt)" "$(wc -l < {workspace}/unresolved_hosts.txt)"
       exit 0
     outputs:
       resolved: '{workspace}/resolved.txt'
+  - id: ip_pivot
+    name: 'IP-side pivot — cert SAN/CN (tlsx) + PTR (dnsx) on resolved IPs -> in-scope vhost names'
+    depends_on:
+    - resolve
+    run_on_failed_deps: true
+    shell: true
+    timeout: 15m
+    run: |
+      touch {workspace}/ip_pivot_names.txt
+      test -s {workspace}/resolved.txt || { printf '[ip-pivot] no IPs -> skip\n'; exit 0; }
+      : > {workspace}/.pivot
+      # cert SAN/CN names a host presents often has NO public DNS (vhost); PTR gives
+      # the functional name. Both are extra in-scope surface the name-first pass missed.
+      cat {workspace}/resolved.txt | tlsx -san -cn -silent 2>/dev/null \
+        | grep -oE '[a-z0-9._-]+\.[a-z]{2,}' >> {workspace}/.pivot || true
+      cat {workspace}/resolved.txt | dnsx -ptr -resp-only -silent 2>/dev/null >> {workspace}/.pivot || true
+      # keep ONLY in-scope names (== target or *.target); add the NEW ones to the
+      # host set AND to the vhost candidate list (cert names may not resolve).
+      tr '[:upper:]' '[:lower:]' < {workspace}/.pivot \
+        | sed 's|^\*\.||; s|\.$||' \
+        | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
+        | sort -u > {workspace}/ip_pivot_names.txt || true
+      new=$(comm -23 {workspace}/ip_pivot_names.txt <(sort -u {workspace}/scan_hosts.txt))
+      if [ -n "$new" ]; then
+        printf '%s\n' "$new" >> {workspace}/scan_hosts.txt
+        printf '%s\n' "$new" >> {workspace}/unresolved_hosts.txt
+        sort -u -o {workspace}/scan_hosts.txt {workspace}/scan_hosts.txt
+        sort -u -o {workspace}/unresolved_hosts.txt {workspace}/unresolved_hosts.txt
+      fi
+      rm -f {workspace}/.pivot
+      printf '[ip-pivot] %s new in-scope name(s) from cert SAN + PTR\n' "$(printf '%s\n' "$new" | grep -c . 2>/dev/null || echo 0)"
+      exit 0
+    outputs:
+      pivot_names: '{workspace}/ip_pivot_names.txt'
   - id: httpx_probe
     name: 'probe live web hosts (httpx -> httpx.jsonl + live_urls)'
     depends_on:
@@ -70,9 +118,10 @@ steps:
       httpx_jsonl: '{workspace}/httpx.jsonl'
       live_urls: '{workspace}/live_urls.txt'
   - id: vhost_matrix
-    name: 'vhost matrix — NO domain left behind: every non-resolving name as Host vs every known IP'
+    name: 'vhost matrix — NO domain left behind: every non-resolving name as Host vs every known IP (baseline-gated)'
     depends_on:
     - resolve
+    - ip_pivot
     run_on_failed_deps: true
     shell: true
     timeout: 30m
@@ -85,19 +134,26 @@ steps:
       # then http). Bounded cross-product (caps) so it can't blow the timeout.
       head -80 {workspace}/unresolved_hosts.txt > {workspace}/.vm_names
       head -40 {workspace}/resolved.txt > {workspace}/.vm_ips
+      status() { # $1=name $2=ip -> 3-digit code (https then http). Parse the status
+        # line from curl -I, NOT the curl write-out format (its percent-brace syntax
+        # would be read as a template variable by the workflow renderer).
+        local l
+        l=$(curl -sk -I --resolve "$1:443:$2" --max-time 5 "https://$1/" 2>/dev/null | head -1)
+        [ -z "$l" ] && l=$(curl -s -I --resolve "$1:80:$2" --max-time 5 "http://$1/" 2>/dev/null | head -1)
+        printf '%s' "$l" | grep -oE 'HTTP/[0-9.]+ [0-9][0-9][0-9]' | grep -oE '[0-9][0-9][0-9]$'
+      }
       while read ip; do
         echo "$ip" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' || continue
+        # BASELINE: a RANDOM name on this IP. If a real name answers the SAME as the
+        # random one, it is a catch-all / default vhost = NOT a distinct hit.
+        bline=$(status "rnd$RANDOM$RANDOM.invalid" "$ip")
         while read name; do
           [ -n "$name" ] || continue
-          # HEAD and read the status line (the curl write-out status format uses
-          # braces that the template renderer would try to resolve as a variable,
-          # so parse the header instead). Any HTTP status line = the IP answered
-          # for this Host -> a live vhost.
-          line=$(curl -sk -I --resolve "$name:443:$ip" --max-time 5 "https://$name/" 2>/dev/null | head -1)
-          [ -z "$line" ] && line=$(curl -s -I --resolve "$name:80:$ip" --max-time 5 "http://$name/" 2>/dev/null | head -1)
-          code=$(printf '%s' "$line" | grep -oE 'HTTP/[0-9.]+ [0-9][0-9][0-9]' | grep -oE '[0-9][0-9][0-9]$')
+          code=$(status "$name" "$ip")
+          [ -z "$code" ] && continue
+          [ -n "$bline" ] && [ "$code" = "$bline" ] && continue
           case "$code" in
-            2*|3*|401|403|405) printf '%s [%s] %s\n' "$name" "$ip" "$code" >> {workspace}/vhost_matrix_hits.txt
+            2*|3*|401|403|405) printf '%s [%s] %s (base %s)\n' "$name" "$ip" "$code" "${bline:-none}" >> {workspace}/vhost_matrix_hits.txt
                                echo "$name" >> {workspace}/vhost_new_hosts.txt ;;
           esac
         done < {workspace}/.vm_names

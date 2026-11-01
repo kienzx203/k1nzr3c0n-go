@@ -1524,6 +1524,36 @@ steps:
     printf 'Reverse DNS subs found: %s\n' "$(wc -l < {workspace}/reverse_dns_subs.txt)"
   outputs:
     file: '{workspace}/reverse_dns_subs.txt'
+- id: ip_cert_pivot
+  name: '[ASN] tlsx cert SAN/CN on ASN IPs → vhost names with NO DNS (IP-side pivot, in-scope only)'
+  depends_on:
+  - asn_expand
+  run_on_failed_deps: true
+  when: '{vars.run_asn} && {vars.run_tlsx}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 25m
+  run: |
+    touch {workspace}/ip_cert_subs.txt
+    test -s {workspace}/asn_ipv4_cidrs.txt || exit 0
+    CIDR_COUNT=$(wc -l < {workspace}/asn_ipv4_cidrs.txt)
+    if [ "$CIDR_COUNT" -gt 50 ]; then
+      echo "[ip-cert skip] $CIDR_COUNT CIDRs too broad (CDN/cloud ASN), skipping"; exit 0
+    fi
+    # Connect to each IP and read the TLS cert SAN/CN. Names a host's cert presents
+    # often have NO public DNS (pure vhost) — complementary to hostname-based tlsx
+    # and to PTR. In-scope only; bounded so it can't blow the timeout.
+    mapcidr -cl {workspace}/asn_ipv4_cidrs.txt -silent 2>/dev/null | head -4096 \
+      | tlsx -san -cn -silent -timeout 5 2>/dev/null \
+      | grep -oE '[a-z0-9._-]+\.[a-z]{2,}' \
+      | sed 's/^\*\.//; s/\.$//' | tr '[:upper:]' '[:lower:]' \
+      | grep -E "(^|\.)$(echo {target} | sed 's/\./\\./g')$" \
+      | sort -u > {workspace}/ip_cert_subs.txt || true
+    touch {workspace}/ip_cert_subs.txt
+    printf 'IP-cert SAN subs found: %s\n' "$(wc -l < {workspace}/ip_cert_subs.txt)"
+  outputs:
+    file: '{workspace}/ip_cert_subs.txt'
 - id: permutation_dns
   name: DNS permutation — dnsgen + alterx + gotator → resolve with dnsx/shuffledns (sequential)
   # Seeds come from passive_merged.txt (merge_passive), NOT reverse-DNS. Depend on
@@ -1619,6 +1649,7 @@ steps:
         {workspace}/perm_alterx.txt \
         {workspace}/perm_gotator.txt \
         {workspace}/reverse_dns_subs.txt \
+        {workspace}/ip_cert_subs.txt \
         2>/dev/null || true
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
       | tr '[:upper:]' '[:lower:]' \
