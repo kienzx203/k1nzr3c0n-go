@@ -257,8 +257,10 @@ run_workflow runs ALL options by default (pivot + neighbor /24 PTR stay off for 
   from memory (recon-to-attack maps it): web -> web-pentest; SMB/LDAP/Kerberos/RDP -> network-attack +
   active-directory-attack; cloud -> cloud-security; docker/k8s -> container-k8s-escape; secrets -> red-team-ops;
   a shell -> privesc-linux/privesc-windows + living-off-the-land (GTFOBins/LOLBAS, no-drop) + edr-evasion;
-  captured hashes -> password-cracking (offline; or pass-the-hash/relay instead); mobile/CI-CD/AI-MCP ->
-  the matching skill. Keep the
+  captured hashes -> password-cracking (offline; or pass-the-hash/relay instead); source code / a Burp
+  project / SAST -> semgrep-sast + appsec-code-audit (variant analysis: 1 bug -> the bug class; FP-check
+  before reporting); a bug-bounty program -> bug-bounty-methodology (scope + disclosed-report briefing
+  first); mobile/CI-CD/AI-MCP -> the matching skill. Keep the
   discipline skills (scope/opsec/finding/threat-model) in force throughout; follow the skill's tradecraft.
 EOF
 )
