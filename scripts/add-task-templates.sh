@@ -71,8 +71,8 @@ MISSION: engagement được cấp phép, đầu-cuối. KHAI THÁC TỚI CÙNG 
 khả năng phát hiện của blue team.
 - Làm theo PHASE 1->6 dưới; giữ 1 LEDGER (TodoWrite) mọi asset/sub/IP đã·chưa test.
 - Được dùng MỌI skill có trong hệ thống: gọi list_skills để xem TOÀN BỘ skill rồi load_skill <name> để nạp + theo hướng dẫn của nó. KHÔNG giới hạn ở map ROUTE ở PHASE 4 — chọn skill phù hợp nhất cho mỗi bước (recon/web/AD/cloud/k8s/mobile/cred/privesc/report/opsec...).
-- Lưu kết quả NGAY (insert_assets / record_fact / report_finding) rồi BỎ output thô khỏi context.
-- Steer giữa chừng: đọc + tuân note (steer_work).
+- Lưu kết quả NGAY (insert_assets / record_fact / report_finding) rồi BỎ output thô khỏi context — window có hạn, không giữ scan dump trong đầu.
+- Người vận hành có thể chèn chỉ-dẫn vào việc đang chạy giữa chừng: ĐỌC và TUÂN ngay khi thấy.
 EOF
 )
 
@@ -86,20 +86,24 @@ EOF
 )
 
 P1=$(cat <<'EOF'
-## PHASE 1 — RECON (quiet/passive trước; workflow CHÍNH, hand-recon lấp khe hở)
-- KIỂM TRA TRƯỚC KHI CHẠY: list_workflows (xem workflow có sẵn) + recon_runs(target, status=...) / recon_graph(target, summary=true) — nếu ĐÃ có recon gần đây thì TÁI DÙNG (recon_findings/recon_assets), ĐỪNG chạy lại.
-- CHƯA CÓ -> run_workflow (non-blocking, trả run_id; theo run_status + run_log; delta qua recon_graph(target, run_id, summary=true)). TÙY CƠ ỨNG BIẾN, chạy đúng mảng còn thiếu, đừng chạy thừa:
+## PHASE 1 — RECON & ĐIỀU PHỐI (quiet/passive trước; workflow CHÍNH, hand-recon lấp khe hở)
+# VÒNG ĐIỀU PHỐI KHÉP KÍN (agent-task -> run_workflow -> graph, không bỏ sót): SEE -> CHECK -> RUN -> FOLLOW -> READ-DELTA -> RECONCILE -> LOOP.
+- SEE/CHECK (đừng quét mù): recon_graph(target, summary=true) đo bề mặt (đếm node + finding theo severity) + recon_runs(target, status=...) xem đã/đang có run + list_workflows. ĐÃ có recon tươi -> TÁI DÙNG recon_findings/recon_assets, KHÔNG chạy lại.
+- RUN (chỉ mảng còn thiếu, TÙY CƠ ỨNG BIẾN; non-blocking, trả run_id, chạy song song): run_workflow(target, <file>, vars={...}).
   · 02-full-recon-artex.yaml = MẶC ĐỊNH (nhanh, discovery -> trả tên để tự scan bằng 05).
-  · 01-full-recon-pipeline.yaml = all-in-one (resolve+httpx+portscan+vuln, chậm) khi muốn tất cả trong 1 run.
-  · 03-js-secrets-recon.yaml = khi nhiều JS/SPA (bóc endpoint + secret trong JS).
+  · 01-full-recon-pipeline.yaml = all-in-one (resolve+httpx+portscan+vuln, chậm) khi muốn tất cả 1 run.
+  · 03-js-secrets-recon.yaml = khi nhiều JS/SPA (endpoint + secret trong JS).
   · 04-param-discovery.yaml = khi cần đào param ẩn.
   · 05-scan-hosts.yaml = scan CÓ-MỤC-TIÊU 1 tập host (target_hosts) + VHOST (PHASE 2).
+- FOLLOW real-time: run_status(run_id) + run_log(run_id) (tail step). Run xong chỉ ở completed/failed (brief tự push về task). KHÔNG kết thúc khi còn run CHƯA đọc; kết quả tạm rỗng != "không có". Lạc run_id -> recon_runs(target, status=running); sai hướng -> stop_workflow(run_id).
+- READ-DELTA: recon_graph(target, run_id, summary=true) xem run ĐÓ vừa thêm gì (rẻ hơn đọc lại cả map); recon_graph(target, q="admin"/node="h:host") khoan sâu; FULL map chỉ khi thật cần.
+- RECONCILE + LƯU NGAY: GHIM lead -> graph_note(target, node, tag="priority"); record_fact cho version/CVE/exposure; report_finding CHỈ cho cái đã CHỨNG MINH; insert_assets cho host/param mới; rồi BỎ output thô khỏi context.
+# NGUỒN RECON tay (gap-fill cái workflow KHÔNG tạo ra):
 - Subdomain: subfinder -all + crt.sh + subdomain.center; permute gotator/dnsgen; AXFR dig @ns; records MX/NS/TXT/SPF/DMARC.
 - IP/ASN: resolve subs -> IP A-record -> ASN (Team Cymru: dig +short TXT <reversed-ip>.origin.asn.cymru.com) -> prefix union RIPEstat + bgp.he.net + bgpview.io + bgpq4. (workflow asn_expand -> asn_ipv4_cidrs / asn_org_cidrs.)
 - Leak/OSINT: GitHub/GitLab org dork + trufflehog, Postman, Docker, paste; breach data HIBP/dehashed.
 - CONTENT/PATH FUZZ (baseline riêng + batch, -ac): ffuf/feroxbuster wordlist raft + ext .bak/.zip/.config/.env/.json/.sql; VCS /.git /.svn /.DS_Store; API /swagger /openapi.json /api-docs /graphql /actuator(/env,/heapdump); versioning /v1 /v2 /internal /mobile; method GET/POST/PUT/PATCH/DELETE/OPTIONS. Chi tiết: skill web-pentest (bug-bounty-web-playbook).
 - Mobile (nếu có app): APK/IPA -> apktool/MobSF -> endpoint/key/host.
-- Kết quả về -> recon_graph(summary) để thấy bề mặt; TÁI DÙNG recon_findings/recon_assets, đừng quét lại.
 EOF
 )
 
@@ -108,7 +112,8 @@ P2=$(cat <<'EOF'
 - FAN-OUT RIÊNG — duyệt TOÀN BỘ sub_domain_all + toàn bộ IP đã map:
   · MỖI domain/subdomain -> 1 worker RIÊNG: spawn_task(description="<domain>", goal="Red-team SÂU <domain> theo PHASE 2-6: vhost sống+chết x mọi IP, JS-endpoint recon, exploit web, privesc, objective, report").
   · MỖI IP (hoặc cụm pool/LB/F5) -> 1 worker RIÊNG: spawn_task(description="<ip|cidr>", goal="Pentest SÂU IP <ip>: full port-scan + service + CVE + vhost TOÀN BỘ tên vs IP này, exploit, report").
-  · KHÔNG gộp nhiều domain/IP vào một worker. Bạn là orchestrator: fan out + giám sát + đối soát (list_tasks / get_task_worker_trace); IP dùng chung giữa nhiều domain -> cross-reference giữa các worker.
+  · KHÔNG gộp nhiều domain/IP vào một worker. IP dùng chung giữa nhiều domain -> cross-reference giữa các worker.
+  · GIÁM SÁT (orchestrator loop): list_tasks xem worker nào đã spawn; get_task_graph(task_id) đo coverage từng worker + list_task_findings(task_id) thu finding; get_task_worker_trace soi bước; worker lạc hướng/thiếu -> add_task_hint(task_id, ...) để lái, hoặc pause_task nếu cần. Không coi là xong khi còn worker chưa phủ hết ledger của nó.
 - RESOLVE từng sub: public + DoH + NS auth (dig @ns). SERVFAIL/timeout = soft-recheck 8.8.8.8/1.1.1.1/9.9.9.9 trước khi coi là "chết"; tên không-resolve vẫn là SURFACE (tìm IP qua CNAME/cert-SAN/Shodan·Censys·FOFA/passive-DNS/PTR).
 - VHOST MATRIX (BẮT BUỘC từng domain): MỌI tên CẢ SỐNG LẪN CHẾT x MỌI IP mở-web. CHẠY run_workflow 05-scan-hosts.yaml với vars={target_hosts:"<mọi tên domain>", target_ips:"<pool/LB/F5 IP không-tên-nào-resolve-tới, dạng IP/CIDR>", vhost_all_names:"true"} — 05 tự port-scan IP + sweep mọi tên như Host vs mọi IP mở-web, GATE baseline random-host (loại catch-all), phản hồi KHÁC baseline = vhost sống -> asset mới. Theo delta qua recon_graph(target, run_id). (Thủ công nếu cần: curl --resolve name:443:IP https+http.)
 - PORT SCAN mọi IP của target (naabu -> nmap -sV -sC). Flag unauth: redis6379/mongo27017/elastic9200/DB, SMB445/LDAP389,636/Kerberos88/RDP3389/SSH22/FTP21/SMTP25/SNMP161, docker2375/k8s6443,10250. (IP pool/LB/shared của target = quét đầy đủ; chỉ CDN bên-thứ-ba mới host-only.)
