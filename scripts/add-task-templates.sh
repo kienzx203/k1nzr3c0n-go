@@ -91,6 +91,7 @@ P1=$(cat <<'EOF'
 - Subdomain: subfinder -all + crt.sh + subdomain.center; permute gotator/dnsgen; AXFR dig @ns; records MX/NS/TXT/SPF/DMARC.
 - IP/ASN: resolve subs -> IP A-record -> ASN (Team Cymru: dig +short TXT <reversed-ip>.origin.asn.cymru.com) -> prefix union RIPEstat + bgp.he.net + bgpview.io + bgpq4. (workflow asn_expand -> asn_ipv4_cidrs / asn_org_cidrs.)
 - Leak/OSINT: GitHub/GitLab org dork + trufflehog, Postman, Docker, paste; breach data HIBP/dehashed.
+- CONTENT/PATH FUZZ (baseline riêng + batch, -ac): ffuf/feroxbuster wordlist raft + ext .bak/.zip/.config/.env/.json/.sql; VCS /.git /.svn /.DS_Store; API /swagger /openapi.json /api-docs /graphql /actuator(/env,/heapdump); versioning /v1 /v2 /internal /mobile; method GET/POST/PUT/PATCH/DELETE/OPTIONS. Chi tiết: skill web-pentest (bug-bounty-web-playbook).
 - Mobile (nếu có app): APK/IPA -> apktool/MobSF -> endpoint/key/host.
 - Kết quả về -> recon_graph(summary) để thấy bề mặt; TÁI DÙNG recon_findings/recon_assets, đừng quét lại.
 EOF
@@ -128,7 +129,9 @@ P4=$(cat <<'EOF'
 - Access control: IDOR/BOLA (đổi id giữa 2 account), BFLA (role/verb), mass-assignment, multi-tenant, forced-browse.
 - Auth: default+weak cred; JWT (alg/none/secret-yếu/kid/jku), OAuth/SAML, reset password, 2FA bypass, session fixation, SSO.
 - Files: upload -> webshell/RCE, LFI/RFI, path traversal, deserialization.
-- NGHIÊN CỨU BYPASS MỌI THỨ: WAF bypass (encoding/case/comment/chunked/HTTP-request-smuggling); 401/403 bypass (path-case, %2e, ..;/, /.;/, header X-Original-URL/X-Rewrite-URL/X-Forwarded-For, verb-tamper); auth/login bypass; filter/validation bypass; rate-limit & lockout bypass (IP-rotate/header); CORS/CSP/SOP; upload-filter bypass. CHAIN nhiều bug nhỏ -> RCE / account-takeover / full read.
+- NGHIÊN CỨU BYPASS MỌI THỨ: WAF bypass (encoding/case/comment/chunked/HTTP-request-smuggling); 401/403 bypass (path-case, %2e, ..;/, /.;/, header X-Original-URL/X-Rewrite-URL/X-Forwarded-For, verb-tamper); auth/login bypass; filter/validation bypass; rate-limit bypass (chứng minh bằng SỐ HỌC + keying matrix host/header/session, KHÔNG brute thật); CORS/CSP/SOP; upload-filter bypass. CHAIN nhiều bug nhỏ -> RCE / account-takeover / full read.
+- TRADECRAFT SÂU -> skill web-pentest (reference bug-bounty-web-playbook): IDOR matrix, mass-assignment, business-logic & payment tamper, single-packet race, rate-limit-by-math, ATO reset/host-poison, open-redirect ladder (chỉ leo chuỗi/token-leak).
+- ACCOUNT SAFETY (ràng buộc khi test auth web): tự đăng ký 1 account test; login sai <=2 lần thì DỪNG loại test đó, OTP sai <=3; KHÔNG brute/password-spray, KHÔNG để account bị khóa, KHÔNG đổi cred/MFA/session account khác; chỉ ghi/sửa bản ghi do account test tạo; KHÔNG thanh toán thật (dừng ở preview/intent); default/leaked cred login được -> STOP + report ngay.
 - ROUTE skill (dùng ĐƯỢC mọi skill trong hệ thống, đây chỉ là map gợi ý): web->web-pentest; SMB/LDAP/Kerberos/RDP->network-attack + active-directory-attack; cloud->cloud-security; docker/k8s->container-k8s-escape; secret->red-team-ops; code/SAST->semgrep-sast + appsec-code-audit; bug-bounty->bug-bounty-methodology; shell->privesc-linux/privesc-windows + living-off-the-land + edr-evasion; hash->password-cracking; mobile/CI-CD/AI-MCP + bất kỳ skill khớp nào khác.
 - Confirm bằng PoC marker AN TOÀN (không payload phá hoại).
 EOF
