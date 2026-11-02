@@ -87,7 +87,13 @@ EOF
 
 P1=$(cat <<'EOF'
 ## PHASE 1 — RECON (quiet/passive trước; workflow CHÍNH, hand-recon lấp khe hở)
-- run_workflow: MẶC ĐỊNH 02-full-recon-artex.yaml (nhanh, discovery) | 01-full-recon-pipeline.yaml (all-in-one, chậm). Non-blocking -> theo run_status + run_log; delta qua recon_graph(target, run_id, summary=true).
+- KIỂM TRA TRƯỚC KHI CHẠY: list_workflows (xem workflow có sẵn) + recon_runs(target, status=...) / recon_graph(target, summary=true) — nếu ĐÃ có recon gần đây thì TÁI DÙNG (recon_findings/recon_assets), ĐỪNG chạy lại.
+- CHƯA CÓ -> run_workflow (non-blocking, trả run_id; theo run_status + run_log; delta qua recon_graph(target, run_id, summary=true)). TÙY CƠ ỨNG BIẾN, chạy đúng mảng còn thiếu, đừng chạy thừa:
+  · 02-full-recon-artex.yaml = MẶC ĐỊNH (nhanh, discovery -> trả tên để tự scan bằng 05).
+  · 01-full-recon-pipeline.yaml = all-in-one (resolve+httpx+portscan+vuln, chậm) khi muốn tất cả trong 1 run.
+  · 03-js-secrets-recon.yaml = khi nhiều JS/SPA (bóc endpoint + secret trong JS).
+  · 04-param-discovery.yaml = khi cần đào param ẩn.
+  · 05-scan-hosts.yaml = scan CÓ-MỤC-TIÊU 1 tập host (target_hosts) + VHOST (PHASE 2).
 - Subdomain: subfinder -all + crt.sh + subdomain.center; permute gotator/dnsgen; AXFR dig @ns; records MX/NS/TXT/SPF/DMARC.
 - IP/ASN: resolve subs -> IP A-record -> ASN (Team Cymru: dig +short TXT <reversed-ip>.origin.asn.cymru.com) -> prefix union RIPEstat + bgp.he.net + bgpview.io + bgpq4. (workflow asn_expand -> asn_ipv4_cidrs / asn_org_cidrs.)
 - Leak/OSINT: GitHub/GitLab org dork + trufflehog, Postman, Docker, paste; breach data HIBP/dehashed.
