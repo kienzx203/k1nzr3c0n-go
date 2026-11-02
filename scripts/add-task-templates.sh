@@ -168,10 +168,14 @@ RESOLVE, never dropped as "dead".
 
 VHOST MATRIX — NO domain left behind, NO IP left behind. Keep ONE list of EVERY collected in-scope name
 (resolving OR not) and ONE list of EVERY confirmed target-dedicated IP (from resolve / PTR-revdns /
-cert-SAN / Shodan·Censys·FOFA / a dedicated ASN prefix). Test EACH name as a Host/SNI against EVERY such
-IP (curl --resolve name:443:IP and :80, both schemes; or /etc/hosts): a name that won't resolve publicly
-is most often a VHOST co-located on an IP you already know, and ONLY this name x IP cross-product surfaces
-it. ffuf -H "Host: FUZZ.<root>" (dictionary brute) is a COMPLEMENT, never a substitute — it guesses names
+cert-SAN / Shodan·Censys·FOFA / a dedicated ASN prefix) PLUS any shared LB / F5 / hosting POOL IP where ANY
+in-scope name is observed served. The POOL that NO in-scope name resolves to is the classic miss: a
+resolve-only IP axis never tests it, so an app vhosted only on that pool (e.g. owa.* on an F5 .66/.67/.68)
+is invisible. When you find such a pool, feed its IPs/CIDR into the 05-scan-hosts workflow as target_ips
+(pool-sweep mode: it port-scans the pool, then sweeps EVERY name as Host vs every open-web pool IP). Test
+EACH name as a Host/SNI against EVERY such IP (curl --resolve name:443:IP and :80, both schemes; or
+/etc/hosts): a name that won't resolve publicly is most often a VHOST co-located on an IP you already know,
+and ONLY this name x IP cross-product surfaces it. ffuf -H "Host: FUZZ.<root>" (dictionary brute) is a COMPLEMENT, never a substitute — it guesses names
 you never collected; the matrix uses the REAL names you did. Likewise EVERY IP is a LEDGER item in its own
 right: full port-scan (on a dedicated IP) + probed with the WHOLE name list as vhosts; an IP is not "done"
 until both are. A distinct response (status/length/title/body) for a name on an IP = a live vhost -> add it

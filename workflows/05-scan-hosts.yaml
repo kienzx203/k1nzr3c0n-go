@@ -5,6 +5,10 @@ vars:
   # the host set to scan — set AT LEAST one of these (the agent sets target_hosts):
   target_hosts: ''          # inline, comma/space/newline-separated hosts
   subdomains_list: ''       # OR a path to a file of hosts
+  # EXTRA IPs/CIDRs to fold into the sweep: the LB / F5 / shared-hosting pool that
+  # the in-scope names are VHOSTED on but never resolve to (operator vouches scope).
+  # Comma/space-separated, IPs or CIDRs (e.g. '125.212.197.0/24, 103.1.208.5').
+  target_ips: ''
   run_portscan: 'true'
   run_nuclei: 'true'
   httpx_threads: '50'
@@ -15,6 +19,11 @@ vars:
   # non-resolving name / IP is left untested; the step's 30m timeout still bounds it.
   vhost_max_names: '200'
   vhost_max_ips: '80'
+  # true -> sweep EVERY in-scope name (not just the non-resolving ones) against the
+  # IP set. Auto-promoted to true when target_ips is supplied (pool-sweep mode).
+  vhost_all_names: 'false'
+  # cap on how many IPs a single supplied CIDR may expand to (scope/runtime guard).
+  ip_cidr_max: '512'
 steps:
   - id: seed_hosts
     name: 'build the in-scope host set (target_hosts + subdomains_list, scope-filtered)'
@@ -67,22 +76,61 @@ steps:
       exit 0
     outputs:
       resolved: '{workspace}/resolved.txt'
-  - id: ip_pivot
-    name: 'IP-side pivot — cert SAN/CN (tlsx) + PTR (dnsx) on resolved IPs -> in-scope vhost names'
+  - id: collect_ips
+    name: 'aggregate the IP set to sweep — resolved IPs + operator-supplied target_ips/CIDRs (scope-vouched)'
     depends_on:
     - resolve
+    run_on_failed_deps: true
+    shell: true
+    timeout: 10m
+    run: |
+      touch {workspace}/scan_ips.txt {workspace}/target_ips_expanded.txt
+      # 1) IPs the in-scope names resolved to (the "crown").
+      cat {workspace}/resolved.txt 2>/dev/null > {workspace}/scan_ips.txt || true
+      # 2) operator/agent-supplied IPs or CIDRs: the LB / F5 / shared pool the names
+      #    are vhosted on but NEVER resolve to. This is exactly the gap that makes a
+      #    name-resolved-only IP axis miss a vhost (e.g. owa.* served on an F5 pool IP
+      #    no in-scope name points at). CIDRs expanded (mapcidr), bounded by ip_cidr_max.
+      printf '%s\n' '{vars.target_ips}' | tr ',;" ' '\n' | sed 's/[[:space:]]//g' \
+        | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(/[0-9]{1,2})?$' \
+        | while read entry; do
+            [ -n "$entry" ] || continue
+            case "$entry" in
+              */*) if command -v mapcidr >/dev/null 2>&1; then
+                     printf '%s\n' "$entry" | mapcidr -silent 2>/dev/null | head -{vars.ip_cidr_max}
+                   else
+                     printf '[collect-ips] mapcidr missing -> cannot expand %s\n' "$entry" >&2
+                   fi ;;
+              *)   printf '%s\n' "$entry" ;;
+            esac
+          done | sort -u > {workspace}/target_ips_expanded.txt || true
+      cat {workspace}/target_ips_expanded.txt >> {workspace}/scan_ips.txt
+      sort -u -o {workspace}/scan_ips.txt {workspace}/scan_ips.txt
+      # feed the supplied pool IPs back into resolved.txt so the graph/DB ingest them.
+      sort -u {workspace}/resolved.txt {workspace}/target_ips_expanded.txt -o {workspace}/resolved.txt 2>/dev/null || true
+      printf '[collect-ips] %s IP(s) to sweep (resolved + %s supplied/expanded)\n' \
+        "$(wc -l < {workspace}/scan_ips.txt)" "$(wc -l < {workspace}/target_ips_expanded.txt)"
+      exit 0
+    outputs:
+      scan_ips: '{workspace}/scan_ips.txt'
+      supplied_ips: '{workspace}/target_ips_expanded.txt'
+  - id: ip_pivot
+    name: 'IP-side pivot — cert SAN/CN (tlsx) + PTR (dnsx) on the aggregated IP set -> in-scope vhost names'
+    depends_on:
+    - collect_ips
     run_on_failed_deps: true
     shell: true
     timeout: 15m
     run: |
       touch {workspace}/ip_pivot_names.txt
-      test -s {workspace}/resolved.txt || { printf '[ip-pivot] no IPs -> skip\n'; exit 0; }
+      test -s {workspace}/scan_ips.txt || { printf '[ip-pivot] no IPs -> skip\n'; exit 0; }
       : > {workspace}/.pivot
       # cert SAN/CN names a host presents often has NO public DNS (vhost); PTR gives
-      # the functional name. Both are extra in-scope surface the name-first pass missed.
-      cat {workspace}/resolved.txt | tlsx -san -cn -silent 2>/dev/null \
+      # the functional name. Run on the AGGREGATED IP set (incl. the supplied pool) so
+      # the pool's cert SANs become new in-scope vhost candidates.
+      cat {workspace}/scan_ips.txt | tlsx -san -cn -silent 2>/dev/null \
         | grep -oE '[a-z0-9._-]+\.[a-z]{2,}' >> {workspace}/.pivot || true
-      cat {workspace}/resolved.txt | dnsx -ptr -resp-only -silent 2>/dev/null >> {workspace}/.pivot || true
+      cat {workspace}/scan_ips.txt | dnsx -ptr -resp-only -silent 2>/dev/null >> {workspace}/.pivot || true
       # keep ONLY in-scope names (== target or *.target); add the NEW ones to the
       # host set AND to the vhost candidate list (cert names may not resolve).
       tr '[:upper:]' '[:lower:]' < {workspace}/.pivot \
@@ -122,23 +170,37 @@ steps:
       httpx_jsonl: '{workspace}/httpx.jsonl'
       live_urls: '{workspace}/live_urls.txt'
   - id: vhost_matrix
-    name: 'vhost matrix — NO domain left behind: every non-resolving name as Host vs every known IP (baseline-gated)'
+    name: 'vhost matrix — NO domain left behind: every name as Host vs every open-web IP (pool-aware, baseline-gated)'
     depends_on:
-    - resolve
+    - collect_ips
     - ip_pivot
+    - portscan
     run_on_failed_deps: true
     shell: true
     timeout: 30m
     run: |
       touch {workspace}/vhost_new_hosts.txt {workspace}/vhost_matrix_hits.txt
-      test -s {workspace}/unresolved_hosts.txt || { printf '[vhost-matrix] no non-resolving names -> nothing to test\n'; exit 0; }
-      test -s {workspace}/resolved.txt || { printf '[vhost-matrix] no known IPs -> skip\n'; exit 0; }
-      # A non-resolving in-scope name is most often a VHOST co-located on an IP we
-      # already know. Test each such name as a Host/SNI against each known IP (https
-      # then http). Bounded cross-product (caps) so it can't blow the timeout.
-      head -{vars.vhost_max_names} {workspace}/unresolved_hosts.txt > {workspace}/.vm_names
-      head -{vars.vhost_max_ips} {workspace}/resolved.txt > {workspace}/.vm_ips
-      tot_n=$(wc -l < {workspace}/unresolved_hosts.txt); tot_i=$(wc -l < {workspace}/resolved.txt)
+      # IP axis: prefer the IPs that port-scan proved serve WEB; else the full
+      # aggregated set (resolved + supplied pool); else just resolved IPs. This is the
+      # fix for the "name-resolved-only" miss — the supplied pool IPs are now in play.
+      ipsrc={workspace}/web_ips.txt
+      [ -s "$ipsrc" ] || ipsrc={workspace}/scan_ips.txt
+      [ -s "$ipsrc" ] || ipsrc={workspace}/resolved.txt
+      # name axis: in pool-sweep mode (target_ips supplied) or when vhost_all_names is
+      # set, test EVERY in-scope name against the pool (a resolving name can still be a
+      # distinct vhost on a different pool IP). Otherwise just the non-resolving names.
+      namesrc={workspace}/unresolved_hosts.txt
+      if [ -s {workspace}/target_ips_expanded.txt ] || [ "{vars.vhost_all_names}" = "true" ]; then
+        namesrc={workspace}/scan_hosts.txt
+      fi
+      test -s "$namesrc" || { printf '[vhost-matrix] no names to test -> skip\n'; exit 0; }
+      test -s "$ipsrc" || { printf '[vhost-matrix] no known IPs -> skip\n'; exit 0; }
+      # Test each name as a Host/SNI against each IP (https then http). Bounded
+      # cross-product (caps) so it can't blow the timeout.
+      head -{vars.vhost_max_names} "$namesrc" > {workspace}/.vm_names
+      head -{vars.vhost_max_ips} "$ipsrc" > {workspace}/.vm_ips
+      printf '[vhost-matrix] names<-%s ips<-%s\n' "$namesrc" "$ipsrc"
+      tot_n=$(wc -l < "$namesrc"); tot_i=$(wc -l < "$ipsrc")
       [ "$tot_n" -gt {vars.vhost_max_names} ] && printf '[vhost-matrix] NOTE: %s non-resolving names > cap %s — raise vhost_max_names to cover all\n' "$tot_n" "{vars.vhost_max_names}"
       [ "$tot_i" -gt {vars.vhost_max_ips} ] && printf '[vhost-matrix] NOTE: %s IPs > cap %s — raise vhost_max_ips to cover all\n' "$tot_i" "{vars.vhost_max_ips}"
       status() { # $1=name $2=ip -> 3-digit code (https then http). Parse the status
@@ -174,23 +236,35 @@ steps:
       hits: '{workspace}/vhost_matrix_hits.txt'
       new_hosts: '{workspace}/vhost_new_hosts.txt'
   - id: portscan
-    name: 'port scan (naabu passive + web ports)'
+    name: 'port scan hosts + aggregated IPs (naabu) -> open web IPs for the vhost sweep'
     depends_on:
-    - resolve
+    - collect_ips
     run_on_failed_deps: true
     when: '{vars.run_portscan}'
     optional: true
     shell: true
     timeout: 40m
     run: |
-      touch {workspace}/naabu.jsonl
-      test -s {workspace}/scan_hosts.txt || exit 0
-      naabu -list {workspace}/scan_hosts.txt -passive -json -silent 2>/dev/null >> {workspace}/naabu.jsonl || true
-      naabu -list {workspace}/scan_hosts.txt -p {vars.web_ports} -json -silent -retries 2 2>/dev/null >> {workspace}/naabu.jsonl || true
-      printf '[naabu] %s port records\n' "$(wc -l < {workspace}/naabu.jsonl)"
+      touch {workspace}/naabu.jsonl {workspace}/web_ips.txt
+      # scan the hostnames (passive + web ports)...
+      if [ -s {workspace}/scan_hosts.txt ]; then
+        naabu -list {workspace}/scan_hosts.txt -passive -json -silent 2>/dev/null >> {workspace}/naabu.jsonl || true
+        naabu -list {workspace}/scan_hosts.txt -p {vars.web_ports} -json -silent -retries 2 2>/dev/null >> {workspace}/naabu.jsonl || true
+      fi
+      # ...AND the aggregated IP set (the pool IPs no name resolves to). This is what
+      # tells the vhost matrix which pool IPs actually serve web.
+      if [ -s {workspace}/scan_ips.txt ]; then
+        naabu -list {workspace}/scan_ips.txt -p {vars.web_ports} -json -silent -retries 2 2>/dev/null >> {workspace}/naabu.jsonl || true
+      fi
+      # derive the IPs with an open WEB port -> the axis the vhost matrix sweeps.
+      jq -r 'select(.port as $p | [{vars.web_ports}] | index($p)) | .ip // empty' {workspace}/naabu.jsonl 2>/dev/null \
+        | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | sort -u > {workspace}/web_ips.txt || true
+      printf '[naabu] %s port records | %s IP(s) with an open web port\n' \
+        "$(wc -l < {workspace}/naabu.jsonl)" "$(wc -l < {workspace}/web_ips.txt)"
       exit 0
     outputs:
       naabu_jsonl: '{workspace}/naabu.jsonl'
+      web_ips: '{workspace}/web_ips.txt'
   - id: nuclei_scan
     name: 'vuln scan live hosts (nuclei -> nuclei_results.jsonl)'
     depends_on:
