@@ -19,9 +19,10 @@ vars:
   # non-resolving name / IP is left untested; the step's 30m timeout still bounds it.
   vhost_max_names: '200'
   vhost_max_ips: '80'
-  # true -> sweep EVERY in-scope name (not just the non-resolving ones) against the
-  # IP set. Auto-promoted to true when target_ips is supplied (pool-sweep mode).
-  vhost_all_names: 'false'
+  # true (default) -> sweep EVERY in-scope name — BOTH resolving ("alive") and
+  # non-resolving ("dead") — against the IP set, because an alive name can still be
+  # a distinct vhost on a DIFFERENT pool IP. Set false to test only non-resolving.
+  vhost_all_names: 'true'
   # cap on how many IPs a single supplied CIDR may expand to (scope/runtime guard).
   ip_cidr_max: '512'
 steps:
@@ -174,21 +175,31 @@ steps:
     depends_on:
     - collect_ips
     - ip_pivot
+    - httpx_probe
     - portscan
     run_on_failed_deps: true
     shell: true
     timeout: 30m
     run: |
       touch {workspace}/vhost_new_hosts.txt {workspace}/vhost_matrix_hits.txt
-      # IP axis: prefer the IPs that port-scan proved serve WEB; else the full
-      # aggregated set (resolved + supplied pool); else just resolved IPs. This is the
-      # fix for the "name-resolved-only" miss — the supplied pool IPs are now in play.
-      ipsrc={workspace}/web_ips.txt
-      [ -s "$ipsrc" ] || ipsrc={workspace}/scan_ips.txt
-      [ -s "$ipsrc" ] || ipsrc={workspace}/resolved.txt
-      # name axis: in pool-sweep mode (target_ips supplied) or when vhost_all_names is
-      # set, test EVERY in-scope name against the pool (a resolving name can still be a
-      # distinct vhost on a different pool IP). Otherwise just the non-resolving names.
+      # IP axis = EVERY web-serving IP this run saw, UNIONed from ALL sources so no IP
+      # is left out:
+      #   web_ips.txt  : naabu-confirmed open web port (hosts + aggregated pool)
+      #   httpx.jsonl  : IPs httpx actually connected to (round-robin / edge IPs that
+      #                  dnsx never returned — still real IPs serving an in-scope host)
+      #   scan_ips.txt : resolved + operator-supplied pool (fallback when the above are
+      #                  empty, e.g. portscan+httpx disabled)
+      ipsrc={workspace}/vhost_ip_axis.txt
+      : > "$ipsrc"
+      cat {workspace}/web_ips.txt 2>/dev/null >> "$ipsrc" || true
+      jq -r '([.a[]?] + [.host]) | .[]? // empty' {workspace}/httpx.jsonl 2>/dev/null >> "$ipsrc" || true
+      grep -hoE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' "$ipsrc" | sort -u -o "$ipsrc" || true
+      [ -s "$ipsrc" ] || cat {workspace}/scan_ips.txt 2>/dev/null >> "$ipsrc" || true
+      [ -s "$ipsrc" ] || cat {workspace}/resolved.txt 2>/dev/null >> "$ipsrc" || true
+      sort -u -o "$ipsrc" "$ipsrc" 2>/dev/null || true
+      # name axis: by default test EVERY in-scope name — alive (resolving) AND dead
+      # (non-resolving) — because an alive name can still be a distinct vhost on a
+      # DIFFERENT IP. Set vhost_all_names=false (and no target_ips) for dead-only.
       namesrc={workspace}/unresolved_hosts.txt
       if [ -s {workspace}/target_ips_expanded.txt ] || [ "{vars.vhost_all_names}" = "true" ]; then
         namesrc={workspace}/scan_hosts.txt
