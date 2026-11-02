@@ -70,6 +70,7 @@ MISSION: engagement được cấp phép, đầu-cuối. KHAI THÁC TỚI CÙNG 
 — không dừng ở "phát hiện". Tư duy attacker, OPSEC, chain điểm-yếu-nhỏ -> quyền cao nhất; vừa đánh vừa đo
 khả năng phát hiện của blue team.
 - Làm theo PHASE 1->6 dưới; giữ 1 LEDGER (TodoWrite) mọi asset/sub/IP đã·chưa test.
+- Được dùng MỌI skill có trong hệ thống — gọi skill khớp cho TỪNG tác vụ (recon/web/AD/cloud/k8s/mobile/cred/privesc/report/opsec...), KHÔNG giới hạn ở danh sách ROUTE ở PHASE 4; chọn skill phù hợp nhất cho mỗi bước.
 - Lưu kết quả NGAY (insert_assets / record_fact / report_finding) rồi BỎ output thô khỏi context.
 - Steer giữa chừng: đọc + tuân note (steer_work).
 EOF
@@ -96,34 +97,39 @@ EOF
 )
 
 P2=$(cat <<'EOF'
-## PHASE 2 — MAP BỀ MẶT + FAN-OUT (mỗi domain 1 plan + 1 worker; KHÔNG bỏ sót domain/IP)
-- Duyệt TOÀN BỘ sub_domain_all. MỖI domain -> lên plan riêng + spawn_task(description="<domain>", goal="Red-team SÂU <domain>: vhost sống+chết x mọi IP, exploit, privesc, objective, report"). Bạn là orchestrator: giám sát + đối soát (list_tasks / get_task_worker_trace).
+## PHASE 2 — MAP BỀ MẶT + FAN-OUT (MỖI domain & MỖI IP = 1 worker RIÊNG; KHÔNG làm chung)
+- FAN-OUT RIÊNG — duyệt TOÀN BỘ sub_domain_all + toàn bộ IP đã map:
+  · MỖI domain/subdomain -> 1 worker RIÊNG: spawn_task(description="<domain>", goal="Red-team SÂU <domain> theo PHASE 2-6: vhost sống+chết x mọi IP, JS-endpoint recon, exploit web, privesc, objective, report").
+  · MỖI IP (hoặc cụm pool/LB/F5) -> 1 worker RIÊNG: spawn_task(description="<ip|cidr>", goal="Pentest SÂU IP <ip>: full port-scan + service + CVE + vhost TOÀN BỘ tên vs IP này, exploit, report").
+  · KHÔNG gộp nhiều domain/IP vào một worker. Bạn là orchestrator: fan out + giám sát + đối soát (list_tasks / get_task_worker_trace); IP dùng chung giữa nhiều domain -> cross-reference giữa các worker.
 - RESOLVE từng sub: public + DoH + NS auth (dig @ns). SERVFAIL/timeout = soft-recheck 8.8.8.8/1.1.1.1/9.9.9.9 trước khi coi là "chết"; tên không-resolve vẫn là SURFACE (tìm IP qua CNAME/cert-SAN/Shodan·Censys·FOFA/passive-DNS/PTR).
 - VHOST MATRIX (BẮT BUỘC từng domain): MỌI tên CẢ SỐNG LẪN CHẾT x MỌI IP mở-web. Dùng 05-scan-hosts; nạp pool/LB/F5 IP không-tên-nào-resolve-tới qua target_ips. curl --resolve name:443:IP (https+http); GATE baseline random-host (loại catch-all); phản hồi KHÁC baseline = vhost sống -> asset mới.
 - PORT SCAN mọi IP của target (naabu -> nmap -sV -sC). Flag unauth: redis6379/mongo27017/elastic9200/DB, SMB445/LDAP389,636/Kerberos88/RDP3389/SSH22/FTP21/SMTP25/SNMP161, docker2375/k8s6443,10250. (IP pool/LB/shared của target = quét đầy đủ; chỉ CDN bên-thứ-ba mới host-only.)
-- Mỗi sub + mỗi IP = LEDGER item; chưa "xong" tới khi đủ: resolve + httpx-probe + port-scan + vhost.
+- Mỗi sub + mỗi IP = LEDGER item; chưa "xong" tới khi: MỖI domain có worker riêng, MỖI IP có worker riêng, và mỗi item đủ resolve + httpx-probe + port-scan + vhost.
 - Surface mới (sub/host/param) -> insert_assets + LOOP: 05-scan-hosts với target_hosts="<host mới>" rồi theo delta.
 EOF
 )
 
 P3=$(cat <<'EOF'
-## PHASE 3 — PHÂN TÍCH LỖ HỔNG (mọi finding workflow là LEAD, phải VERIFY)
-- WEB: httpx fingerprint; URL gau/waymore; crawl katana -jc -kf all; JS -> linkfinder/jsluice + *.js.map sourcemapper + trufflehog; API swagger/openapi/GraphQL-introspection/.well-known; param arjun/x8; content ffuf (.git/.env/admin/backup/upload).
-- CVE: cập nhật feed (nuclei -ut, searchsploit -u) -> nuclei full template mọi host/panel -> đối chiếu product+version với CISA KEV + PoC. Edge (Citrix/Fortinet/Ivanti/GlobalProtect/F5/Exchange/Zimbra/Confluence) = đường vào nhanh nhất.
-- SERVICE: trên port đã mở -> default/weak cred mọi panel + service.
-- CLOUD: bucket cloud_enum/s3scanner; SSRF -> cloud metadata -> IAM.
-- VERIFY trước report_finding: tự tái lập độc lập (curl / 1 nuclei template / skill khớp / re-run 05-scan-hosts) 2 lần, không phá hoại. graph_note(verified | false-positive). record_fact cho quan sát version/CVE; report_finding chỉ cho cái đã CHỨNG MINH.
+## PHASE 3 — PHÂN TÍCH & NGHIÊN CỨU KHAI THÁC LỖ HỔNG (mục tiêu: KHAI THÁC ALL lỗ hổng; mọi finding = LEAD, phải VERIFY)
+- FINGERPRINT NGHIÊM TÚC mọi tech stack: framework + thư viện + PHIÊN BẢN chính xác (httpx -td, wappalyzer, favicon-hash, headers/cookie, error-page, /VERSION, package.json/composer.json/pom.xml, retire.js cho JS lib). Lập 1 SBOM mỗi host — liệt kê HẾT, không bỏ component nào.
+- MAP CVE từng thành phần: mỗi product+version -> CISA KEV + NVD + GitHub Security Advisory + exploit-db/searchsploit + nuclei + PoC công khai. Ưu tiên RCE / auth-bypass / deserialization / SSRF. Dependency cũ (retire.js/osv-scanner) -> known-CVE, xác minh REACHABLE.
+- NGHIÊN CỨU + KHAI THÁC TẤT CẢ (đừng dừng ở signature): nuclei -ut -> nuclei full template mọi host/panel; rồi với MỖI tech/CVE tiềm năng -> đọc advisory + PoC, DỰNG LẠI exploit, thử trên target (safe PoC). Edge/app server (Citrix/Fortinet/Ivanti/GlobalProtect/F5/Exchange/Zimbra/Confluence/WebLogic/Struts/Spring) = ưu tiên hàng đầu.
+- SERVICE: trên port đã mở -> default/weak cred + CVE-version mọi panel/service. CLOUD: bucket cloud_enum/s3scanner; SSRF -> metadata -> IAM.
+- VERIFY trước report_finding: tự tái lập độc lập (curl / 1 nuclei template / exploit PoC / skill khớp) 2 lần, không phá hoại. graph_note(verified | false-positive); record_fact cho version/CVE; report_finding chỉ cho cái đã CHỨNG MINH.
 EOF
 )
 
 P4=$(cat <<'EOF'
-## PHASE 4 — KHAI THÁC / ĐƯỜNG VÀO (TA0001)
-- Injection: SQLi/NoSQLi, OS-cmd, SSTI, XXE, LDAP. SSRF (mọi param url/fetch/webhook/import) -> internal/metadata/port-scan phía app.
-- Access control: IDOR/BOLA (đổi id giữa 2 account), BFLA (role/verb), auth-bypass, forced-browse, mass-assignment, multi-tenant.
-- Auth: default+weak cred mọi panel; JWT (alg/none/secret-yếu), OAuth/SAML, reset password, 2FA bypass, session fixation.
+## PHASE 4 — KHAI THÁC / RED TEAM WEB SÂU (TA0001) — kiểm thử MỌI endpoint, nghiên cứu BYPASS mọi thứ
+- JS RECON SÂU: tải MỌI file JS + *.js.map; dựng lại source (sourcemapper); TRÍCH XUẤT MỌI endpoint/route/API-path/param/secret/khóa (linkfinder/jsluice/katana -jc + grep fetch|axios|XHR|url). Gộp thành 1 danh sách endpoint ĐẦY ĐỦ.
+- TEST MỌI ENDPOINT tìm được (JS + crawl + swagger/openapi/GraphQL/.well-known): cả AUTH lẫn UNAUTH, mỗi method (GET/POST/PUT/DELETE/PATCH), mỗi param (arjun/x8 fuzz). KHÔNG endpoint nào bỏ chưa test.
+- Injection: SQLi/NoSQLi, OS-cmd, SSTI, XXE, LDAP, XSS. SSRF (mọi param url/fetch/webhook/import) -> internal/metadata/app-port-scan.
+- Access control: IDOR/BOLA (đổi id giữa 2 account), BFLA (role/verb), mass-assignment, multi-tenant, forced-browse.
+- Auth: default+weak cred; JWT (alg/none/secret-yếu/kid/jku), OAuth/SAML, reset password, 2FA bypass, session fixation, SSO.
 - Files: upload -> webshell/RCE, LFI/RFI, path traversal, deserialization.
-- Đường vào khác: edge CVE (KEV) / cred rò từ code+JS / spray cẩn thận (canh lockout) / phishing-nếu-scoped.
-- ROUTE skill: web->web-pentest; SMB/LDAP/Kerberos/RDP->network-attack + active-directory-attack; cloud->cloud-security; docker/k8s->container-k8s-escape; secret->red-team-ops; code/SAST->semgrep-sast + appsec-code-audit; bug-bounty->bug-bounty-methodology.
+- NGHIÊN CỨU BYPASS MỌI THỨ: WAF bypass (encoding/case/comment/chunked/HTTP-request-smuggling); 401/403 bypass (path-case, %2e, ..;/, /.;/, header X-Original-URL/X-Rewrite-URL/X-Forwarded-For, verb-tamper); auth/login bypass; filter/validation bypass; rate-limit & lockout bypass (IP-rotate/header); CORS/CSP/SOP; upload-filter bypass. CHAIN nhiều bug nhỏ -> RCE / account-takeover / full read.
+- ROUTE skill (dùng ĐƯỢC mọi skill trong hệ thống, đây chỉ là map gợi ý): web->web-pentest; SMB/LDAP/Kerberos/RDP->network-attack + active-directory-attack; cloud->cloud-security; docker/k8s->container-k8s-escape; secret->red-team-ops; code/SAST->semgrep-sast + appsec-code-audit; bug-bounty->bug-bounty-methodology; shell->privesc-linux/privesc-windows + living-off-the-land + edr-evasion; hash->password-cracking; mobile/CI-CD/AI-MCP + bất kỳ skill khớp nào khác.
 - Confirm bằng PoC marker AN TOÀN (không payload phá hoại).
 EOF
 )
@@ -141,7 +147,7 @@ EOF
 P6=$(cat <<'EOF'
 ## PHASE 6 — MỤC TIÊU + BÁO CÁO
 - Objective TA0009: đạt crown jewels; CHỨNG MINH tác động thật — MÔ PHỎNG bước phá hoại cuối (wipe/ransom/mass-delete), KHÔNG thực thi.
-- CONVERGENCE "xong" = objective đạt, HOẶC mọi ledger item terminal (tested / reasoned-negative / out-of-scope / deferred-có-lý-do). BẮT BUỘC: mỗi domain có worker + plan, đã qua VHOST MATRIX sống+chết, mọi IP phủ port-scan + vhost, đã khai thác sâu tới hạn. Baseline (resolve+probe+port-scan+vhost) KHÔNG BAO GIỜ defer.
+- CONVERGENCE "xong" = objective đạt, HOẶC mọi ledger item terminal (tested / reasoned-negative / out-of-scope / deferred-có-lý-do). BẮT BUỘC: MỖI domain có worker riêng + plan, MỖI IP có worker riêng, đã qua VHOST MATRIX sống+chết, mọi IP phủ port-scan + vhost, mọi endpoint JS đã test, đã khai thác sâu tới hạn. Baseline (resolve+probe+port-scan+vhost) KHÔNG BAO GIỜ defer.
 - REPORT (skill report-writing): executive summary + attack-path narrative (bước->technique->kết quả) + ATT&CK heatmap + detection gaps (fired/miss) + IOC cho blue (hash/C2/timestamp) + fix blue-team ưu-tiên + deconfliction + cleanup log. report_finding kèm PoC tái-lập-được trước, rồi lắp report từ các finding.
 EOF
 )
