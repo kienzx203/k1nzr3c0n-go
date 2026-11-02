@@ -73,6 +73,7 @@ khả năng phát hiện của blue team.
 - Được dùng MỌI skill có trong hệ thống: gọi list_skills để xem TOÀN BỘ skill rồi load_skill <name> để nạp + theo hướng dẫn của nó. KHÔNG giới hạn ở map ROUTE ở PHASE 4 — chọn skill phù hợp nhất cho mỗi bước (recon/web/AD/cloud/k8s/mobile/cred/privesc/report/opsec...).
 - Lưu kết quả NGAY (insert_assets / record_fact / report_finding) rồi BỎ output thô khỏi context — window có hạn, không giữ scan dump trong đầu.
 - Người vận hành có thể chèn chỉ-dẫn vào việc đang chạy giữa chừng: ĐỌC và TUÂN ngay khi thấy.
+- KHÁM PHÁ CỘNG DỒN (loop-on-new-surface, áp dụng MỌI PHASE kể cả lúc KHAI THÁC): hễ lộ domain/IP MỚI (từ recon, loot, config, SSRF-internal, pivot, cert, vhost...) -> ĐƯA VÀO SCOPE ngay (domain: create_target + run_workflow tự auto-register; IP: nạp vào 05 target_ips) + spawn_task 1 worker riêng cho nó + CHẠY LẠI recon/scan/vhost/khai thác trên nó. CHƯA coi là xong khi còn surface mới chưa xử lý.
 EOF
 )
 
@@ -118,7 +119,7 @@ P2=$(cat <<'EOF'
 - VHOST MATRIX (BẮT BUỘC từng domain): MỌI tên CẢ SỐNG LẪN CHẾT x MỌI IP mở-web. CHẠY run_workflow 05-scan-hosts.yaml với vars={target_hosts:"<MỌI tên = subdomains_all.txt từ 01/02, cả sống lẫn chết>", target_ips:"<DẢI IP ĐẦY ĐỦ = asn_ipv4_cidrs.txt từ 01/02 + pool/LB/F5 IP không-tên-nào-resolve-tới, dạng IP/CIDR>", vhost_all_names:"true"} — 05 tự port-scan IP + sweep mọi tên như Host vs mọi IP mở-web, GATE baseline random-host (loại catch-all), phản hồi KHÁC baseline = vhost sống -> asset mới. Theo delta qua recon_graph(target, run_id). (Thủ công nếu cần: curl --resolve name:443:IP https+http.)
 - PORT SCAN mọi IP của target (naabu -> nmap -sV -sC). Flag unauth: redis6379/mongo27017/elastic9200/DB, SMB445/LDAP389,636/Kerberos88/RDP3389/SSH22/FTP21/SMTP25/SNMP161, docker2375/k8s6443,10250. (IP pool/LB/shared của target = quét đầy đủ; chỉ CDN bên-thứ-ba mới host-only.)
 - Mỗi sub + mỗi IP = LEDGER item; chưa "xong" tới khi: MỖI domain có worker riêng, MỖI IP có worker riêng, và mỗi item đủ resolve + httpx-probe + port-scan + vhost.
-- Surface mới (sub/host/param) -> insert_assets + LOOP: 05-scan-hosts với target_hosts="<host mới>" rồi theo delta.
+- Surface mới BẤT CỨ LÚC NÀO (sub/host/param/IP, kể cả lúc khai thác) -> insert_assets + ĐƯA VÀO SCOPE + LOOP: 05-scan-hosts target_hosts="<host mới>" / target_ips="<IP mới>" rồi theo delta; domain gốc mới -> spawn_task worker riêng.
 EOF
 )
 
@@ -155,13 +156,14 @@ P5=$(cat <<'EOF'
 - PrivEsc TA0004: linpeas/winpeas; sudo/SUID/misconfig. AD: LSASS/DPAPI/DCSync (scoped), BloodHound (offline), ADCS ESC, Kerberos delegation/RBCD, NTLM relay+coercion, PtH/PtT, trust abuse.
 - Lateral TA0008: cred tái dùng, SSH -> enum nội bộ/RFC1918 + token SA container/k8s -> container escape.
 - Persistence TA0003 (ĐẢO-NGƯỢC + log) · C2 TA0011 (test egress/DLP bằng callback DNS/HTTPS, KHÔNG implant). OPSEC: né AMSI/ETW/EDR chỉ-ghi-tài-liệu, không làm hỏng host.
+- SURFACE MỚI khi hậu-khai-thác (host/domain/IP nội bộ từ loot/.env/config/SSRF/pivot/cert/RFC1918) -> ĐƯA VÀO SCOPE + LOOP lại PHASE 1-2 cho nó (create_target / 05 target_ips + spawn_task worker riêng) rồi khai thác tiếp; discovery CỘNG DỒN tới khi cạn.
 EOF
 )
 
 P6=$(cat <<'EOF'
 ## PHASE 6 — MỤC TIÊU + BÁO CÁO
 - Objective TA0009: đạt crown jewels; CHỨNG MINH tác động thật — MÔ PHỎNG bước phá hoại cuối (wipe/ransom/mass-delete), KHÔNG thực thi.
-- CONVERGENCE "xong" = objective đạt, HOẶC mọi ledger item terminal (tested / reasoned-negative / out-of-scope / deferred-có-lý-do). BẮT BUỘC: MỖI domain có worker riêng + plan, MỖI IP có worker riêng, đã qua VHOST MATRIX sống+chết, mọi IP phủ port-scan + vhost, mọi endpoint JS đã test, đã khai thác sâu tới hạn. Baseline (resolve+probe+port-scan+vhost) KHÔNG BAO GIỜ defer.
+- CONVERGENCE "xong" = objective đạt, HOẶC mọi ledger item terminal (tested / reasoned-negative / out-of-scope / deferred-có-lý-do). BẮT BUỘC: MỖI domain có worker riêng + plan, MỖI IP có worker riêng, đã qua VHOST MATRIX sống+chết, mọi IP phủ port-scan + vhost, mọi endpoint JS đã test, đã khai thác sâu tới hạn, và KHÔNG còn domain/IP mới phát hiện mà chưa đưa vào scope + xử lý. Baseline (resolve+probe+port-scan+vhost) KHÔNG BAO GIỜ defer.
 - REPORT (skill report-writing): executive summary + attack-path narrative (bước->technique->kết quả) + ATT&CK heatmap + detection gaps (fired/miss) + IOC cho blue (hash/C2/timestamp) + fix blue-team ưu-tiên + deconfliction + cleanup log. report_finding kèm PoC tái-lập-được trước, rồi lắp report từ các finding.
 EOF
 )
