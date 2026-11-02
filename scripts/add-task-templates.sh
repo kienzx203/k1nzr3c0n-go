@@ -78,7 +78,7 @@ EOF
 
 RULES=$(cat <<'EOF'
 ## RULES (operator ĐÃ cấp phép — trong scope TOÀN QUYỀN khai thác)
-- SCOPE: MỌI domain/subdomain trong sub_domain_all + MỌI IP liên quan (gồm pool/LB/F5/shared/ASN) = IN-SCOPE.
+- SCOPE: MỌI domain/subdomain trong sub_domain_all (file subdomains_all.txt) + MỌI IP liên quan (gồm pool/LB/F5/shared/ASN, dải asn_ipv4_cidrs.txt) = IN-SCOPE.
 - ĐƯỢC đi tới cùng: privesc, lateral, cred-reuse, dump hash/secret, persistence, root/domain-admin, crown jewels. KHÔNG prove-and-stop.
 - SÀN AN TOÀN (DỪNG + báo người): không DoS/sập production; thay đổi phải ĐẢO-NGƯỢC + log + cleanup; dừng khi chạm hệ thống tính-mạng (ICS/y tế/thanh toán lõi) / bên-thứ-ba thật / PII thật khối lượng lớn / dấu vết breach thật.
 - Chỉ CDN/SaaS bên-thứ-ba thật (Cloudflare/Akamai/Fastly) mới host-only. Mask secret/PII trong report. Timestamp mọi hành động.
@@ -99,7 +99,7 @@ P1=$(cat <<'EOF'
 - READ-DELTA: recon_graph(target, run_id, summary=true) xem run ĐÓ vừa thêm gì (rẻ hơn đọc lại cả map); recon_graph(target, q="admin"/node="h:host") khoan sâu; FULL map chỉ khi thật cần.
 - RECONCILE + LƯU NGAY: GHIM lead -> graph_note(target, node, tag="priority"); record_fact cho version/CVE/exposure; report_finding CHỈ cho cái đã CHỨNG MINH; insert_assets cho host/param mới; rồi BỎ output thô khỏi context.
 # NGUỒN RECON tay (gap-fill cái workflow KHÔNG tạo ra):
-- Subdomain: subfinder -all + crt.sh + subdomain.center; permute gotator/dnsgen; AXFR dig @ns; records MX/NS/TXT/SPF/DMARC.
+- Subdomain: subfinder -all + crt.sh + subdomain.center; permute gotator/dnsgen; AXFR dig @ns; records MX/NS/TXT/SPF/DMARC. Union đầy đủ -> subdomains_all.txt (01/02 merge_all_subdomains) = DANH SÁCH TÊN ĐẦY ĐỦ (sống+chết); dùng làm target_hosts cho 05.
 - IP/ASN: resolve subs -> IP A-record -> ASN (Team Cymru: dig +short TXT <reversed-ip>.origin.asn.cymru.com) -> prefix union RIPEstat + bgp.he.net + bgpview.io + bgpq4. (workflow 01/02 step asn_expand -> asn_ipv4_cidrs.txt = DẢI IP ĐẦY ĐỦ của tổ chức.) naabu của 01 chỉ port-scan host đã resolve (scope-safety), KHÔNG quét trọn dải ASN -> muốn phủ CẢ footprint thì nạp asn_ipv4_cidrs.txt vào 05 qua target_ips.
 - Leak/OSINT: GitHub/GitLab org dork + trufflehog, Postman, Docker, paste; breach data HIBP/dehashed.
 - CONTENT/PATH FUZZ (baseline riêng + batch, -ac): ffuf/feroxbuster wordlist raft + ext .bak/.zip/.config/.env/.json/.sql; VCS /.git /.svn /.DS_Store; API /swagger /openapi.json /api-docs /graphql /actuator(/env,/heapdump); versioning /v1 /v2 /internal /mobile; method GET/POST/PUT/PATCH/DELETE/OPTIONS. Chi tiết: skill web-pentest (bug-bounty-web-playbook).
@@ -115,7 +115,7 @@ P2=$(cat <<'EOF'
   · KHÔNG gộp nhiều domain/IP vào một worker. IP dùng chung giữa nhiều domain -> cross-reference giữa các worker.
   · GIÁM SÁT (orchestrator loop): list_tasks xem worker nào đã spawn; get_task_graph(task_id) đo coverage từng worker + list_task_findings(task_id) thu finding; get_task_worker_trace soi bước; worker lạc hướng/thiếu -> add_task_hint(task_id, ...) để lái, hoặc pause_task nếu cần. Không coi là xong khi còn worker chưa phủ hết ledger của nó.
 - RESOLVE từng sub: public + DoH + NS auth (dig @ns). SERVFAIL/timeout = soft-recheck 8.8.8.8/1.1.1.1/9.9.9.9 trước khi coi là "chết"; tên không-resolve vẫn là SURFACE (tìm IP qua CNAME/cert-SAN/Shodan·Censys·FOFA/passive-DNS/PTR).
-- VHOST MATRIX (BẮT BUỘC từng domain): MỌI tên CẢ SỐNG LẪN CHẾT x MỌI IP mở-web. CHẠY run_workflow 05-scan-hosts.yaml với vars={target_hosts:"<mọi tên domain>", target_ips:"<DẢI IP ĐẦY ĐỦ: asn_ipv4_cidrs.txt từ 01/02 + pool/LB/F5 IP không-tên-nào-resolve-tới, dạng IP/CIDR>", vhost_all_names:"true"} — 05 tự port-scan IP + sweep mọi tên như Host vs mọi IP mở-web, GATE baseline random-host (loại catch-all), phản hồi KHÁC baseline = vhost sống -> asset mới. Theo delta qua recon_graph(target, run_id). (Thủ công nếu cần: curl --resolve name:443:IP https+http.)
+- VHOST MATRIX (BẮT BUỘC từng domain): MỌI tên CẢ SỐNG LẪN CHẾT x MỌI IP mở-web. CHẠY run_workflow 05-scan-hosts.yaml với vars={target_hosts:"<MỌI tên = subdomains_all.txt từ 01/02, cả sống lẫn chết>", target_ips:"<DẢI IP ĐẦY ĐỦ = asn_ipv4_cidrs.txt từ 01/02 + pool/LB/F5 IP không-tên-nào-resolve-tới, dạng IP/CIDR>", vhost_all_names:"true"} — 05 tự port-scan IP + sweep mọi tên như Host vs mọi IP mở-web, GATE baseline random-host (loại catch-all), phản hồi KHÁC baseline = vhost sống -> asset mới. Theo delta qua recon_graph(target, run_id). (Thủ công nếu cần: curl --resolve name:443:IP https+http.)
 - PORT SCAN mọi IP của target (naabu -> nmap -sV -sC). Flag unauth: redis6379/mongo27017/elastic9200/DB, SMB445/LDAP389,636/Kerberos88/RDP3389/SSH22/FTP21/SMTP25/SNMP161, docker2375/k8s6443,10250. (IP pool/LB/shared của target = quét đầy đủ; chỉ CDN bên-thứ-ba mới host-only.)
 - Mỗi sub + mỗi IP = LEDGER item; chưa "xong" tới khi: MỖI domain có worker riêng, MỖI IP có worker riêng, và mỗi item đủ resolve + httpx-probe + port-scan + vhost.
 - Surface mới (sub/host/param) -> insert_assets + LOOP: 05-scan-hosts với target_hosts="<host mới>" rồi theo delta.
