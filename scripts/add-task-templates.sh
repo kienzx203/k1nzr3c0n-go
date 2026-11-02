@@ -70,7 +70,7 @@ MISSION: engagement được cấp phép, đầu-cuối. KHAI THÁC TỚI CÙNG 
 — không dừng ở "phát hiện". Tư duy attacker, OPSEC, chain điểm-yếu-nhỏ -> quyền cao nhất; vừa đánh vừa đo
 khả năng phát hiện của blue team.
 - Làm theo PHASE 1->6 dưới; giữ 1 LEDGER (TodoWrite) mọi asset/sub/IP đã·chưa test.
-- Được dùng MỌI skill có trong hệ thống — gọi skill khớp cho TỪNG tác vụ (recon/web/AD/cloud/k8s/mobile/cred/privesc/report/opsec...), KHÔNG giới hạn ở danh sách ROUTE ở PHASE 4; chọn skill phù hợp nhất cho mỗi bước.
+- Được dùng MỌI skill có trong hệ thống: gọi list_skills để xem TOÀN BỘ skill rồi load_skill <name> để nạp + theo hướng dẫn của nó. KHÔNG giới hạn ở map ROUTE ở PHASE 4 — chọn skill phù hợp nhất cho mỗi bước (recon/web/AD/cloud/k8s/mobile/cred/privesc/report/opsec...).
 - Lưu kết quả NGAY (insert_assets / record_fact / report_finding) rồi BỎ output thô khỏi context.
 - Steer giữa chừng: đọc + tuân note (steer_work).
 EOF
@@ -104,7 +104,7 @@ P2=$(cat <<'EOF'
   · MỖI IP (hoặc cụm pool/LB/F5) -> 1 worker RIÊNG: spawn_task(description="<ip|cidr>", goal="Pentest SÂU IP <ip>: full port-scan + service + CVE + vhost TOÀN BỘ tên vs IP này, exploit, report").
   · KHÔNG gộp nhiều domain/IP vào một worker. Bạn là orchestrator: fan out + giám sát + đối soát (list_tasks / get_task_worker_trace); IP dùng chung giữa nhiều domain -> cross-reference giữa các worker.
 - RESOLVE từng sub: public + DoH + NS auth (dig @ns). SERVFAIL/timeout = soft-recheck 8.8.8.8/1.1.1.1/9.9.9.9 trước khi coi là "chết"; tên không-resolve vẫn là SURFACE (tìm IP qua CNAME/cert-SAN/Shodan·Censys·FOFA/passive-DNS/PTR).
-- VHOST MATRIX (BẮT BUỘC từng domain): MỌI tên CẢ SỐNG LẪN CHẾT x MỌI IP mở-web. Dùng 05-scan-hosts; nạp pool/LB/F5 IP không-tên-nào-resolve-tới qua target_ips. curl --resolve name:443:IP (https+http); GATE baseline random-host (loại catch-all); phản hồi KHÁC baseline = vhost sống -> asset mới.
+- VHOST MATRIX (BẮT BUỘC từng domain): MỌI tên CẢ SỐNG LẪN CHẾT x MỌI IP mở-web. CHẠY run_workflow 05-scan-hosts.yaml với vars={target_hosts:"<mọi tên domain>", target_ips:"<pool/LB/F5 IP không-tên-nào-resolve-tới, dạng IP/CIDR>", vhost_all_names:"true"} — 05 tự port-scan IP + sweep mọi tên như Host vs mọi IP mở-web, GATE baseline random-host (loại catch-all), phản hồi KHÁC baseline = vhost sống -> asset mới. Theo delta qua recon_graph(target, run_id). (Thủ công nếu cần: curl --resolve name:443:IP https+http.)
 - PORT SCAN mọi IP của target (naabu -> nmap -sV -sC). Flag unauth: redis6379/mongo27017/elastic9200/DB, SMB445/LDAP389,636/Kerberos88/RDP3389/SSH22/FTP21/SMTP25/SNMP161, docker2375/k8s6443,10250. (IP pool/LB/shared của target = quét đầy đủ; chỉ CDN bên-thứ-ba mới host-only.)
 - Mỗi sub + mỗi IP = LEDGER item; chưa "xong" tới khi: MỖI domain có worker riêng, MỖI IP có worker riêng, và mỗi item đủ resolve + httpx-probe + port-scan + vhost.
 - Surface mới (sub/host/param) -> insert_assets + LOOP: 05-scan-hosts với target_hosts="<host mới>" rồi theo delta.
