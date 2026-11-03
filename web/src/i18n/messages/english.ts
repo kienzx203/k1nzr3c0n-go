@@ -107,7 +107,8 @@ export const en = {
   "e188": "Default",
   "e189": "Brutalist",
   "e190": "Soft Pop",
-  "e191": "Tangerine"
+  "e191": "Tangerine",
+  "e192": "Hacker"
 };
 export const ko: Record<keyof typeof en, string> = {
   "e002": "출시 예정",
@@ -217,5 +218,6 @@ export const ko: Record<keyof typeof en, string> = {
   "e188": "기본값",
   "e189": "브루탈리스트",
   "e190": "소프트 팝",
-  "e191": "탠저린"
+  "e191": "탠저린",
+  "e192": "해커"
 };

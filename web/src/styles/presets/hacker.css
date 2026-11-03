@@ -1,0 +1,146 @@
+/*
+label: Hacker
+value: hacker
+*/
+
+/*
+  HACKER — a dark terminal / neon-green aesthetic for the whole app.
+  Near-black background, phosphor-green foreground, monospace type,
+  glowing borders + rings, and a faint CRT scanline overlay.
+  The palette is intentionally dark in BOTH light and dark modes, because
+  "hacker" is inherently a dark look. The .dark block below only fine-tunes it.
+*/
+
+:root[data-theme-preset="hacker"] {
+  --radius: 0.25rem;
+
+  --background: oklch(0.16 0.012 160);
+  --foreground: oklch(0.92 0.06 158);
+
+  --card: oklch(0.19 0.014 160);
+  --card-foreground: oklch(0.92 0.06 158);
+  --popover: oklch(0.17 0.014 160);
+  --popover-foreground: oklch(0.92 0.06 158);
+
+  --primary: oklch(0.85 0.22 158);
+  --primary-foreground: oklch(0.14 0.02 160);
+  --secondary: oklch(0.26 0.03 160);
+  --secondary-foreground: oklch(0.9 0.08 158);
+
+  --muted: oklch(0.24 0.02 160);
+  --muted-foreground: oklch(0.72 0.07 158);
+
+  --accent: oklch(0.82 0.15 190);
+  --accent-foreground: oklch(0.14 0.02 190);
+
+  --destructive: oklch(0.63 0.23 18);
+
+  --border: oklch(0.42 0.09 160 / 0.5);
+  --input: oklch(0.42 0.09 160 / 0.45);
+  --ring: oklch(0.85 0.22 158);
+
+  --chart-1: oklch(0.85 0.22 158);
+  --chart-2: oklch(0.82 0.15 190);
+  --chart-3: oklch(0.86 0.17 95);
+  --chart-4: oklch(0.7 0.21 330);
+  --chart-5: oklch(0.63 0.23 18);
+
+  --sidebar: oklch(0.13 0.012 160);
+  --sidebar-foreground: oklch(0.88 0.07 158);
+  --sidebar-primary: oklch(0.85 0.22 158);
+  --sidebar-primary-foreground: oklch(0.13 0.02 160);
+  --sidebar-accent: oklch(0.82 0.15 190);
+  --sidebar-accent-foreground: oklch(0.13 0.02 190);
+  --sidebar-border: oklch(0.4 0.09 160 / 0.4);
+  --sidebar-ring: oklch(0.85 0.22 158);
+
+  /* Neon-green glow instead of soft drop shadows. */
+  --shadow-2xs: 0 0 2px 0px oklch(0.85 0.22 158 / 0.25);
+  --shadow-xs: 0 0 4px 0px oklch(0.85 0.22 158 / 0.3);
+  --shadow-sm: 0 0 6px 0px oklch(0.85 0.22 158 / 0.35);
+  --shadow: 0 0 8px 0px oklch(0.85 0.22 158 / 0.4);
+  --shadow-md: 0 0 12px 0px oklch(0.85 0.22 158 / 0.45);
+  --shadow-lg: 0 0 18px 0px oklch(0.85 0.22 158 / 0.5);
+  --shadow-xl: 0 0 26px 0px oklch(0.85 0.22 158 / 0.55);
+  --shadow-2xl: 0 0 36px 0px oklch(0.85 0.22 158 / 0.6);
+}
+
+.dark:root[data-theme-preset="hacker"] {
+  --background: oklch(0.15 0.012 160);
+  --foreground: oklch(0.93 0.07 158);
+  --card: oklch(0.18 0.014 160);
+  --popover: oklch(0.16 0.014 160);
+  --primary: oklch(0.86 0.23 158);
+  --ring: oklch(0.86 0.23 158);
+  --sidebar: oklch(0.12 0.012 160);
+}
+
+/* ---- Monospace everywhere (overrides the data-font body rule) ---- */
+:root[data-theme-preset="hacker"] body {
+  --font-sans: var(--font-geist-mono), var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.01em;
+}
+
+/* ---- Terminal flourishes ---- */
+[data-theme-preset="hacker"] {
+  /* subtle green text glow on the brand/headings via utility below */
+  color-scheme: dark;
+}
+
+/* Glowing focus rings + interactive borders read as a live terminal. */
+[data-theme-preset="hacker"] .border {
+  border-color: var(--border);
+}
+
+/* Headings get a faint phosphor glow. */
+[data-theme-preset="hacker"] h1,
+[data-theme-preset="hacker"] h2,
+[data-theme-preset="hacker"] h3 {
+  text-shadow: 0 0 8px oklch(0.85 0.22 158 / 0.35);
+}
+
+/* CRT scanline + vignette overlay. pointer-events:none so it never blocks clicks. */
+[data-theme-preset="hacker"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      oklch(0 0 0 / 0) 0px,
+      oklch(0 0 0 / 0) 2px,
+      oklch(0 0 0 / 0.18) 3px,
+      oklch(0 0 0 / 0) 4px
+    ),
+    radial-gradient(
+      ellipse at center,
+      oklch(0 0 0 / 0) 55%,
+      oklch(0 0 0 / 0.35) 100%
+    );
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+}
+
+/* Faint moving flicker for life, honoring reduced-motion. */
+[data-theme-preset="hacker"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  background: oklch(0.85 0.22 158 / 0.015);
+  animation: hacker-flicker 3.5s infinite steps(60);
+}
+
+@keyframes hacker-flicker {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 0.03; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme-preset="hacker"] body::after {
+    animation: none;
+  }
+}

@@ -44,6 +44,14 @@ export const THEME_PRESET_OPTIONS = [
       dark: "oklch(0.64 0.17 36.44)",
     },
   },
+  {
+    get label() { return swt("english.e192"); },
+    value: "hacker",
+    primary: {
+      light: "oklch(0.85 0.22 158)",
+      dark: "oklch(0.86 0.23 158)",
+    },
+  },
 ] as const;
 
 export const THEME_PRESET_VALUES = THEME_PRESET_OPTIONS.map((p) => p.value);
