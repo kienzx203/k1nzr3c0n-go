@@ -96,6 +96,7 @@ EOF
 
 P1=$(cat <<'EOF'
 ## PHASE 1 — RECON & ĐIỀU PHỐI (quiet/passive trước; workflow CHÍNH, hand-recon lấp khe hở)
+# CHẠY ĐÚNG 1 LẦN/engagement: AGENT ĐIỀU PHỐI CHÍNH làm (subdomains_all.txt + asn_ipv4_cidrs.txt + QUEUE) TRƯỚC khi release worker. WORKER (<=10 song song) bắt đầu từ PHASE 2, KHÔNG lặp PHASE 1; surface MỚI (INV #5) chỉ re-recon CÓ MỤC TIÊU, không full-recon lại.
 # VÒNG ĐIỀU PHỐI KHÉP KÍN (agent-task -> run_workflow -> graph, không bỏ sót): SEE -> CHECK -> RUN -> FOLLOW -> READ-DELTA -> RECONCILE -> LOOP.
 - SEE/CHECK (đừng quét mù): recon_graph(target, summary=true) đo bề mặt (đếm node + finding theo severity) + recon_runs(target, status=...) xem đã/đang có run + list_workflows. ĐÃ có recon tươi -> TÁI DÙNG recon_findings/recon_assets, KHÔNG chạy lại.
 - RUN (chỉ mảng còn thiếu, TÙY CƠ ỨNG BIẾN; non-blocking, trả run_id, chạy song song): run_workflow(target, <file>, vars={...}).
