@@ -27,9 +27,6 @@ type Props = {
   /** Controlled mode (e.g. the new-task form, before a task exists). */
   value?: RoleOverrides;
   onChange?: (next: RoleOverrides) => void;
-  /** Render the Select dropdown inside this container (e.g. the popover) so a click
-   *  doesn't register as an outside interaction. */
-  portalContainer?: React.RefObject<HTMLElement | null>;
 };
 
 /**
@@ -40,7 +37,7 @@ type Props = {
  * With `taskId` it fetches + auto-saves; with `value`/`onChange` it is a controlled
  * field (used in the new-task form, which applies the overrides after the task is created).
  */
-export function TaskRoleLLM({ profiles, disabled, taskId, value, onChange, portalContainer }: Props) {
+export function TaskRoleLLM({ profiles, disabled, taskId, value, onChange }: Props) {
   const labelOf = (role: string) => ROLES.find((r) => r.key === role)?.label ?? role;
   const modelOf = (pid: number | null) =>
     pid == null ? "Mặc định" : (profiles.find((p) => String(p.id) === String(pid))?.name ?? `#${pid}`);
@@ -117,7 +114,7 @@ export function TaskRoleLLM({ profiles, disabled, taskId, value, onChange, porta
                 <SelectTrigger size="sm" className="w-full" aria-label={`Model cho ${label}`}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent container={portalContainer?.current ?? undefined}>
+                <SelectContent>
                   <SelectGroup>
                     <SelectItem value={DEFAULT_VALUE}>
                       <span className="text-muted-foreground">Mặc định</span>

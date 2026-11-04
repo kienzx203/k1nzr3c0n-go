@@ -3392,7 +3392,7 @@ function CreateTaskSheet({
                 portalContainer={sheetContentRef}
               />
               <FieldDescription>{swt("interface.m1045")}</FieldDescription>
-              <TaskRoleLLM profiles={profiles} value={roleOverrides} onChange={setRoleOverrides} portalContainer={sheetContentRef} />
+              <TaskRoleLLM profiles={profiles} value={roleOverrides} onChange={setRoleOverrides} />
             </Field>
 
             {/* Advanced timeout/heartbeat/first-intent settings start collapsed to keep the common flow compact. */}
