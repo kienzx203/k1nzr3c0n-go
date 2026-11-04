@@ -15,6 +15,8 @@ vars:
   web_ports: '80,443,8080,8443,8000,8888,3000,5000,9000,9443,2083,8006,10250'
   # vhost-matrix cross-product caps (name x IP). Raise for a big target so no
   # non-resolving name / IP is left untested; the step's 30m timeout still bounds it.
+  # parallel probes for the vhost matrix (xargs -P). Higher = faster sweep.
+  vhost_parallel: '50'
   vhost_max_names: '200'
   vhost_max_ips: '80'
   # true (default) -> sweep EVERY in-scope name — BOTH resolving ("alive") and
@@ -212,33 +214,56 @@ steps:
       tot_n=$(wc -l < "$namesrc"); tot_i=$(wc -l < "$ipsrc")
       [ "$tot_n" -gt {vars.vhost_max_names} ] && printf '[vhost-matrix] NOTE: %s non-resolving names > cap %s — raise vhost_max_names to cover all\n' "$tot_n" "{vars.vhost_max_names}"
       [ "$tot_i" -gt {vars.vhost_max_ips} ] && printf '[vhost-matrix] NOTE: %s IPs > cap %s — raise vhost_max_ips to cover all\n' "$tot_i" "{vars.vhost_max_ips}"
-      status() { # $1=name $2=ip -> 3-digit code (https then http). Parse the status
-        # line from curl -I, NOT the curl write-out format (its percent-brace syntax
-        # would be read as a template variable by the workflow renderer).
-        local l
-        l=$(curl -sk -I --resolve "$1:443:$2" --max-time 5 "https://$1/" 2>/dev/null | head -1)
-        [ -z "$l" ] && l=$(curl -s -I --resolve "$1:80:$2" --max-time 5 "http://$1/" 2>/dev/null | head -1)
-        printf '%s' "$l" | grep -oE 'HTTP/[0-9.]+ [0-9][0-9][0-9]' | grep -oE '[0-9][0-9][0-9]$'
-      }
+      # --- signature-based, PARALLEL vhost probe ---
+      # signature(host,ip) = "code|sizebucket|title" via GET; compared against the
+      # IP's catch-all baseline so a distinct vhost is caught even when it returns the
+      # SAME status as the default (status-only missed those). Parse status from the
+      # HTTP line (never the curl -w percent-brace write-out, itself a template token);
+      # use [0-9][0-9][0-9] for exactly 3 digits (a braced quantifier is one too).
+      cat > {workspace}/.vm_sig.sh <<'SIG'
+      #!/bin/sh
+      host="$1"; ip="$2"
+      o=$(curl -sk -i --resolve "$host:443:$ip" --max-time 6 "https://$host/" 2>/dev/null)
+      [ -z "$o" ] && o=$(curl -s -i --resolve "$host:80:$ip" --max-time 6 "http://$host/" 2>/dev/null)
+      [ -z "$o" ] && { printf '|0|'; exit 0; }
+      c=$(printf '%s' "$o" | grep -aoE 'HTTP/[0-9.]+ [0-9][0-9][0-9]' | head -1 | grep -oE '[0-9][0-9][0-9]$')
+      n=$(printf '%s' "$o" | wc -c | tr -d ' ')
+      bk=$(( n / 512 ))
+      t=$(printf '%s' "$o" | tr -d '\r' | grep -aoiE '<title[^>]*>[^<]*' | head -1 | sed 's/<[^>]*>//' | cut -c1-60 | tr '|' ' ')
+      printf '%s|%s|%s' "$c" "$bk" "$t"
+      SIG
+      cat > {workspace}/.vm_base.sh <<'BASE'
+      #!/bin/sh
+      ip="$1"
+      r="rnd$$-$RANDOM.invalid"
+      printf '%s|%s\n' "$ip" "$(sh {workspace}/.vm_sig.sh "$r" "$ip")" >> {workspace}/.vm_base
+      BASE
+      cat > {workspace}/.vm_probe.sh <<'PROBE'
+      #!/bin/sh
+      ip="$1"; name="$2"
+      s=$(sh {workspace}/.vm_sig.sh "$name" "$ip")
+      code=$(printf '%s' "$s" | cut -d'|' -f1)
+      [ -z "$code" ] && exit 0
+      case "$code" in 2*|3*|401|403|405) : ;; *) exit 0 ;; esac
+      base=$(grep -F "$ip|" {workspace}/.vm_base 2>/dev/null | head -1 | cut -d'|' -f2-)
+      [ -n "$base" ] && [ "$s" = "$base" ] && exit 0
+      printf '%s [%s] %s (base %s)\n' "$name" "$ip" "$code" "${base:-none}" >> {workspace}/vhost_matrix_hits.txt
+      printf '%s\n' "$name" >> {workspace}/vhost_new_hosts.txt
+      PROBE
+      # phase 1: catch-all baseline per IP (parallel)
+      : > {workspace}/.vm_base
+      grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' {workspace}/.vm_ips \
+        | xargs -P {vars.vhost_parallel} -n 1 sh {workspace}/.vm_base.sh 2>/dev/null || true
+      # phase 2: name x IP cross-product, probed in parallel
+      : > {workspace}/.vm_pairs
       while read ip; do
         echo "$ip" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' || continue
-        # BASELINE: a RANDOM name on this IP. If a real name answers the SAME as the
-        # random one, it is a catch-all / default vhost = NOT a distinct hit.
-        bline=$(status "rnd$RANDOM$RANDOM.invalid" "$ip")
-        while read name; do
-          [ -n "$name" ] || continue
-          code=$(status "$name" "$ip")
-          [ -z "$code" ] && continue
-          [ -n "$bline" ] && [ "$code" = "$bline" ] && continue
-          case "$code" in
-            2*|3*|401|403|405) printf '%s [%s] %s (base %s)\n' "$name" "$ip" "$code" "${bline:-none}" >> {workspace}/vhost_matrix_hits.txt
-                               echo "$name" >> {workspace}/vhost_new_hosts.txt ;;
-          esac
-        done < {workspace}/.vm_names
-      done < {workspace}/.vm_ips
+        while read name; do [ -n "$name" ] && printf '%s %s\n' "$ip" "$name"; done < {workspace}/.vm_names
+      done < {workspace}/.vm_ips > {workspace}/.vm_pairs
+      xargs -P {vars.vhost_parallel} -n 2 sh {workspace}/.vm_probe.sh < {workspace}/.vm_pairs 2>/dev/null || true
       sort -u -o {workspace}/vhost_new_hosts.txt {workspace}/vhost_new_hosts.txt
-      rm -f {workspace}/.vm_names {workspace}/.vm_ips
-      printf '[vhost-matrix] %s live vhost hit(s) (non-resolving name answered on a known IP) -> vhost_new_hosts.txt\n' \
+      rm -f {workspace}/.vm_names {workspace}/.vm_ips {workspace}/.vm_pairs {workspace}/.vm_base {workspace}/.vm_sig.sh {workspace}/.vm_base.sh {workspace}/.vm_probe.sh
+      printf '[vhost-matrix] %s live vhost hit(s) (answered differently from catch-all on a known IP) -> vhost_new_hosts.txt\n' \
         "$(wc -l < {workspace}/vhost_matrix_hits.txt)"
       exit 0
     outputs:
