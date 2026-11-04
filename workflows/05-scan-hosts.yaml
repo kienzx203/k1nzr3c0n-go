@@ -1,5 +1,5 @@
 name: 05-scan-hosts
-description: 'TARGETED host scan (NO passive discovery): resolve + httpx probe + port scan + nuclei on a SPECIFIC host set you already found — set target_hosts (inline comma/space list) or subdomains_list (file path). For the agent to focus a run on hosts it saw in the graph instead of re-running the whole full-recon pipeline. Writes the canonical files (resolved/httpx.jsonl/naabu.jsonl/nuclei_results.jsonl/live_urls) so the graph + DB ingest picks the results up. Every host is still passed through the target scope filter.'
+description: 'TARGETED host scan (NO passive discovery): resolve + httpx probe + port scan on a SPECIFIC host set you already found — set target_hosts (inline comma/space list) or subdomains_list (file path). For the agent to focus a run on hosts it saw in the graph instead of re-running the whole full-recon pipeline. Writes the canonical files (resolved/httpx.jsonl/naabu.jsonl/live_urls) so the graph + DB ingest picks the results up. Every host is still passed through the target scope filter.'
 max_parallel: 4
 vars:
   # the host set to scan — set AT LEAST one of these (the agent sets target_hosts):
@@ -10,10 +10,8 @@ vars:
   # Comma/space-separated, IPs or CIDRs (e.g. '125.212.197.0/24, 103.1.208.5').
   target_ips: ''
   run_portscan: 'true'
-  run_nuclei: 'true'
   httpx_threads: '50'
   httpx_timeout: '10'
-  nuclei_severity: 'critical,high,medium'
   web_ports: '80,443,8080,8443,8000,8888,3000,5000,9000,9443,2083,8006,10250'
   # vhost-matrix cross-product caps (name x IP). Raise for a big target so no
   # non-resolving name / IP is left untested; the step's 30m timeout still bounds it.
@@ -276,38 +274,18 @@ steps:
     outputs:
       naabu_jsonl: '{workspace}/naabu.jsonl'
       web_ips: '{workspace}/web_ips.txt'
-  - id: nuclei_scan
-    name: 'vuln scan live hosts (nuclei -> nuclei_results.jsonl)'
-    depends_on:
-    - httpx_probe
-    run_on_failed_deps: true
-    when: '{vars.run_nuclei}'
-    optional: true
-    shell: true
-    timeout: 60m
-    run: |
-      touch {workspace}/nuclei_results.jsonl
-      test -s {workspace}/live_urls.txt || exit 0
-      nuclei -l {workspace}/live_urls.txt -jsonl -o {workspace}/nuclei_results.jsonl \
-        -severity {vars.nuclei_severity} -rate-limit 150 -retries 1 -silent 2>/dev/null || true
-      printf '[nuclei] %s findings\n' "$(wc -l < {workspace}/nuclei_results.jsonl)"
-      exit 0
-    outputs:
-      nuclei_jsonl: '{workspace}/nuclei_results.jsonl'
   - id: final_report
     name: 'targeted scan summary'
     depends_on:
     - httpx_probe
     - vhost_matrix
     - portscan
-    - nuclei_scan
     run_on_failed_deps: true
     shell: true
     run: |
-      printf '[scan-hosts] hosts=%s live=%s vhosts=%s port_records=%s vulns=%s\n' \
+      printf '[scan-hosts] hosts=%s live=%s vhosts=%s port_records=%s\n' \
         "$(wc -l < {workspace}/scan_hosts.txt 2>/dev/null || echo 0)" \
         "$(wc -l < {workspace}/live_urls.txt 2>/dev/null || echo 0)" \
         "$(wc -l < {workspace}/vhost_new_hosts.txt 2>/dev/null || echo 0)" \
-        "$(wc -l < {workspace}/naabu.jsonl 2>/dev/null || echo 0)" \
-        "$(wc -l < {workspace}/nuclei_results.jsonl 2>/dev/null || echo 0)"
+        "$(wc -l < {workspace}/naabu.jsonl 2>/dev/null || echo 0)"
       exit 0
