@@ -16,7 +16,7 @@ vars:
   # vhost-matrix cross-product caps (name x IP). Raise for a big target so no
   # non-resolving name / IP is left untested; the step's 30m timeout still bounds it.
   # parallel probes for the vhost matrix (xargs -P). Higher = faster sweep.
-  vhost_parallel: '50'
+  vhost_parallel: '80'
   vhost_max_names: '200'
   vhost_max_ips: '80'
   # true (default) -> sweep EVERY in-scope name — BOTH resolving ("alive") and
@@ -178,6 +178,7 @@ steps:
     - httpx_probe
     - portscan
     run_on_failed_deps: true
+    optional: true
     shell: true
     timeout: 30m
     run: |
@@ -223,8 +224,8 @@ steps:
       cat > {workspace}/.vm_sig.sh <<'SIG'
       #!/bin/sh
       host="$1"; ip="$2"
-      o=$(curl -sk -i --resolve "$host:443:$ip" --max-time 6 "https://$host/" 2>/dev/null)
-      [ -z "$o" ] && o=$(curl -s -i --resolve "$host:80:$ip" --max-time 6 "http://$host/" 2>/dev/null)
+      o=$(curl -sk -i --resolve "$host:443:$ip" --max-time 4 "https://$host/" 2>/dev/null)
+      [ -z "$o" ] && o=$(curl -s -i --resolve "$host:80:$ip" --max-time 4 "http://$host/" 2>/dev/null)
       [ -z "$o" ] && { printf '|0|'; exit 0; }
       c=$(printf '%s' "$o" | grep -aoE 'HTTP/[0-9.]+ [0-9][0-9][0-9]' | head -1 | grep -oE '[0-9][0-9][0-9]$')
       n=$(printf '%s' "$o" | wc -c | tr -d ' ')
