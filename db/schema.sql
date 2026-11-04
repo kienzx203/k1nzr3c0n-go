@@ -708,6 +708,21 @@ CREATE TABLE IF NOT EXISTS task_llm_profiles (
 );
 CREATE INDEX IF NOT EXISTS idx_task_llm_profiles_order ON task_llm_profiles(task_id, position);
 CREATE INDEX IF NOT EXISTS idx_task_llm_profiles_profile ON task_llm_profiles(profile_id, task_id);
+
+-- Per-role LLM profile override for a task: pins one profile for a specific agent
+-- role (mainagent/planner/worker/goals) in this task. Highest precedence in the
+-- resolver (above the shared task chain and the global per-role agent binding), so
+-- each role can run on its own model within a single task. A deleted profile simply
+-- drops the override (role falls back to the chain/binding/global).
+CREATE TABLE IF NOT EXISTS task_role_llm (
+    task_id          BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    role             TEXT NOT NULL CHECK (role IN ('mainagent','planner','worker','goals')),
+    profile_id       BIGINT NOT NULL REFERENCES llm_profiles(id) ON DELETE CASCADE,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (task_id, role)
+);
+CREATE INDEX IF NOT EXISTS idx_task_role_llm_profile ON task_role_llm(profile_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_llm_profile ON tasks(llm_profile_id) WHERE llm_profile_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_tasks_active_llm_profile ON tasks(active_llm_profile_id) WHERE active_llm_profile_id IS NOT NULL;
 DROP TRIGGER IF EXISTS trg_task_llm_profiles_upd ON task_llm_profiles;

@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -397,6 +398,51 @@ FROM task_llm_profiles WHERE task_id=$1 ORDER BY position`, taskID)
 		out = append(out, entry)
 	}
 	return out, rows.Err()
+}
+
+// TaskRoleLLMProfile returns the per-role LLM profile override for a task, if any.
+// ok=false means the role has no override (the caller falls back to chain/binding/global).
+func (d *DB) TaskRoleLLMProfile(taskID int64, role string) (int64, bool, error) {
+	var id int64
+	err := d.QueryRow(`SELECT profile_id FROM task_role_llm WHERE task_id=$1 AND role=$2`, taskID, role).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return id, true, nil
+}
+
+// TaskRoleLLMProfiles returns all per-role overrides for a task as role->profile_id.
+func (d *DB) TaskRoleLLMProfiles(taskID int64) (map[string]int64, error) {
+	rows, err := d.Query(`SELECT role, profile_id FROM task_role_llm WHERE task_id=$1`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var role string
+		var id int64
+		if err := rows.Scan(&role, &id); err != nil {
+			return nil, err
+		}
+		out[role] = id
+	}
+	return out, rows.Err()
+}
+
+// SetTaskRoleLLMProfile upserts (profileID != nil) or clears (profileID == nil) the
+// per-role override for a task. role must be one of mainagent/planner/worker/goals.
+func (d *DB) SetTaskRoleLLMProfile(taskID int64, role string, profileID *int64) error {
+	if profileID == nil {
+		_, err := d.Exec(`DELETE FROM task_role_llm WHERE task_id=$1 AND role=$2`, taskID, role)
+		return err
+	}
+	_, err := d.Exec(`INSERT INTO task_role_llm(task_id, role, profile_id) VALUES($1,$2,$3)
+ON CONFLICT (task_id, role) DO UPDATE SET profile_id=EXCLUDED.profile_id, updated_at=now()`, taskID, role, *profileID)
+	return err
 }
 
 // ReplaceTaskLLMProfiles atomically replaces and resets the explicit task chain.

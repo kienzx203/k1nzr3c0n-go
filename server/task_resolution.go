@@ -49,6 +49,23 @@ func (s *Server) resolveTaskRoleLLM(t *Task, agentKey string) (taskLLMResolution
 	if s == nil || s.m == nil || s.m.pg == nil {
 		return taskLLMResolution{}, fmt.Errorf("database unavailable")
 	}
+	if taskNum, perr := parseTaskID(t.ID); perr == nil {
+		id, ok, err := s.m.pg.TaskRoleLLMProfile(taskNum, agentKey)
+		if err != nil {
+			return taskLLMResolution{}, fmt.Errorf("load task role LLM: %w", err)
+		}
+		if ok && id != 0 {
+			p, err := s.m.pg.ProfileByID(id)
+			if err != nil {
+				return taskLLMResolution{}, fmt.Errorf("load task role LLM profile: %w", err)
+			}
+			if p != nil {
+				if resolved := s.resolutionFromProfile(p, "task_role"); resolved.Available {
+					return resolved, nil
+				}
+			}
+		}
+	}
 	a, err := s.m.pg.GetAgentByKey(agentKey)
 	if err != nil {
 		return taskLLMResolution{}, fmt.Errorf("load agent %q: %w", agentKey, err)
@@ -99,6 +116,80 @@ func (s *Server) resolveTaskRoleLLM(t *Task, agentKey string) (taskLLMResolution
 		}, nil
 	}
 	return taskLLMResolution{Source: "global", Reason: "no available LLM profile"}, nil
+}
+
+// validTaskLLMRole reports whether a role string is a per-role override target.
+func validTaskLLMRole(role string) bool {
+	switch role {
+	case "mainagent", "planner", "worker", "goals":
+		return true
+	}
+	return false
+}
+
+// GET /api/tasks/{id}/llm/roles — current per-role LLM overrides for a task.
+func (s *Server) getTaskRoleLLM(w http.ResponseWriter, r *http.Request) {
+	id, ok := canonicalTaskID(r.PathValue("id"))
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "invalid task id")
+		return
+	}
+	taskNum, err := parseTaskID(id)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid task id")
+		return
+	}
+	overrides, err := s.m.pg.TaskRoleLLMProfiles(taskNum)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"role_llm_profiles": overrides})
+}
+
+// PUT /api/tasks/{id}/llm/roles — set/clear per-role LLM overrides. Body:
+// {"role_llm_profiles": {"mainagent": 3, "planner": null, "worker": 5}}.
+// A null value clears that role's override; an omitted role is left unchanged.
+func (s *Server) updateTaskRoleLLM(w http.ResponseWriter, r *http.Request) {
+	id, ok := canonicalTaskID(r.PathValue("id"))
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "invalid task id")
+		return
+	}
+	taskNum, err := parseTaskID(id)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid task id")
+		return
+	}
+	var body struct {
+		RoleLLMProfiles map[string]*int64 `json:"role_llm_profiles"`
+	}
+	if err := decode(r, &body); err != nil {
+		writeErr(w, 400, "invalid JSON: "+err.Error())
+		return
+	}
+	for role, pid := range body.RoleLLMProfiles {
+		if !validTaskLLMRole(role) {
+			writeErr(w, 400, "invalid role: "+role)
+			return
+		}
+		if pid != nil {
+			if _, ok := s.loadProfileConfig(*pid); !ok {
+				writeErr(w, 400, fmt.Sprintf("LLM profile #%d is missing or invalid", *pid))
+				return
+			}
+		}
+		if err := s.m.pg.SetTaskRoleLLMProfile(taskNum, role, pid); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
+	overrides, err := s.m.pg.TaskRoleLLMProfiles(taskNum)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"role_llm_profiles": overrides})
 }
 
 func (s *Server) taskLLMResolutionHandler(w http.ResponseWriter, r *http.Request) {

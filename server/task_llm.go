@@ -125,6 +125,10 @@ func (r *taskLLMRuntime) current() (taskLLMSelection, error) {
 	r.s.syncTaskLLMState(pt)
 	t, _ := r.s.m.Task(r.taskID)
 	sel := taskLLMSelection{task: t, revision: pt.LLMChainRevision}
+	if prov, cfg, ok := r.s.taskRoleProvider(taskNum, r.agentKey); ok {
+		sel.provider, sel.retry = prov, cfg.Retry
+		return sel, nil
+	}
 	if prov, cfg, ok := r.s.agentBindingProvider(r.agentKey); ok {
 		sel.provider, sel.retry = prov, cfg.Retry
 		return sel, nil
@@ -162,6 +166,9 @@ func (r *taskLLMRuntime) activeCfg() (agent.Config, bool) {
 	pt, err := r.s.m.pg.GetTask(taskNum)
 	if err != nil || pt == nil {
 		return agent.Config{}, false
+	}
+	if _, cfg, ok := r.s.taskRoleProvider(taskNum, r.agentKey); ok {
+		return cfg, true
 	}
 	if _, cfg, ok := r.s.agentBindingProvider(r.agentKey); ok {
 		return cfg, true
@@ -466,6 +473,11 @@ func isRetryableStreamError(err error) bool {
 // CompactionWindow mirrors current()'s precedence so the context window always
 // matches the provider the role will actually stream on.
 func (r *taskLLMRuntime) CompactionWindow() int {
+	if taskNum, err := parseTaskID(r.taskID); err == nil {
+		if _, cfg, ok := r.s.taskRoleProvider(taskNum, r.agentKey); ok {
+			return cfg.CompactionWindow()
+		}
+	}
 	if _, cfg, ok := r.s.agentBindingProvider(r.agentKey); ok {
 		return cfg.CompactionWindow()
 	}
@@ -496,6 +508,17 @@ func (r *taskLLMRuntime) CompactionWindow() int {
 		return (agent.Config{}).CompactionWindow()
 	}
 	return minimum
+}
+
+// taskRoleProvider resolves the per-role task override (task_role_llm) — the most
+// specific selection (this task + this role) and the highest precedence of all. Like
+// an agent binding it carries no task-chain failover bookkeeping (profileID stays 0).
+func (s *Server) taskRoleProvider(taskID int64, agentKey string) (llm.Provider, agent.Config, bool) {
+	id, ok, err := s.m.pg.TaskRoleLLMProfile(taskID, agentKey)
+	if err != nil || !ok || id == 0 {
+		return nil, agent.Config{}, false
+	}
+	return s.providerForProfile(id)
 }
 
 // agentBindingProvider resolves the profile a role is explicitly bound to

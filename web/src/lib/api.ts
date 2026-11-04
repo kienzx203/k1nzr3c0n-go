@@ -352,6 +352,14 @@ export const api = {
       request_id: string;
     }>(`/tasks/${taskId}/intents/${intentId}/messages`, { message, request_id: requestId }),
   taskLLMResolution: (id: string) => get<TaskLLMResolutions>(`/tasks/${id}/llm/resolution`),
+  getTaskRoleLLM: (id: string) =>
+    get<{ role_llm_profiles: Record<string, number> }>(`/tasks/${id}/llm/roles`).then(
+      (r) => r.role_llm_profiles ?? {},
+    ),
+  updateTaskRoleLLM: (id: string, roleLLMProfiles: Record<string, number | null>) =>
+    put<{ role_llm_profiles: Record<string, number> }>(`/tasks/${id}/llm/roles`, {
+      role_llm_profiles: roleLLMProfiles,
+    }).then((r) => r.role_llm_profiles ?? {}),
   // Reopen unsuccessful blocked/exhausted/stopped intents so Workers reclaim and restart them.
   rerunIntent: (taskId: string, intentId: string) =>
     post<{ id: string; reopened: number }>(`/tasks/${taskId}/intents/${intentId}/rerun`),

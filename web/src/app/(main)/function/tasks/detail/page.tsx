@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
 import { TaskLLMProfileChain } from "@/components/task-llm-profile-chain";
+import { TaskRoleLLM } from "@/components/task-role-llm";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -192,6 +193,8 @@ function TaskLLMControl({ task, profiles, onUpdated }: { task: Task; profiles: L
           disabled={saving}
           portalContainer={popoverContentRef}
         />
+
+        <TaskRoleLLM taskId={task.id} profiles={profiles} disabled={saving} />
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
