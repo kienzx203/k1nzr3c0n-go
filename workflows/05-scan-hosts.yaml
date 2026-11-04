@@ -224,8 +224,8 @@ steps:
       cat > {workspace}/.vm_sig.sh <<'SIG'
       #!/bin/sh
       host="$1"; ip="$2"
-      o=$(curl -sk -i --resolve "$host:443:$ip" --max-time 4 "https://$host/" 2>/dev/null)
-      [ -z "$o" ] && o=$(curl -s -i --resolve "$host:80:$ip" --max-time 4 "http://$host/" 2>/dev/null)
+      o=$(curl -sk -i --resolve "$host:443:$ip" --max-time 4 "https://$host/" 2>/dev/null | head -c 200000)
+      [ -z "$o" ] && o=$(curl -s -i --resolve "$host:80:$ip" --max-time 4 "http://$host/" 2>/dev/null | head -c 200000)
       [ -z "$o" ] && { printf '|0|'; exit 0; }
       c=$(printf '%s' "$o" | grep -aoE 'HTTP/[0-9.]+ [0-9][0-9][0-9]' | head -1 | grep -oE '[0-9][0-9][0-9]$')
       n=$(printf '%s' "$o" | wc -c | tr -d ' ')
@@ -246,7 +246,7 @@ steps:
       code=$(printf '%s' "$s" | cut -d'|' -f1)
       [ -z "$code" ] && exit 0
       case "$code" in 2*|3*|401|403|405) : ;; *) exit 0 ;; esac
-      base=$(grep -F "$ip|" {workspace}/.vm_base 2>/dev/null | head -1 | cut -d'|' -f2-)
+      base=$(awk -F'|' -v ip="$ip" '$1==ip{sub(/^[^|]*\|/,""); print; exit}' {workspace}/.vm_base 2>/dev/null)
       [ -n "$base" ] && [ "$s" = "$base" ] && exit 0
       printf '%s [%s] %s (base %s)\n' "$name" "$ip" "$code" "${base:-none}" >> {workspace}/vhost_matrix_hits.txt
       printf '%s\n' "$name" >> {workspace}/vhost_new_hosts.txt
