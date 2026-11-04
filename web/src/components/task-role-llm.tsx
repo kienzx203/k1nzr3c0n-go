@@ -2,93 +2,132 @@
 
 import * as React from "react";
 
+import { CpuIcon } from "lucide-react";
+
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import type { LLMProfile } from "@/lib/types";
 
-const ROLES: { key: string; label: string }[] = [
-  { key: "mainagent", label: "Main agent" },
-  { key: "planner", label: "Planner" },
-  { key: "worker", label: "Worker" },
+const ROLES: { key: string; label: string; hint: string }[] = [
+  { key: "mainagent", label: "Main agent", hint: "Điều phối chính / chat" },
+  { key: "planner", label: "Planner", hint: "Lập kế hoạch, sinh intent" },
+  { key: "worker", label: "Worker", hint: "Thực thi từng intent" },
 ];
 
-const NONE = "none";
+const DEFAULT_VALUE = "__default__";
+
+export type RoleOverrides = Record<string, number | null>;
 
 type Props = {
-  taskId: string;
   profiles: LLMProfile[];
   disabled?: boolean;
+  /** Self-managed mode: fetch + auto-save against this task. */
+  taskId?: string;
+  /** Controlled mode (e.g. the new-task form, before a task exists). */
+  value?: RoleOverrides;
+  onChange?: (next: RoleOverrides) => void;
 };
 
 /**
- * Per-role LLM model override for a single task. Each role (main agent / planner /
- * worker) can be pinned to its own profile; an unset role follows the task chain /
- * global binding. Highest precedence in the server resolver. Saves on change and
- * takes effect on the role's next LLM call.
+ * Per-role LLM model override. Each role (main agent / planner / worker) can be
+ * pinned to its own profile; an unset role follows the task chain / global binding.
+ * Highest precedence in the resolver, effective on the role's next LLM call.
+ *
+ * With `taskId` it fetches + auto-saves; with `value`/`onChange` it is a controlled
+ * field (used in the new-task form, which applies the overrides after the task is created).
  */
-export function TaskRoleLLM({ taskId, profiles, disabled }: Props) {
-  const [overrides, setOverrides] = React.useState<Record<string, number>>({});
+export function TaskRoleLLM({ profiles, disabled, taskId, value, onChange }: Props) {
+  const selfManaged = Boolean(taskId);
+  const [fetched, setFetched] = React.useState<Record<string, number>>({});
   const [savingRole, setSavingRole] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    if (!taskId) return;
     let alive = true;
     api
       .getTaskRoleLLM(taskId)
-      .then((r) => alive && setOverrides(r ?? {}))
-      .catch(() => alive && setOverrides({}));
+      .then((r) => alive && setFetched(r ?? {}))
+      .catch(() => alive && setFetched({}));
     return () => {
       alive = false;
     };
   }, [taskId]);
 
-  const onChange = async (role: string, value: string) => {
-    const next = value === NONE ? null : Number(value);
-    setSavingRole(role);
-    setError(null);
-    try {
-      const result = await api.updateTaskRoleLLM(taskId, { [role]: next });
-      setOverrides(result ?? {});
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "save failed");
-    } finally {
-      setSavingRole(null);
+  const current: RoleOverrides = selfManaged ? fetched : (value ?? {});
+
+  const setRole = async (role: string, next: number | null) => {
+    if (selfManaged && taskId) {
+      setSavingRole(role);
+      setError(null);
+      try {
+        const result = await api.updateTaskRoleLLM(taskId, { [role]: next });
+        setFetched(result ?? {});
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Lưu thất bại");
+      } finally {
+        setSavingRole(null);
+      }
+    } else {
+      onChange?.({ ...(value ?? {}), [role]: next });
     }
   };
 
   return (
-    <div className="space-y-2 rounded-md border p-3">
-      <div className="font-medium text-sm">Model theo vai trò (ghi đè cho task này)</div>
-      <p className="text-muted-foreground text-xs">
-        Mỗi vai trò chạy model riêng; để trống = theo chain/global. Ưu tiên cao nhất, áp dụng ở lần gọi LLM kế tiếp.
-      </p>
-      {ROLES.map(({ key, label }) => {
-        const current = overrides[key] ? String(overrides[key]) : NONE;
-        return (
-          <div key={key} className="flex items-center justify-between gap-2">
-            <span className="text-sm">{label}</span>
-            <Select
-              value={current}
-              onValueChange={(v) => onChange(key, v)}
-              disabled={disabled || savingRole === key}
+    <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+      <div className="flex items-start gap-2">
+        <CpuIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div className="space-y-0.5">
+          <div className="font-medium text-sm leading-none">Model theo vai trò</div>
+          <p className="text-muted-foreground text-xs leading-snug">
+            Mỗi vai trò chạy model riêng. <span className="font-medium">Mặc định</span> = theo chain/global. Ghi đè ưu
+            tiên cao nhất, hiệu lực ở lần gọi LLM kế tiếp.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        {ROLES.map(({ key, label, hint }) => {
+          const selected = current[key];
+          const triggerValue = selected ? String(selected) : DEFAULT_VALUE;
+          return (
+            <div
+              key={key}
+              className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] items-center gap-3 rounded-md px-1 py-1"
             >
-              <SelectTrigger size="sm" className="w-56">
-                <SelectValue placeholder="(theo chain/global)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value={NONE}>(theo chain/global)</SelectItem>
-                  {profiles.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.name} · {p.model}
+              <div className="min-w-0">
+                <div className="truncate font-medium text-sm">{label}</div>
+                <div className="truncate text-muted-foreground text-[11px] leading-tight">{hint}</div>
+              </div>
+              <Select
+                value={triggerValue}
+                onValueChange={(v) => setRole(key, v === DEFAULT_VALUE ? null : Number(v))}
+                disabled={disabled || savingRole === key}
+              >
+                <SelectTrigger size="sm" className="w-full" aria-label={`Model cho ${label}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value={DEFAULT_VALUE}>
+                      <span className="text-muted-foreground">Mặc định</span>
                     </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-        );
-      })}
+                    {profiles.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate font-medium">{p.name}</span>
+                          <span className="truncate text-muted-foreground text-xs">{p.model}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        })}
+      </div>
+
       {error && <p className="text-destructive text-xs">{error}</p>}
     </div>
   );

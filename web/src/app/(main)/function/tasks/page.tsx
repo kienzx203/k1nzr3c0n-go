@@ -51,6 +51,7 @@ import { AssetInterceptRulesEditor } from "@/components/asset-intercept-rules-ed
 import { StatusBadge } from "@/components/status-badge";
 import { TablePagination } from "@/components/table-pagination";
 import { TaskLLMProfileChain } from "@/components/task-llm-profile-chain";
+import { TaskRoleLLM, type RoleOverrides } from "@/components/task-role-llm";
 import { TaskTemplateControls } from "@/components/task-template-controls";
 import {
   AlertDialog,
@@ -3134,6 +3135,7 @@ function CreateTaskSheet({
   const [sourceTaskIDs, setSourceTaskIDs] = React.useState<string[]>([]);
   const [companyIDs, setCompanyIDs] = React.useState<number[]>([]);
   const [llmProfileIDs, setLLMProfileIDs] = React.useState<string[]>([]);
+  const [roleOverrides, setRoleOverrides] = React.useState<RoleOverrides>({});
   const [creating, setCreating] = React.useState(false);
   const [timeoutMin, setTimeoutMin] = React.useState(""); // Task timeout in minutes; blank/0 means unlimited.
   const [heartbeatMin, setHeartbeatMin] = React.useState("10"); // Planner heartbeat in minutes; default/minimum 10, matching the backend.
@@ -3197,7 +3199,7 @@ function CreateTaskSheet({
     try {
       const timeoutSec = Math.max(0, Math.floor(Number(timeoutMin) || 0)) * 60;
       const heartbeatSec = Math.max(10, Math.floor(Number(heartbeatMin) || 10)) * 60; // Minimum 10 minutes, matching backend normalization.
-      await api.createTask({
+      const created = await api.createTask({
         name: name.trim(),
         categoryId: categoryID,
         description: description.trim(),
@@ -3216,6 +3218,16 @@ function CreateTaskSheet({
           .map((r) => ({ ...r, pattern: r.pattern.trim() }))
           .filter((r) => r.pattern !== ""),
       });
+      const roleSel = Object.fromEntries(
+        Object.entries(roleOverrides).filter(([, v]) => v != null),
+      ) as RoleOverrides;
+      if (created?.id && Object.keys(roleSel).length > 0) {
+        try {
+          await api.updateTaskRoleLLM(created.id, roleSel);
+        } catch {
+          toast.error("Không áp được model theo vai trò (task đã tạo).");
+        }
+      }
       toast.success(swt("interface.m1026"));
       setName("");
       setCategoryID(undefined);
@@ -3225,6 +3237,7 @@ function CreateTaskSheet({
       setSourceTaskIDs([]);
       setCompanyIDs([]);
       setLLMProfileIDs([]);
+      setRoleOverrides({});
       setTimeoutMin("");
       setHeartbeatMin("10");
       setSeedFirstIntent(false);
@@ -3379,6 +3392,7 @@ function CreateTaskSheet({
                 portalContainer={sheetContentRef}
               />
               <FieldDescription>{swt("interface.m1045")}</FieldDescription>
+              <TaskRoleLLM profiles={profiles} value={roleOverrides} onChange={setRoleOverrides} />
             </Field>
 
             {/* Advanced timeout/heartbeat/first-intent settings start collapsed to keep the common flow compact. */}
