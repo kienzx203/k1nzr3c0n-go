@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { CpuIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
@@ -26,6 +27,9 @@ type Props = {
   /** Controlled mode (e.g. the new-task form, before a task exists). */
   value?: RoleOverrides;
   onChange?: (next: RoleOverrides) => void;
+  /** Render the Select dropdown inside this container (e.g. the popover) so a click
+   *  doesn't register as an outside interaction. */
+  portalContainer?: React.RefObject<HTMLElement | null>;
 };
 
 /**
@@ -36,7 +40,10 @@ type Props = {
  * With `taskId` it fetches + auto-saves; with `value`/`onChange` it is a controlled
  * field (used in the new-task form, which applies the overrides after the task is created).
  */
-export function TaskRoleLLM({ profiles, disabled, taskId, value, onChange }: Props) {
+export function TaskRoleLLM({ profiles, disabled, taskId, value, onChange, portalContainer }: Props) {
+  const labelOf = (role: string) => ROLES.find((r) => r.key === role)?.label ?? role;
+  const modelOf = (pid: number | null) =>
+    pid == null ? "Mặc định" : (profiles.find((p) => String(p.id) === String(pid))?.name ?? `#${pid}`);
   const selfManaged = Boolean(taskId);
   const [fetched, setFetched] = React.useState<Record<string, number>>({});
   const [savingRole, setSavingRole] = React.useState<string | null>(null);
@@ -63,8 +70,11 @@ export function TaskRoleLLM({ profiles, disabled, taskId, value, onChange }: Pro
       try {
         const result = await api.updateTaskRoleLLM(taskId, { [role]: next });
         setFetched(result ?? {});
+        toast.success(`${labelOf(role)} → ${modelOf(next)}`);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Lưu thất bại");
+        const msg = e instanceof Error ? e.message : "Lưu thất bại";
+        setError(msg);
+        toast.error(`Lưu model cho ${labelOf(role)} thất bại: ${msg}`);
       } finally {
         setSavingRole(null);
       }
@@ -107,7 +117,7 @@ export function TaskRoleLLM({ profiles, disabled, taskId, value, onChange }: Pro
                 <SelectTrigger size="sm" className="w-full" aria-label={`Model cho ${label}`}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent container={portalContainer?.current ?? undefined}>
                   <SelectGroup>
                     <SelectItem value={DEFAULT_VALUE}>
                       <span className="text-muted-foreground">Mặc định</span>

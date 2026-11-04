@@ -194,7 +194,7 @@ function TaskLLMControl({ task, profiles, onUpdated }: { task: Task; profiles: L
           portalContainer={popoverContentRef}
         />
 
-        <TaskRoleLLM taskId={task.id} profiles={profiles} disabled={saving} />
+        <TaskRoleLLM taskId={task.id} profiles={profiles} disabled={saving} portalContainer={popoverContentRef} />
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
