@@ -72,14 +72,14 @@ khả năng phát hiện của blue team. Làm theo PHASE 1->6; INVARIANTS dư�
 
 ## INVARIANTS (BẤT BIẾN — đúng ở MỌI phase)
 1. SCOPE: mọi domain/subdomain (subdomains_all.txt) + mọi IP liên quan (asn_ipv4_cidrs.txt + resolved; gồm pool/LB/F5/shared/ASN) = IN-SCOPE (operator bảo chứng). Chỉ CDN/SaaS bên-thứ-ba thật (Cloudflare/Akamai) mới host-only.
-2. TUẦN TỰ 1 WORKER: mỗi domain/IP = 1 worker trong task HIỆN TẠI qua add_intent, chạy LẦN LƯỢT (mở mục kế CHỈ khi worker trước xong). TUYỆT ĐỐI KHÔNG spawn_task, KHÔNG đồng thời. Tên intent bắt đầu "[#i/tổng] <domain|ip>".
+2. SONG SONG TỐI ĐA 10 WORKER: mỗi domain/IP = 1 worker trong task HIỆN TẠI qua add_intent; giữ TỐI ĐA 10 worker đồng thời (1 worker xong -> release mục kế để luôn bám ~10). Song song NẰM TRONG CÙNG task — TUYỆT ĐỐI KHÔNG spawn_task (không tạo task mới). Tên intent bắt đầu "[#i/tổng] <domain|ip>". (Giới hạn cứng thực tế = UI Concurrency settings của task; đặt =10 để chạy đủ 10.)
 3. QUEUE BỀN: record_fact 1 fact "QUEUE" liệt kê TOÀN BỘ domain/IP + trạng thái [chờ/đang/xong] NGAY từ đầu; cập nhật khi mỗi mục xong. Không để phần chờ chỉ nằm trong đầu.
-4. HIỆN MỌI THỨ (operator theo dõi real-time): trước mỗi worker/bước lớn record_fact 1 dòng "đang làm X trên mục Y"; ghi NGAY mọi finding/fact/asset khi vừa có (không gom); KHÔNG chạy ẩn/im lặng; luôn đúng 1 worker đang chạy nhìn thấy được.
+4. HIỆN MỌI THỨ (operator theo dõi real-time): trước mỗi worker/bước lớn record_fact 1 dòng "đang làm X trên mục Y"; ghi NGAY mọi finding/fact/asset khi vừa có (không gom); KHÔNG chạy ẩn/im lặng; mọi worker (tối đa 10 song song) đều phải narrate + nhìn thấy được, không worker nào chạy ngầm.
 5. CỘNG DỒN: lộ domain/IP MỚI bất cứ lúc nào (recon HAY khai thác: loot/config/SSRF/pivot/cert/vhost) -> create_target (domain) / nạp 05 target_ips (IP) + NỐI CUỐI QUEUE + xử lý khi tới lượt (KHÔNG spawn_task).
 6. FINDING client-grade: report_finding CHỈ cho cái đã VERIFY 2x + đủ severity/CWE/CVSS/evidence/PoC/traffic/remediation (chuẩn ở PHASE 3). Thiếu PoC = KHÔNG report.
 7. SKILL: được dùng MỌI skill — list_skills để xem, load_skill <name> để nạp; không giới hạn map ROUTE. Operator chèn chỉ-dẫn giữa chừng -> ĐỌC + TUÂN ngay. Lưu NGAY rồi BỎ output thô khỏi context.
 8. PHỦ ĐỦ LỚP LỖ HỔNG: mỗi asset web phải đối chiếu PHỤ LỤC A — VULN CATALOGUE; mỗi lớp lỗ áp-dụng-được = terminal state (tested | reasoned-negative | out-of-scope). Không bỏ lớp nào mà không có lý do ghi lại.
-KHÔNG: spawn_task · chạy đồng thời/ẩn · report thiếu PoC · re-scan cái đã map · tự nới scope · DoS/phá hoại production · bỏ lớp lỗ trong PHỤ LỤC A mà không lý do.
+KHÔNG: spawn_task · chạy ẩn/im lặng · vượt 10 worker đồng thời · report thiếu PoC · re-scan cái đã map · tự nới scope · DoS/phá hoại production · bỏ lớp lỗ trong PHỤ LỤC A mà không lý do.
 TOOL MAP: recon->run_workflow · theo run->run_status+run_log · bản đồ->recon_graph · tái dùng->recon_findings/recon_assets · run cũ->recon_runs · worker/domain->add_intent · giám sát->get_task_graph+get_task_worker_trace · ghi->record_fact/insert_assets · finding->report_finding · scope mới->create_target · ghim lead->graph_note · skill->list_skills/load_skill · client-side taint/DOM XSS->web-pentest + Burp DOM Invader/jsluice/dalfox.
 EOF
 )
@@ -119,14 +119,14 @@ EOF
 )
 
 P2=$(cat <<'EOF'
-## PHASE 2 — MAP BỀ MẶT + CHẠY QUEUE (theo INVARIANT #2/#3: mỗi domain/IP = 1 worker add_intent, tuần tự)
+## PHASE 2 — MAP BỀ MẶT + CHẠY QUEUE (theo INVARIANT #2/#3: mỗi domain/IP = 1 worker add_intent, tối đa 10 song song)
 - QUEUE: lập fact QUEUE (INV #3) từ subdomains_all.txt + asn_ipv4_cidrs.txt + resolved. Tái dùng recon có sẵn (recon_findings/recon_assets) nếu run/task trước đã tạo — KHÔNG recon lại; nhưng QUEUE vẫn phải liệt kê ĐỦ mọi mục.
-- WORKER (mục kế trong QUEUE): add_intent(summary="[#<i>/<tổng>] <domain|ip> — PHASE 2-4: vhost sống+chết x mọi IP, JS-endpoint, exploit web, privesc, report", asset_ids=[...]). Worker xong -> đánh dấu mục "xong" trong QUEUE -> add_intent mục kế. Giám sát: get_task_graph + get_task_worker_trace + steer.
+- WORKER (mục kế trong QUEUE): add_intent(summary="[#<i>/<tổng>] <domain|ip> — PHASE 2-4: vhost sống+chết x mọi IP, JS-endpoint, exploit web, privesc, report", asset_ids=[...]). Release theo BATCH: giữ TỐI ĐA 10 worker đồng thời; mỗi worker xong -> đánh dấu mục "xong" trong QUEUE -> add_intent mục kế để luôn bám ~10. Giám sát: get_task_graph + get_task_worker_trace + steer.
 - RESOLVE từng sub: public + DoH + NS auth (dig @ns). SERVFAIL/timeout = soft-recheck 8.8.8.8/1.1.1.1/9.9.9.9 trước khi coi là "chết"; tên không-resolve vẫn là SURFACE (tìm IP qua CNAME/cert-SAN/Shodan·Censys·FOFA/passive-DNS/PTR).
 - VHOST MATRIX (BẮT BUỘC từng domain): MỌI tên CẢ SỐNG LẪN CHẾT x MỌI IP mở-web. CHẠY run_workflow 05-scan-hosts.yaml với vars={target_hosts:"<MỌI tên = subdomains_all.txt từ 01/02, cả sống lẫn chết>", target_ips:"<DẢI IP ĐẦY ĐỦ = asn_ipv4_cidrs.txt từ 01/02 + pool/LB/F5 IP không-tên-nào-resolve-tới, dạng IP/CIDR>", vhost_all_names:"true"} — 05 tự port-scan IP + sweep mọi tên như Host vs mọi IP mở-web, GATE baseline random-host (loại catch-all), phản hồi KHÁC baseline = vhost sống -> asset mới. Theo delta qua recon_graph(target, run_id). (Thủ công nếu cần: curl --resolve name:443:IP https+http.)
 - PORT SCAN mọi IP của target (naabu -> nmap -sV -sC). Flag unauth: redis6379/mongo27017/elastic9200/DB, SMB445/LDAP389,636/Kerberos88/RDP3389/SSH22/FTP21/SMTP25/SNMP161, docker2375/k8s6443,10250. (IP pool/LB/shared của target = quét đầy đủ; chỉ CDN bên-thứ-ba mới host-only.)
 - DONE PHASE 2 (mỗi mục QUEUE): resolve + httpx-probe + port-scan origin + VHOST MATRIX sống+chết xong; QUEUE không còn [chờ]; không bỏ mục nào.
-- Surface mới BẤT CỨ LÚC NÀO (sub/host/param/IP, kể cả lúc khai thác) -> insert_assets + ĐƯA VÀO SCOPE + add_intent 1 worker MỚI trong task này (release LẦN LƯỢT khi worker trước xong): 05-scan-hosts target_hosts="<host mới>" / target_ips="<IP mới>" rồi theo delta. KHÔNG spawn_task.
+- Surface mới BẤT CỨ LÚC NÀO (sub/host/param/IP, kể cả lúc khai thác) -> insert_assets + ĐƯA VÀO SCOPE + add_intent 1 worker MỚI trong task này (trong hạn tối đa 10 worker đồng thời): 05-scan-hosts target_hosts="<host mới>" / target_ips="<IP mới>" rồi theo delta. KHÔNG spawn_task.
 EOF
 )
 
@@ -172,7 +172,7 @@ EOF
 P6=$(cat <<'EOF'
 ## PHASE 6 — MỤC TIÊU + BÁO CÁO
 - Objective TA0009: đạt crown jewels; CHỨNG MINH tác động thật — MÔ PHỎNG bước phá hoại cuối (wipe/ransom/mass-delete), KHÔNG thực thi.
-- CONVERGENCE "xong" = objective đạt, HOẶC mọi ledger item terminal (tested / reasoned-negative / out-of-scope / deferred-có-lý-do). BẮT BUỘC: MỖI domain + MỖI IP đã được XỬ LÝ TUẦN TỰ xong (một task duy nhất, không bỏ mục nào), đã qua VHOST MATRIX sống+chết, mọi IP phủ port-scan + vhost, mọi endpoint JS + mọi cặp source->sink DOM đã test, mọi lớp PHỤ LỤC A áp-dụng-được đã terminal (INV #8), đã khai thác sâu tới hạn, và KHÔNG còn domain/IP mới phát hiện mà chưa đưa vào scope + xử lý. Baseline (resolve+probe+port-scan+vhost) KHÔNG BAO GIỜ defer.
+- CONVERGENCE "xong" = objective đạt, HOẶC mọi ledger item terminal (tested / reasoned-negative / out-of-scope / deferred-có-lý-do). BẮT BUỘC: MỖI domain + MỖI IP đã được XỬ LÝ xong (một task duy nhất, tối đa 10 worker song song, không bỏ mục nào), đã qua VHOST MATRIX sống+chết, mọi IP phủ port-scan + vhost, mọi endpoint JS + mọi cặp source->sink DOM đã test, mọi lớp PHỤ LỤC A áp-dụng-được đã terminal (INV #8), đã khai thác sâu tới hạn, và KHÔNG còn domain/IP mới phát hiện mà chưa đưa vào scope + xử lý. Baseline (resolve+probe+port-scan+vhost) KHÔNG BAO GIỜ defer.
 - REPORT (skill report-writing): executive summary + attack-path narrative (bước->technique->kết quả) + ATT&CK heatmap + detection gaps (fired/miss) + IOC cho blue (hash/C2/timestamp) + fix blue-team ưu-tiên + deconfliction + cleanup log. report_finding theo CHUẨN FINDING client-grade (severity/CVSS/CWE/evidence/traffic/remediation — xem PHASE 3) trước, rồi lắp report từ các finding đó; mỗi finding 1 mục có tái-lập + impact + fix.
 EOF
 )
@@ -227,7 +227,7 @@ EOF
 NL=$'\n\n'
 DESC="${MISSION}${NL}${RULES}${NL}${P1}${NL}${P2}${NL}${P3}${NL}${P4}${NL}${P5}${NL}${P6}${NL}${APPA}"
 
-GOAL="RED TEAM / PENTEST được cấp phép (MITRE ATT&CK), theo 6 PHASE: recon -> map + mỗi domain/IP = 1 worker (add_intent) trong 1 task, chạy LẦN LƯỢT (KHÔNG tạo task mới, không đồng thời; VHOST MATRIX cả sống lẫn chết x mọi IP) -> phân tích lỗ hổng -> khai thác -> hậu khai thác (leo quyền/lateral/persistence tới cùng) -> đạt crown jewels + chứng minh tác động + báo cáo. Có kỷ luật: không DoS/phá hoại production."
+GOAL="RED TEAM / PENTEST được cấp phép (MITRE ATT&CK), theo 6 PHASE: recon -> map + mỗi domain/IP = 1 worker (add_intent) trong 1 task, chạy SONG SONG tối đa 10 worker cùng lúc (KHÔNG tạo task mới — song song trong cùng task; VHOST MATRIX cả sống lẫn chết x mọi IP) -> phân tích lỗ hổng -> khai thác -> hậu khai thác (leo quyền/lateral/persistence tới cùng) -> đạt crown jewels + chứng minh tác động + báo cáo. Có kỷ luật: không DoS/phá hoại production."
 
 echo "Creating the Red Team task template on $BASE_URL ..."
 create "Red Team" "$GOAL" "$DESC"
