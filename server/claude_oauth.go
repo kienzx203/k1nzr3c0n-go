@@ -36,7 +36,7 @@ import (
 // reveals whether Anthropic sends the 5h / weekly subscription windows (and under
 // which header names) so the usage bar can be built on confirmed data.
 func (s *Server) handleClaudeRateLimit(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, llm.LastRateLimit())
+	writeJSON(w, 200, map[string]any{"providers": llm.AllRateLimits()})
 }
 
 const (

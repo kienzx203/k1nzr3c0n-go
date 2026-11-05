@@ -352,6 +352,17 @@ export const api = {
       request_id: string;
     }>(`/tasks/${taskId}/intents/${intentId}/messages`, { message, request_id: requestId }),
   taskLLMResolution: (id: string) => get<TaskLLMResolutions>(`/tasks/${id}/llm/resolution`),
+  llmRateLimits: () =>
+    get<{
+      providers?: Array<{
+        host?: string;
+        model?: string;
+        sub?: boolean;
+        status?: number;
+        headers?: Record<string, string>;
+        at?: string;
+      }>;
+    }>("/llm/ratelimit").then((r) => r.providers ?? []),
   getTaskRoleLLM: (id: string) =>
     get<{ role_llm_profiles: Record<string, number> }>(`/tasks/${id}/llm/roles`).then(
       (r) => r.role_llm_profiles ?? {},

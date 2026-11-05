@@ -751,6 +751,7 @@ func (s *Server) Handler() http.Handler {
 	// the server's ~/.claude/.credentials.json (deploy.sh calls this).
 	mux.HandleFunc("POST /api/llm/claude/seed", s.handleClaudeSeed)
 	mux.HandleFunc("GET /api/llm/claude/ratelimit", s.handleClaudeRateLimit)
+	mux.HandleFunc("GET /api/llm/ratelimit", s.handleClaudeRateLimit)
 	// Add one claude-sub profile for a hand-typed model (e.g. a newly released one).
 	mux.HandleFunc("POST /api/llm/claude/add", s.handleClaudeAdd)
 

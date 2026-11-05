@@ -8,6 +8,8 @@ import (
 	"iter"
 	"log"
 	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,8 +22,10 @@ import (
 // rate-limit / quota related, keep the latest snapshot, and log it once per
 // change. A follow-up builds the real usage bars once these names are confirmed.
 
-// RateLimitSnapshot is the latest set of rate-limit-ish response headers seen.
+// RateLimitSnapshot is the latest set of rate-limit-ish response headers seen for
+// one upstream host (so Claude and e.g. opencode.ai are tracked separately).
 type RateLimitSnapshot struct {
+	Host    string            `json:"host"`
 	Model   string            `json:"model"`
 	Sub     bool              `json:"sub"`
 	Status  int               `json:"status"`
@@ -30,15 +34,20 @@ type RateLimitSnapshot struct {
 }
 
 var (
-	rlMu   sync.RWMutex
-	rlLast RateLimitSnapshot
+	rlMu  sync.RWMutex
+	rlMap = map[string]RateLimitSnapshot{}
 )
 
-// LastRateLimit returns the most recent captured rate-limit header snapshot.
-func LastRateLimit() RateLimitSnapshot {
+// AllRateLimits returns the latest snapshot per upstream host, newest first.
+func AllRateLimits() []RateLimitSnapshot {
 	rlMu.RLock()
 	defer rlMu.RUnlock()
-	return rlLast
+	out := make([]RateLimitSnapshot, 0, len(rlMap))
+	for _, v := range rlMap {
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
+	return out
 }
 
 // looksRateLimit reports whether a (lowercased) header name is usage/limit related.
@@ -54,21 +63,27 @@ func looksRateLimit(lk string) bool {
 	return false
 }
 
-// captureRateLimit records any usage/limit headers from a response and logs them.
-func captureRateLimit(h http.Header, model string, sub bool, status int) {
-	snap := RateLimitSnapshot{Model: model, Sub: sub, Status: status, Headers: map[string]string{}, At: time.Now()}
+// captureRateLimit records any usage/limit headers from a response (keyed by the
+// upstream host so Claude vs opencode.ai etc. are tracked separately) and logs them.
+func captureRateLimit(h http.Header, baseURL, model string, sub bool, status int) {
+	headers := map[string]string{}
 	for k, v := range h {
 		if lk := strings.ToLower(k); looksRateLimit(lk) {
-			snap.Headers[lk] = strings.Join(v, ",")
+			headers[lk] = strings.Join(v, ",")
 		}
 	}
-	if len(snap.Headers) == 0 {
+	if len(headers) == 0 {
 		return
 	}
+	host := baseURL
+	if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+		host = u.Host
+	}
+	snap := RateLimitSnapshot{Host: host, Model: model, Sub: sub, Status: status, Headers: headers, At: time.Now()}
 	rlMu.Lock()
-	rlLast = snap
+	rlMap[host] = snap
 	rlMu.Unlock()
-	log.Printf("[claude-ratelimit] model=%s sub=%v status=%d headers=%v", model, sub, status, snap.Headers)
+	log.Printf("[llm-ratelimit] host=%s model=%s sub=%v status=%d headers=%v", host, model, sub, status, headers)
 }
 
 // anthropicProvider speaks the Anthropic Messages API. When sub is true it is the
@@ -248,7 +263,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req CompletionRequest) i
 			yield(StreamEvent{}, err)
 			return
 		}
-		captureRateLimit(resp.Header, p.cfg.Model, p.sub, resp.StatusCode)
+		captureRateLimit(resp.Header, p.cfg.BaseURL, p.cfg.Model, p.sub, resp.StatusCode)
 		defer resp.Body.Close()
 		scan := newSSEScanner(resp.Body)
 		for {
@@ -294,7 +309,7 @@ func (p *anthropicProvider) Complete(ctx context.Context, req CompletionRequest)
 	if err != nil {
 		return Message{}, "", Usage{}, err
 	}
-	captureRateLimit(resp.Header, p.cfg.Model, p.sub, resp.StatusCode)
+	captureRateLimit(resp.Header, p.cfg.BaseURL, p.cfg.Model, p.sub, resp.StatusCode)
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -198,6 +198,7 @@ export const english: Record<keyof typeof englishSource, string> = {
   "e189": "粗野主义",
   "e190": "柔和流行",
   "e191": "橘色",
+  "e192": "黑客",
 };
 import type { en as interfaceSource } from './interface.ts';
 const interfaceMessages: Record<keyof typeof interfaceSource, string> = {
