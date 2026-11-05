@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,12 +32,113 @@ import (
 	"github.com/Autumn-27/norma/llm"
 )
 
+// --- opencode usage ---------------------------------------------------------
+// opencode (Go Plus) does NOT return usage in inference headers; it exposes the
+// 5h/weekly/monthly windows at GET {base}/v1/usage (Authorization: Bearer <key>)
+// as {"usage":{"rolling":{percent,resetsAt,status},"weekly":{…},"monthly":{…}}}.
+// We fetch it per opencode profile and synthesize the same utilization headers the
+// usage card already understands, cached briefly so UI polling doesn't hammer it.
+
+type ocUsageWin struct {
+	Status   string  `json:"status"`
+	Percent  float64 `json:"percent"`
+	ResetsAt string  `json:"resetsAt"`
+}
+
+var (
+	ocUsageMu    sync.Mutex
+	ocUsageCache = map[string]struct {
+		snap llm.RateLimitSnapshot
+		at   time.Time
+		ok   bool
+	}{}
+)
+
+// fetchOpencodeUsage pulls {base}/v1/usage and turns it into a RateLimitSnapshot.
+// Results are cached per base URL for 15s.
+func fetchOpencodeUsage(baseURL, apiKey, model string) (llm.RateLimitSnapshot, bool) {
+	ocUsageMu.Lock()
+	if c, ok := ocUsageCache[baseURL]; ok && time.Since(c.at) < 15*time.Second {
+		ocUsageMu.Unlock()
+		return c.snap, c.ok
+	}
+	ocUsageMu.Unlock()
+
+	snap, ok := llm.RateLimitSnapshot{}, false
+	if apiKey != "" {
+		req, err := http.NewRequest(http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/usage", nil)
+		if err == nil {
+			req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(apiKey))
+			resp, derr := (&http.Client{Timeout: 8 * time.Second}).Do(req)
+			if derr == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					var body struct {
+						Usage map[string]ocUsageWin `json:"usage"`
+					}
+					if json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&body) == nil && len(body.Usage) > 0 {
+						headers := map[string]string{}
+						for win, w := range body.Usage {
+							headers[win+"-utilization"] = fmt.Sprintf("%g", w.Percent/100)
+							headers[win+"-reset"] = w.ResetsAt
+							headers[win+"-status"] = w.Status
+						}
+						host := baseURL
+						if pu, e := url.Parse(baseURL); e == nil && pu.Host != "" {
+							host = pu.Host
+						}
+						snap = llm.RateLimitSnapshot{Host: host, Model: model, Status: 200, Headers: headers, At: time.Now()}
+						ok = true
+					}
+				}
+			}
+		}
+	}
+	ocUsageMu.Lock()
+	ocUsageCache[baseURL] = struct {
+		snap llm.RateLimitSnapshot
+		at   time.Time
+		ok   bool
+	}{snap, time.Now(), ok}
+	ocUsageMu.Unlock()
+	return snap, ok
+}
+
+// opencodeUsageSnapshots fetches usage for every opencode LLM profile.
+func (s *Server) opencodeUsageSnapshots() []llm.RateLimitSnapshot {
+	if s.m == nil || s.m.pg == nil {
+		return nil
+	}
+	profs, err := s.m.pg.ListProfiles()
+	if err != nil {
+		return nil
+	}
+	var out []llm.RateLimitSnapshot
+	seen := map[string]bool{}
+	for _, p := range profs {
+		if p == nil || !strings.Contains(strings.ToLower(p.BaseURL), "opencode") || seen[p.BaseURL] {
+			continue
+		}
+		seen[p.BaseURL] = true
+		cfg, ok := s.loadProfileConfig(p.ID)
+		if !ok {
+			continue
+		}
+		if snap, ok := fetchOpencodeUsage(p.BaseURL, cfg.APIKey, p.Model); ok {
+			out = append(out, snap)
+		}
+	}
+	return out
+}
+
 // handleClaudeRateLimit (GET /api/llm/claude/ratelimit) returns the most recent
 // rate-limit / usage headers captured from a Claude API response. Diagnostic: it
 // reveals whether Anthropic sends the 5h / weekly subscription windows (and under
 // which header names) so the usage bar can be built on confirmed data.
 func (s *Server) handleClaudeRateLimit(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]any{"providers": llm.AllRateLimits()})
+	providers := llm.AllRateLimits()
+	providers = append(providers, s.opencodeUsageSnapshots()...)
+	writeJSON(w, 200, map[string]any{"providers": providers})
 }
 
 const (

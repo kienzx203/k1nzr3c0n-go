@@ -64,7 +64,8 @@ function pctOf(w: Window): number | null {
 
 function prettyToken(t: string): string {
   const m = t.toLowerCase();
-  if (m.includes("5h") || m.includes("5-h") || m.includes("fiveh") || m.includes("hour")) return "5 giờ";
+  if (m.includes("5h") || m.includes("5-h") || m.includes("fiveh") || m.includes("rolling") || m.includes("hour"))
+    return "5 giờ";
   if (m.includes("7d") || m.includes("week")) return "Tuần";
   if (m.includes("month") || m.includes("30d") || m.includes("monthly")) return "Tháng";
   if (m.includes("day") || m.includes("daily") || m.includes("24h")) return "Ngày";
@@ -119,8 +120,8 @@ function ProviderBars({ snap }: { snap: Snapshot }) {
       </div>
       {bars.map(({ w, pct }) => {
         const rem = countdown(resetMs(w.reset));
-        const rejected = w.status && w.status !== "allowed";
-        const danger = rejected || pct >= 90;
+        const okStatus = !w.status || ["allowed", "ok", "active", "enabled"].includes(w.status.toLowerCase());
+        const danger = !okStatus || pct >= 90;
         const warn = pct >= 70;
         return (
           <div key={w.token} className="space-y-0.5">
@@ -147,7 +148,7 @@ function ProviderBars({ snap }: { snap: Snapshot }) {
 
 function order(token: string): number {
   const m = token.toLowerCase();
-  if (m.includes("5h") || m.includes("hour")) return 0;
+  if (m.includes("5h") || m.includes("rolling") || m.includes("hour")) return 0;
   if (m.includes("7d") || m.includes("week")) return 1;
   if (m.includes("month") || m.includes("30d")) return 2;
   if (m.includes("day")) return 3;
