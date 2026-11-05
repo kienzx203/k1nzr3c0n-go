@@ -28,7 +28,16 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/norma/llm"
 )
+
+// handleClaudeRateLimit (GET /api/llm/claude/ratelimit) returns the most recent
+// rate-limit / usage headers captured from a Claude API response. Diagnostic: it
+// reveals whether Anthropic sends the 5h / weekly subscription windows (and under
+// which header names) so the usage bar can be built on confirmed data.
+func (s *Server) handleClaudeRateLimit(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, llm.LastRateLimit())
+}
 
 const (
 	claudeOAuthClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"

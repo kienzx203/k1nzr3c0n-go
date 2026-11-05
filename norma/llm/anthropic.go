@@ -6,9 +6,70 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 )
+
+// --- rate-limit header capture (diagnostic) --------------------------------
+// Anthropic returns the subscription usage windows (5h / weekly) as response
+// headers; the client has no "ask usage" API. We don't yet know their exact
+// names for the claude-sub OAuth flow, so capture every header that looks
+// rate-limit / quota related, keep the latest snapshot, and log it once per
+// change. A follow-up builds the real usage bars once these names are confirmed.
+
+// RateLimitSnapshot is the latest set of rate-limit-ish response headers seen.
+type RateLimitSnapshot struct {
+	Model   string            `json:"model"`
+	Sub     bool              `json:"sub"`
+	Status  int               `json:"status"`
+	Headers map[string]string `json:"headers"`
+	At      time.Time         `json:"at"`
+}
+
+var (
+	rlMu   sync.RWMutex
+	rlLast RateLimitSnapshot
+)
+
+// LastRateLimit returns the most recent captured rate-limit header snapshot.
+func LastRateLimit() RateLimitSnapshot {
+	rlMu.RLock()
+	defer rlMu.RUnlock()
+	return rlLast
+}
+
+// looksRateLimit reports whether a (lowercased) header name is usage/limit related.
+func looksRateLimit(lk string) bool {
+	if lk == "retry-after" {
+		return true
+	}
+	for _, s := range []string{"ratelimit", "rate-limit", "unified", "limit", "reset", "quota", "usage", "remaining"} {
+		if strings.Contains(lk, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// captureRateLimit records any usage/limit headers from a response and logs them.
+func captureRateLimit(h http.Header, model string, sub bool, status int) {
+	snap := RateLimitSnapshot{Model: model, Sub: sub, Status: status, Headers: map[string]string{}, At: time.Now()}
+	for k, v := range h {
+		if lk := strings.ToLower(k); looksRateLimit(lk) {
+			snap.Headers[lk] = strings.Join(v, ",")
+		}
+	}
+	if len(snap.Headers) == 0 {
+		return
+	}
+	rlMu.Lock()
+	rlLast = snap
+	rlMu.Unlock()
+	log.Printf("[claude-ratelimit] model=%s sub=%v status=%d headers=%v", model, sub, status, snap.Headers)
+}
 
 // anthropicProvider speaks the Anthropic Messages API. When sub is true it is the
 // "claude-sub" variant: it authenticates with a SUBSCRIPTION OAuth token
@@ -187,6 +248,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req CompletionRequest) i
 			yield(StreamEvent{}, err)
 			return
 		}
+		captureRateLimit(resp.Header, p.cfg.Model, p.sub, resp.StatusCode)
 		defer resp.Body.Close()
 		scan := newSSEScanner(resp.Body)
 		for {
@@ -232,6 +294,7 @@ func (p *anthropicProvider) Complete(ctx context.Context, req CompletionRequest)
 	if err != nil {
 		return Message{}, "", Usage{}, err
 	}
+	captureRateLimit(resp.Header, p.cfg.Model, p.sub, resp.StatusCode)
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
