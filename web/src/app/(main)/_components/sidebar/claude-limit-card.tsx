@@ -66,6 +66,7 @@ function prettyToken(t: string): string {
   const m = t.toLowerCase();
   if (m.includes("5h") || m.includes("5-h") || m.includes("fiveh") || m.includes("hour")) return "5 giờ";
   if (m.includes("7d") || m.includes("week")) return "Tuần";
+  if (m.includes("month") || m.includes("30d") || m.includes("monthly")) return "Tháng";
   if (m.includes("day") || m.includes("daily") || m.includes("24h")) return "Ngày";
   if (m.includes("request")) return "Requests";
   if (m.includes("input-token")) return "Input tokens";
@@ -148,7 +149,8 @@ function order(token: string): number {
   const m = token.toLowerCase();
   if (m.includes("5h") || m.includes("hour")) return 0;
   if (m.includes("7d") || m.includes("week")) return 1;
-  if (m.includes("day")) return 2;
+  if (m.includes("month") || m.includes("30d")) return 2;
+  if (m.includes("day")) return 3;
   return 9;
 }
 
