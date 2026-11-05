@@ -172,8 +172,8 @@ export function ClaudeLimitCard() {
         .then((s) => alive && setSnaps(s ?? []))
         .catch(() => {});
     load();
-    const poll = setInterval(load, 30000);
-    const tick = setInterval(force, 30000); // refresh countdowns
+    const poll = setInterval(load, 15000); // refetch usage every 15s
+    const tick = setInterval(force, 1000); // re-render countdowns every second
     return () => {
       alive = false;
       clearInterval(poll);
