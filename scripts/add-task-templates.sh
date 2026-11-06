@@ -76,7 +76,7 @@ khả năng phát hiện của blue team. Làm theo PHASE 1->6; INVARIANTS dư�
 3. QUEUE BỀN: record_fact 1 fact "QUEUE" liệt kê TOÀN BỘ domain/IP + trạng thái [chờ/đang/xong] NGAY từ đầu; cập nhật khi mỗi mục xong. Không để phần chờ chỉ nằm trong đầu.
 4. HIỆN MỌI THỨ (operator theo dõi real-time): trước mỗi worker/bước lớn record_fact 1 dòng "đang làm X trên mục Y"; ghi NGAY mọi finding/fact/asset khi vừa có (không gom); KHÔNG chạy ẩn/im lặng; mọi worker đang chạy song song đều phải narrate + nhìn thấy được, không worker nào chạy ngầm.
 5. CỘNG DỒN: lộ domain/IP MỚI bất cứ lúc nào (recon HAY khai thác: loot/config/SSRF/pivot/cert/vhost) -> create_target (domain) / nạp 05 target_ips (IP) + NỐI CUỐI QUEUE + xử lý khi tới lượt (KHÔNG spawn_task).
-6. FINDING client-grade: report_finding CHỈ cho cái đã VERIFY 2x + đủ severity/CWE/CVSS/evidence/PoC/traffic/remediation (chuẩn ở PHASE 3). Thiếu PoC = KHÔNG report.
+6. FINDING chuẩn HACKERONE: report_finding CHỈ cho cái đã VERIFY 2x + có PoC RÕ RÀNG TÁI-LẬP-ĐƯỢC (STEPS TO REPRODUCE đánh số, copy-paste chạy lại ra đúng kết quả) + đủ title/severity/CWE/CVSS/impact/evidence/traffic/remediation (format đầy đủ ở PHASE 3). KHÔNG PoC rõ / thiếu steps = KHÔNG report.
 7. SKILL (chi tiết sống Ở ĐÂY — prompt này bị decompose, đừng chỉ dựa vào nó): methodology/catalogue/payload nằm trong skill -> load_skill TRƯỚC mỗi mảng việc (list_skills để xem). Operator chèn chỉ-dẫn giữa chừng -> ĐỌC + TUÂN ngay. Lưu NGAY rồi BỎ output thô khỏi context.
 8. PHỦ ĐỦ LỚP LỖ HỔNG: mỗi asset web phải đối chiếu VULN CATALOGUE (skill web-pentest/references/vuln-catalogue.md); mỗi lớp lỗ áp-dụng-được = terminal state (tested | reasoned-negative | out-of-scope). Không bỏ lớp nào mà không có lý do ghi lại.
 KHÔNG: spawn_task · chạy ẩn/im lặng · report thiếu PoC · re-scan cái đã map · tự nới scope · DoS/phá hoại production · bỏ lớp lỗ trong VULN CATALOGUE (skill web-pentest) mà không lý do.
@@ -135,7 +135,15 @@ P3=$(cat <<'EOF'
 - NGHIÊN CỨU + KHAI THÁC TẤT CẢ (đừng dừng ở signature): nuclei -ut -> nuclei full template mọi host/panel; rồi với MỖI tech/CVE tiềm năng -> đọc advisory + PoC, DỰNG LẠI exploit, thử trên target (safe PoC). Edge/app server (Citrix/Fortinet/Ivanti/GlobalProtect/F5/Exchange/Zimbra/Confluence/WebLogic/Struts/Spring) = ưu tiên hàng đầu.
 - SERVICE: trên port đã mở -> default/weak cred + CVE-version mọi panel/service. CLOUD: bucket cloud_enum/s3scanner; SSRF -> metadata -> IAM.
 - VERIFY trước report_finding: tự tái lập độc lập (curl / 1 nuclei template / exploit PoC / skill khớp) 2 lần, không phá hoại. graph_note(verified | false-positive); record_fact cho version/CVE; report_finding chỉ cho cái đã CHỨNG MINH.
-- CHUẨN FINDING client-grade (BẮT BUỘC mỗi report_finding — đây là chất lượng bàn giao, xem skill finding-discipline + report-writing): severity ĐÚNG (critical|high|medium|low) · vulnclass (kèm CWE-ID) · name rõ · summary nêu ASSET bị ảnh hưởng + BUSINESS IMPACT · asset_ids link asset · evidence = PoC TÁI LẬP từng bước + CVSS v3.1 vector + CWE + REMEDIATION cụ thể · traffic_refs = request/response THẬT (baseline control + proof + verification, đúng thứ tự tái lập). DEDUP (không báo trùng, 1 bug class gộp 1 finding + list biến thể) + đã FP-check. THIẾU PoC/evidence/traffic = CHƯA đủ, không report.
+- CHUẨN FINDING theo HACKERONE (BẮT BUỘC mỗi report_finding — chất lượng bàn giao; chi tiết: skill finding-discipline + report-writing). Mỗi finding = 1 report HackerOne đầy đủ, ánh xạ vào field report_finding:
+  · name = TITLE rõ-cụ-thể: "<lỗ> trên <asset> qua <param/endpoint>" (không chung chung).
+  · severity (critical|high|medium|low) + CVSS v3.1 vector trong evidence.
+  · vulnclass (kèm CWE-ID) = Weakness.
+  · summary = SUMMARY + IMPACT: mô tả lỗ + TÁC ĐỘNG KINH DOANH thực tế trên asset (đọc được bởi non-tech).
+  · asset_ids link asset.
+  · evidence = (1) STEPS TO REPRODUCE đánh số 1→N, CHÍNH XÁC & copy-paste chạy lại được (URL + method + header + payload/body cụ thể, tài khoản/điều kiện tiền đề) + (2) PROOF OF CONCEPT: request+response THẬT, marker/giá trị chứng minh (không chỉ mô tả) + (3) CVSS v3.1 vector + (4) CWE + (5) REMEDIATION cụ thể làm-được-ngay.
+  · traffic_refs = baseline control + proof + verification (đúng thứ tự tái lập).
+  BẮT BUỘC PoC RÕ RÀNG, TÁI LẬP ĐỘC LẬP (người khác dựng lại chỉ từ steps là ra) + marker an toàn (không payload phá hoại). DEDUP (1 bug-class = 1 finding + list biến thể; cùng-nguyên-nhân nhiều host = 1 finding, asset_ids liệt kê hết) + FP-check. THIẾU PoC/steps/traffic = CHƯA đủ, KHÔNG report.
 - DONE PHASE 3 khi: mọi tech/version đã map CVE; mọi lead đã VERIFY (xác nhận | FP); mọi cái CONFIRMED đã report_finding chuẩn.
 EOF
 )
