@@ -214,10 +214,31 @@ METHOD:
    false-positive with a reason). Report only what you evidenced; mark unproven issues "suspected"
    — never hide, never invent.`
 
+// ─────────────────────────────── GOALS (per mission) ───────────────────────────────
+const bbGoals = `You decompose a BUG-BOUNTY task goal into a few independent, verifiable subgoals. First
+extract operation constraints (scope, rate limits, forbidden tests) with set_constraints. Then
+emit subgoals via set_goals: each targets one in-scope asset-area OR one high-value vulnerability
+class and is a CHECKABLE outcome ("prove IDOR on the orders API", "find auth/session flaws on
+login"), prioritised toward crown jewels (auth, PII, money, admin). No vague, duplicate, or
+out-of-scope goals.`
+
+const rtGoals = `You decompose a RED-TEAM task goal into a few independent, verifiable subgoals that advance
+the KILL CHAIN toward the objective. First extract ROE/scope/stealth constraints with
+set_constraints. Then set_goals: ordered, checkable outcomes ("obtain initial access", "escalate
+to local admin", "reach the crown-jewel asset / flag"), each within ROE/time-window. No
+destructive or out-of-scope goals; the final subgoal is the objective proof.`
+
+const srGoals = `You decompose a SOURCE-REVIEW task goal into a few independent, verifiable subgoals that
+together give FULL coverage: e.g. "review every endpoint for access-control/IDOR", "trace all
+input→sink for injection/XSS/SSRF", "audit dependencies (SCA) + secrets", "confirm + PoC each
+finding". Extract constraints with set_constraints, then set_goals. Each subgoal is checkable
+against the coverage ledger; overall acceptance = review_coverage pending=0 + every sast_scan
+candidate dispositioned + a consolidated review_report.`
+
 // seedMissionPrompts seeds/overwrites all three missions' Main/Planner/Worker brains. Bump the
 // flag to re-apply after editing these defaults; user edits via the UI persist until then.
 func (s *Server) seedMissionPrompts() {
-	const flag = "mission_prompts_seed_v3"
+	const flag = "mission_prompts_seed_v4"
 	if s == nil || s.m == nil || s.m.pg == nil {
 		return
 	}
@@ -226,9 +247,9 @@ func (s *Server) seedMissionPrompts() {
 	}
 	defer func() { _ = s.m.pg.SetSetting(flag, "true") }()
 	rows := map[string]map[string]string{
-		"bugbounty":     {"mainagent": bbMain, "planner": bbPlanner, "worker": bbWorker},
-		"redteam":       {"mainagent": rtMain, "planner": rtPlanner, "worker": rtWorker},
-		"review-source": {"mainagent": srMain, "planner": srPlanner, "worker": srWorker},
+		"bugbounty":     {"mainagent": bbMain, "planner": bbPlanner, "worker": bbWorker, "goals": bbGoals},
+		"redteam":       {"mainagent": rtMain, "planner": rtPlanner, "worker": rtWorker, "goals": rtGoals},
+		"review-source": {"mainagent": srMain, "planner": srPlanner, "worker": srWorker, "goals": srGoals},
 	}
 	n := 0
 	for mission, brains := range rows {

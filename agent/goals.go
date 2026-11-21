@@ -130,7 +130,7 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 	// Description rides in the user message (same channel as the goal), NOT via the
 	// {{.EngagementDescription}} template var — else a prompt that references the var
 	// would inject the description twice. System prompt stays pure static instructions.
-	sys := renderSystem("goals", goalsDefaultTmpl, GoalsVars{DataDir: dataDir, Now: nowStr()})
+	sys := renderSystemMission("goals", missionFor(taskID), taskID, goalsDefaultTmpl, GoalsVars{DataDir: dataDir, Now: nowStr()})
 	// set_constraints is always available (it does not depend on the asset store):
 	// the body already includes the "extract operation constraints before
 	// decomposing goals" step (whose wording can be changed on the agent edit page),
