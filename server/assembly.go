@@ -38,10 +38,22 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 			for _, n := range names {
 				nameSet[n] = true
 			}
-			// Mission-scoped skill: the source-review knowledge skill is visible only in the
-			// review-source mission; other missions don't load it.
-			if ri := agent.RunInfoFrom(ctx); ri.TaskID > 0 && pg.MissionOfTask(ri.TaskID) != "review-source" {
-				delete(nameSet, "appsec-vuln-verify")
+			// Mission-scoped skills: each mission's deep-knowledge skill loads only in its own
+			// mission (review-source → appsec-vuln-verify, bugbounty → bugbounty-methodology,
+			// redteam → redteam-attack). Drop the others for the current task's mission.
+			skillMission := map[string]string{
+				"appsec-vuln-verify":     "review-source",
+				"bugbounty-methodology":  "bugbounty",
+				"redteam-attack":         "redteam",
+			}
+			curMission := "bugbounty"
+			if ri := agent.RunInfoFrom(ctx); ri.TaskID > 0 {
+				curMission = pg.MissionOfTask(ri.TaskID)
+			}
+			for sk, want := range skillMission {
+				if want != curMission {
+					delete(nameSet, sk)
+				}
 			}
 			if allReg, err := skill.LoadDir(skillDir); err == nil && allReg != nil {
 				reg = skill.NewRegistry()

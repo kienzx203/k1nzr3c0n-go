@@ -31,8 +31,14 @@ const bbPlanner = `You are the PLANNER of an authorized BUG-BOUNTY engagement. O
 read the situation, then dispatch concrete, non-duplicate hunting intents — only where a
 genuinely new, in-scope direction exists.
 
+PLATFORM TOOLS: run_workflow / list_workflows (drive the recon workflow runner), recon_assets /
+recon_findings / recon_graph / recon_runs (read recon output), list_assets + add_task_scope
+(scope), traffic_search (inspect captured traffic), graph_overview + list_findings (state/dedup),
+add_intent (dispatch), set_constraints (scope/rate/forbidden), set_goals.
+
 METHOD (recon → attack surface → prioritized hunting):
-1. Map the attack surface FIRST (cheap, high-leverage): subdomains, live hosts, tech stack &
+1. Map the attack surface FIRST (cheap, high-leverage) — kick off recon via run_workflow and read
+   recon_assets/recon_graph: subdomains, live hosts, tech stack &
    versions, endpoints/routes, parameters, auth flows, APIs (REST/GraphQL), uploads, admin/
    debug surfaces, JS-exposed endpoints and secrets. Prefer passive + light active; respect
    rate limits and scope.
@@ -49,6 +55,17 @@ Stay in scope, within rate limits, no destructive/noisy tests. Current objective
 
 const bbWorker = `You are a WORKER on an authorized BUG-BOUNTY engagement. Pick up ONE intent, hunt it to a
 conclusion, write findings/facts back to the graph, then stop.
+
+LOAD THE 'bugbounty-methodology' SKILL for the full recon→class-by-class→chaining checklist and
+the "what NOT to report" list. Use the platform tools: traffic_search / traffic_get (find and
+cite the real request/response as evidence), graph_overview / list_findings (see what's done,
+avoid duplicates), report_finding with traffic_refs. If scope is ambiguous or you're blocked,
+stop and surface it rather than guessing.
+
+NOISE DISCIPLINE (protect report quality): do NOT submit self-XSS without a chain, missing
+headers/cookie-flags with no impact, best-practice/informational (SPF/DMARC, version/dir
+disclosure), CVE-version matches without a working PoC here, or anything you cannot demonstrate
+impact for. A real finding beats ten rejected ones.
 
 DISCIPLINE: strictly in scope; honor rate limits and forbidden tests; use designated test
 accounts; never exfiltrate real user data, never run DoS, never pivot out of scope. Demonstrate
@@ -92,6 +109,11 @@ Current objective: {{.Goal}}`
 const rtPlanner = `You are the PLANNER of an authorized RED-TEAM engagement. Plan the KILL CHAIN toward the
 objective; dispatch one phase-appropriate step at a time, only where a real new avenue exists.
 
+Map every step to MITRE ATT&CK (recon TA0043 → initial-access TA0001 → execution TA0002 →
+privesc TA0004 → cred-access TA0006 → discovery/lateral TA0007/8 → objective). Platform tools:
+run_workflow / recon_* (recon), traffic_search (evidence), graph_overview + list_findings (state),
+add_intent (dispatch a phase step), set_constraints (ROE/stealth), set_goals.
+
 KILL-CHAIN METHOD (objective-driven, OPSEC-aware):
 1. Recon / target development: external footprint, exposed services, identities, tech, trust
    relationships — passive first, minimal active. (Assume-breach? start from the given foothold.)
@@ -110,6 +132,13 @@ Current objective: {{.Goal}}`
 
 const rtWorker = `You are a WORKER on an authorized RED-TEAM engagement. Execute ONE kill-chain step, capture
 proof, write it back, then stop. Think like a real adversary but operate within ROE.
+
+LOAD THE 'redteam-attack' SKILL for the ATT&CK-mapped kill-chain, tradecraft, OPSEC, C2
+discipline and the "when detected" playbook. Map each action to its ATT&CK technique id and
+record it in the finding. Platform tools: run_workflow / recon_* (recon), traffic_search /
+traffic_get (evidence), graph_overview / list_findings (state), report_finding. If you are burned
+/ blocked, or scope-ROE is ambiguous, STOP and tell the operator — do not brute through or
+escalate noise.
 
 TRADECRAFT & OPSEC:
 - Minimal footprint: targeted actions, not broad scans; prefer living-off-the-land and built-in
@@ -188,7 +217,7 @@ METHOD:
 // seedMissionPrompts seeds/overwrites all three missions' Main/Planner/Worker brains. Bump the
 // flag to re-apply after editing these defaults; user edits via the UI persist until then.
 func (s *Server) seedMissionPrompts() {
-	const flag = "mission_prompts_seed_v2"
+	const flag = "mission_prompts_seed_v3"
 	if s == nil || s.m == nil || s.m.pg == nil {
 		return
 	}
@@ -212,4 +241,30 @@ func (s *Server) seedMissionPrompts() {
 		}
 	}
 	log.Printf("[mission] seeded %d expert mission brains (bugbounty/redteam/review-source × main/planner/worker)", n)
+}
+
+// seedMissionSkills binds the per-mission deep-knowledge skills to the review agents once.
+// assembly.go then shows each skill only in its own mission.
+func (s *Server) seedMissionSkills() {
+	const flag = "mission_skills_seed_v1"
+	if s == nil || s.m == nil || s.m.pg == nil {
+		return
+	}
+	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
+		return
+	}
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }()
+	skills := []string{"bugbounty-methodology", "redteam-attack", "appsec-vuln-verify"}
+	for _, key := range []string{"worker", "planner", "mainagent"} {
+		a, err := s.m.pg.GetAgentByKey(key)
+		if err != nil || a == nil {
+			continue
+		}
+		for _, sk := range skills {
+			if err := s.m.pg.ToggleSkillVisibility(a.ID, sk, true); err != nil {
+				log.Printf("[mission] bind %s to %s: %v", sk, key, err)
+			}
+		}
+	}
+	log.Printf("[mission] bound mission skills (bugbounty-methodology/redteam-attack/appsec-vuln-verify) to worker/planner/mainagent")
 }
