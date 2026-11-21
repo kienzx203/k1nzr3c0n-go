@@ -1,0 +1,53 @@
+# Go (Golang) sink/source coverage gaps — closes classes the signature DB / DEFAULT_CATS
+# did not categorise (SSTI showed as RECALL; weak-crypto / zip-slip had no sink).
+# Go uses the dedicated go/ast extractor (run_go.py); callee/recv/full are as that emits.
+# Every rule here is taint-gated: a constant / un-tainted call yields 0 (no false positives).
+rules:
+  # --- SSTI: text/template or html/template Parse of a tainted template string ---------
+  # IR: template.New("x").Parse(t)  -> callee 'Parse', full 'template.New().Parse'.
+  # Previously the tainted flow surfaced only as RECALL (no SSTI category registered).
+  - id: go-ssti-template-parse
+    family: [go]
+    languages: [go]
+    category: SSTI
+    severity: ERROR
+    message: tainted value reaches text/html template Parse (server-side template injection)
+    # NOTE: bare `Parse` is deliberately NOT a sink — it collides with url.Parse /
+    # time.Parse (false positives). ParseFiles/ParseGlob/ParseFS are template-only
+    # method names (safe even on a variable receiver); the regex covers the
+    # package-qualified template.New(...).Parse(...) / template.Must(...) idiom.
+    sinks:
+      - ParseFiles
+      - ParseGlob
+      - ParseFS
+      - {regex: "template\\.(New\\([^)]*\\)\\.)?Parse"}
+
+  # --- Weak crypto: data hashed/encrypted with a broken primitive (md5/sha1/des/rc4) -----
+  # IR: md5.Sum(..) -> callee 'Sum' recv 'md5' full 'md5.Sum'; crypto/des NewCipher etc.
+  # Taint-gated so md5.Sum([]byte("const")) == 0; only tainted/sensitive data flags.
+  - id: go-weak-crypto
+    family: [go]
+    languages: [go]
+    category: CRYPTO_WEAK
+    severity: WARNING
+    message: sensitive/tainted data processed with a weak crypto primitive (md5/sha1/des/rc4)
+    sinks:
+      - {regex: "(md5|sha1|des|rc4)\\.(Sum|New|NewCipher|New224)"}
+
+  # --- Zip-Slip: an archive-derived path reaches filepath.Join then a file open/create ----
+  # Register archive readers as sources; filepath.Join as the traversal sink.
+  - id: go-zip-slip-source
+    family: [go]
+    languages: [go]
+    category: ANY
+    message: archive entry readers (names are attacker-controlled -> zip-slip)
+    sources:
+      - {regex: "zip\\.(OpenReader|NewReader)|tar\\.NewReader"}
+  - id: go-zip-slip-sink
+    family: [go]
+    languages: [go]
+    category: PATH
+    severity: ERROR
+    message: archive-derived path reaches filepath.Join / file open (zip-slip path traversal)
+    sinks:
+      - {regex: "filepath\\.Join"}

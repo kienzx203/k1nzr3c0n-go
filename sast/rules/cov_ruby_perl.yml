@@ -1,0 +1,115 @@
+# Sink/source coverage for Ruby & Perl vuln classes that previously yielded
+# RECALL or nothing. Declarative-only (no engine change). Each rule was verified
+# to FIRE on a real source->sink flow and to give 0 on a constant/safe variant.
+#
+# Matching: bare string = exact callee; {regex: ...} is searched against both
+#   `callee` and the dotted `full` ("recv.callee"), so receiver-qualified
+#   regexes like `Net::HTTP` / `\.do\b` discriminate from generic bare names.
+# SQLI placeholder gating is done by the engine: a tainted value passed as a
+#   bind parameter after a pure-literal query string is treated as safe.
+rules:
+  # ----------------------------- RUBY --------------------------------------
+  - id: ruby-cmdi-open3
+    family: [ruby]
+    languages: [ruby]
+    category: CMDI
+    severity: ERROR
+    message: tainted input reaches a process/shell spawn API (command injection)
+    sinks:
+      - {regex: "Open3\\.|IO\\.popen|PTY\\.(spawn|getpty)|Process\\.(spawn|exec)|Kernel\\.(system|exec|spawn)"}
+      - spawn
+
+  - id: ruby-code-injection
+    family: [ruby]
+    languages: [ruby]
+    category: CODE_INJECTION
+    severity: ERROR
+    message: tainted input reaches a dynamic code-eval API (code injection)
+    # instance_eval/class_eval/module_eval/instance_exec evaluate their STRING arg
+    # as code -> any tainted arg is the payload (safe to flag).
+    # NOTE: send/public_send/__send__ are intentionally NOT here. They are code
+    # injection ONLY when the METHOD-NAME argument (arg0) is tainted; a constant
+    # method with a tainted DATA arg -- obj.send(:update, params[:x]) -- is benign
+    # and extremely common, so a plain any-arg sink false-positives. Precise
+    # detection needs an engine arg0-position sink (reported, not added here).
+    sinks: [instance_eval, class_eval, module_eval, instance_exec]
+
+  - id: ruby-template-injection
+    family: [ruby]
+    languages: [ruby]
+    category: CODE_INJECTION          # routes to the SSTI "Template / Code / EL" agent
+    severity: ERROR
+    message: tainted input compiled as a template (server-side template injection)
+    sinks:
+      - {regex: "ERB\\.new|Erubi(s)?|Erubis|Haml::Engine|Slim::Template|Liquid::Template|Tilt(\\.new)?"}
+
+  - id: ruby-xss-raw
+    family: [ruby]
+    languages: [ruby]
+    category: XSS
+    severity: ERROR
+    message: tainted input emitted as raw/unescaped HTML (XSS)
+    # raw()/safe_concat()/content_tag take the tainted value as an ARG (fires);
+    # the `x.html_safe` method-chain form taints the receiver only -> see report.
+    sinks: [raw, safe_concat, html_safe]
+
+  - id: ruby-path
+    family: [ruby]
+    languages: [ruby]
+    category: PATH
+    severity: ERROR
+    message: tainted input used as a filesystem path (path traversal / arbitrary file access)
+    sinks:
+      - {regex: "File\\.(open|read|write|new|binread|binwrite|foreach|readlines|delete|unlink)|IO\\.(read|readlines|binread|foreach)|FileUtils\\.|Pathname\\.new|Dir\\.(glob|entries)"}
+
+  - id: ruby-ssrf
+    family: [ruby]
+    languages: [ruby]
+    category: SSRF
+    severity: ERROR
+    message: tainted input controls an outbound HTTP request URL (SSRF)
+    # `^open$` = bare Kernel#open (open-uri); File.open collapses to PATH.
+    # URI.open issues a request; URI.parse/join (no fetch) deliberately excluded.
+    sinks:
+      - {regex: "^open$|Net::HTTP|URI\\.open|HTTParty|RestClient|Faraday|Excon|Typhoeus|HTTPClient|OpenURI"}
+
+  - id: ruby-open-redirect
+    family: [ruby]
+    languages: [ruby]
+    category: OPEN_REDIRECT
+    severity: ERROR
+    message: tainted input controls a redirect target (open redirect)
+    sinks: [redirect_to, redirect_back_or_to]
+
+  - id: ruby-mass-assignment
+    family: [ruby]
+    languages: [ruby]
+    category: MASS_ASSIGNMENT
+    severity: ERROR
+    message: tainted request params bound wholesale to a model (mass assignment)
+    sinks: [update_attributes, "update_attributes!", assign_attributes, update_all]
+
+  # ----------------------------- PERL --------------------------------------
+  - id: perl-sqli
+    family: [perl]
+    languages: [perl]
+    category: SQLI
+    severity: ERROR
+    message: tainted input concatenated into a DBI SQL statement (SQL injection)
+    # receiver-qualified (\.NAME) so bare do/execute builtins don't match;
+    # bind-parameter form is auto-treated safe by the engine's SQLI gating.
+    sinks:
+      - {regex: "\\.(do|prepare|prepare_cached|execute|selectrow_array|selectrow_arrayref|selectall_arrayref|selectall_hashref|selectcol_arrayref|selectrow_hashref)\\b"}
+
+  - id: perl-ssrf
+    family: [perl]
+    languages: [perl]
+    category: SSRF
+    severity: ERROR
+    message: tainted input controls an outbound HTTP request URL (SSRF)
+    # Scoped to HTTP-client receivers ($ua/$mech/$client/$http/$browser/$lwp/$agent)
+    # so a benign $cache->get / $config->get is NOT flagged; plus LWP::Simple funcs
+    # and module-qualified calls. Trade-off: misses oddly-named UA vars (see report).
+    sinks:
+      - {regex: "(?i)\\$\\w*(ua|agent|mech|client|browser|lwp|http|www|curl|tiny)\\w*\\.(get|post|put|head|mirror|request)\\b"}
+      - {regex: "\\bLWP\\b|HTTP::Tiny|WWW::Mechanize|getstore|get_store|lwp_get"}

@@ -1225,16 +1225,20 @@ func (t *ToolSet) goalMet() actool.CoreTool {
 // --- worker write tools ---
 
 func (t *ToolSet) addFinding() actool.CoreTool {
-	return writeTool("report_finding", "Record a confirmed vulnerability with verifiable command output/logs in evidence. In task context supply the current intent_id. Returned finding_id is the independent finding record ID; finding_node_id is the exploration node ID, retained on the first output line.", obj(map[string]any{
+	return writeTool("report_finding", "Record a confirmed vulnerability with verifiable command output/logs in evidence. For a source-review finding ALWAYS supply the STANDARD source→sink: 'source' (file:line — untrusted input) and 'sink' (file:line — dangerous operation), plus 'flow' when it crosses files; this is written into the exploration graph so every finding carries a clear, uniform data-flow. In task context supply the current intent_id. Returned finding_id is the independent finding record ID; finding_node_id is the exploration node ID, retained on the first output line.", obj(map[string]any{
 		"vulnclass": str("Vulnerability category"), "name": str("Vulnerability name"), "severity": str("critical|high|medium|low"), "summary": str("Finding summary"),
 		"intent_id": idp("intent id of the current task"), "asset_ids": map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "affected asset ids"},
 		"evidence":         str("Evidence/PoC text"),
+		"source":           str("STANDARD source→sink (for a source-review finding): the untrusted SOURCE — 'file:line — what enters' (e.g. 'app/ctrl.php:42 — $_GET[\"id\"] HTTP param')."),
+		"sink":             str("STANDARD source→sink (for a source-review finding): the dangerous SINK the tainted value reaches — 'file:line — the operation' (e.g. 'app/db.php:88 — mysqli_query() SQL concat')."),
+		"flow":             str("Optional ordered data-flow 'file:line → file:line → …' when it crosses functions/files; include the sanitizer that was absent/bypassed."),
 		"evidence_hint_id": idp("Optional hint node ID in this task for this finding; includes its structured traffic_refs. Do not reference inherited hints or another finding's hint."),
 		"traffic_refs": map[string]any{"type": "array", "description": "Optional: for HTTP/HTTPS, search and verify each request/response supports the finding before supplying actual IDs in reproduction order. For TCP/non-HTTP, absent capture, or no exact match, omit or pass []; reporting remains allowed. Explain the absence and supply other verifiable evidence. Never guess IDs, infer association from domain/time alone, or repeat probes merely for capture. Roles: baseline normal control, proof vulnerability evidence, verification additional validation, supporting supplementary evidence.",
 			"items": obj(map[string]any{"traffic_id": str("Real traffic ID returned by traffic_search"), "role": map[string]any{"type": "string", "enum": []string{"baseline", "proof", "verification", "supporting"}}, "note": str("how this traffic supports the vulnerability conclusion")}, "traffic_id")},
 	}, "vulnclass", "severity", "summary"), func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
 		var a struct {
 			VulnClass, Name, Severity, Summary, Evidence string
+			Source, Sink, Flow                           string
 			IntentID                                     json.RawMessage   `json:"intent_id"`
 			AssetIDs                                     []json.RawMessage `json:"asset_ids"`
 			TrafficRefs                                  []db.TrafficRef   `json:"traffic_refs"`
@@ -1242,6 +1246,23 @@ func (t *ToolSet) addFinding() actool.CoreTool {
 		}
 		if err := json.Unmarshal(in, &a); err != nil {
 			return actool.Errorf(err.Error()), nil
+		}
+		// Standard source→sink block prepended to evidence so every finding shows a clear,
+		// uniform data-flow in the exploration graph / UI.
+		if a.Source != "" || a.Sink != "" || a.Flow != "" {
+			var h strings.Builder
+			h.WriteString("── SOURCE→SINK ──\n")
+			if a.Source != "" {
+				h.WriteString("SOURCE: " + a.Source + "\n")
+			}
+			if a.Sink != "" {
+				h.WriteString("SINK:   " + a.Sink + "\n")
+			}
+			if a.Flow != "" {
+				h.WriteString("FLOW:   " + a.Flow + "\n")
+			}
+			h.WriteString("─────────────────\n")
+			a.Evidence = h.String() + a.Evidence
 		}
 		if t.ts == nil {
 			return actool.Errorf("report_finding requires task context. In platform chat, hand the finding and existing traffic_refs to the relevant task using add_task_hint for its agent to register. Existing findings can receive additional bindings through bind_finding_traffic."), nil
@@ -2040,6 +2061,7 @@ func (t *ToolSet) listWorkerTraces() actool.CoreTool {
 // PlannerTools is the read + intent-generation + goal-judgement tool set.
 func (t *ToolSet) PlannerTools() []actool.CoreTool {
 	return []actool.CoreTool{
+		t.sastScan(), t.scaScan(), t.codeRefs(), t.listEndpoints(), t.listCodeUnits(), t.reviewSeed(), t.reviewMark(), t.reviewCoverage(), t.reviewReport(),
 		t.graphOverview(), t.listFindings(), t.listFacts(), t.nodeDetail(),
 		// cold-digest §6.1: restore folded cold nodes (digest body → members → detail).
 		t.expandDigest(),

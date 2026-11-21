@@ -1,0 +1,337 @@
+# Sink/source coverage for the C-family (cpp, objc), memory-safety focused.
+# Closes gaps found by the coverage audit: construct/callee sinks the base
+# signature DB left as RECALL or empty, mapped to the correct vuln category.
+#
+# family == language name: cpp for C/C++, objc for Objective-C.
+# A bare string sink is an EXACT callee-name match; {regex:"..."} matches full/callee.
+# Only fires when a taint source (argv[i] / environ[i] / getenv / recv / read / ...)
+# reaches the sink; a constant/literal argument gives ZERO findings.
+rules:
+
+  # ======================= C / C++ =======================
+
+  # ---- command injection (exec*/ShellExecute/CreateProcess/posix_spawn) ----
+  # system/popen are already modelled; these are the callee-name variants the
+  # base DB leaves as RECALL (no \bexec\b word-boundary match on execl/execvp).
+  - id: cpp-command-exec
+    family: [cpp]
+    languages: [cpp]
+    category: CMDI
+    severity: ERROR
+    message: tainted value reaches a process/shell execution API (command injection)
+    sinks:
+      - system
+      - popen
+      - _popen
+      - _wpopen
+      - execl
+      - execlp
+      - execle
+      - execv
+      - execvp
+      - execve
+      - execvpe
+      - fexecve
+      - posix_spawn
+      - posix_spawnp
+      - ShellExecuteA
+      - ShellExecuteW
+      - ShellExecute
+      - ShellExecuteExA
+      - ShellExecuteExW
+      - ShellExecuteEx
+      - WinExec
+      - CreateProcessA
+      - CreateProcessW
+      - CreateProcess
+
+  # ---- SQL injection (sqlite3 / MySQL / libpq string APIs) ----
+  - id: cpp-sql-exec
+    family: [cpp]
+    languages: [cpp]
+    category: SQLI
+    severity: ERROR
+    message: tainted value reaches a raw SQL execution API (SQL injection)
+    sinks:
+      - sqlite3_exec
+      - sqlite3_prepare
+      - sqlite3_prepare_v2
+      - sqlite3_prepare_v3
+      - sqlite3_get_table
+      - mysql_query
+      - mysql_real_query
+      - mysql_real_query_nonblocking
+      - PQexec
+      - PQexecParams
+      - PQprepare
+      - PQsendQuery
+
+  # ---- path traversal / arbitrary file access ----
+  # fopen already maps to PATH via a generic rule; open()/freopen/ifstream are not
+  # matched (needs a literal "open(" that the IR callee lacks) -> add exact callees.
+  - id: cpp-file-open-path
+    family: [cpp]
+    languages: [cpp]
+    category: PATH
+    severity: ERROR
+    message: tainted path reaches a file-open API (path traversal / arbitrary file access)
+    sinks:
+      - open
+      - open64
+      - openat
+      - creat
+      - freopen
+      - fopen64
+      - _open
+      - _wopen
+      - CreateFileA
+      - CreateFileW
+      - ifstream
+      - ofstream
+      - fstream
+
+  # ---- format string (printf-family with a tainted FORMAT argument) ----
+  # KNOWN LIMITATION: the engine fires on ANY tainted argument, not only the
+  # format arg, so printf("%s", tainted) is reported too (documented FP).
+  # printf/fprintf/*printf also match a pre-existing generic XSS regex and collapse
+  # to XSS as the primary category (FORMAT_STRING kept in `also`); syslog/err/warn
+  # are clean and fire as FORMAT_STRING directly.
+  - id: cpp-format-string
+    family: [cpp]
+    languages: [cpp]
+    category: FORMAT_STRING
+    severity: ERROR
+    message: tainted value used as (or within) a format string
+    sinks:
+      - printf
+      - fprintf
+      - dprintf
+      - vprintf
+      - vfprintf
+      - vdprintf
+      - asprintf
+      - vasprintf
+      - syslog
+      - vsyslog
+      - err
+      - errx
+      - warn
+      - warnx
+      - verr
+      - verrx
+      - vwarn
+      - vwarnx
+
+  # ---- SSRF (libcurl request URL) ----
+  # KNOWN LIMITATION: curl_easy_setopt fires when ANY arg is tainted, not only a
+  # tainted CURLOPT_URL (documented FP for a tainted non-URL option value).
+  - id: cpp-ssrf-curl
+    family: [cpp]
+    languages: [cpp]
+    category: SSRF
+    severity: ERROR
+    message: tainted value reaches a libcurl request option (server-side request forgery)
+    sinks:
+      - curl_easy_setopt
+      - curl_easy_perform
+
+  # ---- integer overflow (tainted allocation size) ----
+  # malloc/calloc/realloc/alloca with a tainted size can integer-overflow and
+  # under-allocate, leading to a heap overflow.
+  - id: cpp-alloc-size
+    family: [cpp]
+    languages: [cpp]
+    category: INTEGER_OVERFLOW
+    severity: ERROR
+    message: tainted value controls an allocation size (integer overflow / under-allocation)
+    sinks:
+      - malloc
+      - calloc
+      - realloc
+      - reallocarray
+      - valloc
+      - memalign
+
+  # ---- XXE (libxml2 parse of tainted content with default entity expansion) ----
+  - id: cpp-xxe-libxml2
+    family: [cpp]
+    languages: [cpp]
+    category: XXE
+    severity: ERROR
+    message: tainted XML reaches a libxml2 parser (default settings expand external entities)
+    sinks:
+      - xmlReadMemory
+      - xmlReadFile
+      - xmlReadDoc
+      - xmlReadFd
+      - xmlParseMemory
+      - xmlParseFile
+      - xmlParseDoc
+      - xmlCtxtReadMemory
+      - xmlCtxtReadFile
+      - xmlCtxtReadDoc
+
+  # ---- additional C input sources (stdin / socket / scanf family) ----
+  # NOTE: these taint the RETURN value (idiomatic for fgets()->buf and
+  # n=read()/recv() size flows). The write-into-buffer-arg pattern
+  # (read(fd,buf,n); use(buf)) is NOT captured -- see report's gaps.
+  - id: cpp-input-sources
+    family: [cpp]
+    languages: [cpp]
+    category: ANY
+    message: C untrusted-input sources (stdin / sockets / scanf family)
+    sources:
+      - recv
+      - recvfrom
+      - recvmsg
+      - read
+      - pread
+      - fgets
+      - fgetws
+      - fread
+      - gets
+      - scanf
+      - fscanf
+      - getline
+      - getenv
+      - secure_getenv
+
+  # ======================= Objective-C =======================
+
+  # ---- command injection (exec* beyond the already-modelled set) ----
+  - id: objc-command-exec-ext
+    family: [objc]
+    languages: [objc]
+    category: CMDI
+    severity: ERROR
+    message: tainted value reaches a process/shell execution API (command injection)
+    sinks:
+      - execvp
+      - execvpe
+      - fexecve
+      - posix_spawn
+      - posix_spawnp
+      - _popen
+
+  # ---- SQL injection ----
+  - id: objc-sql-exec
+    family: [objc]
+    languages: [objc]
+    category: SQLI
+    severity: ERROR
+    message: tainted value reaches a raw SQL execution API (SQL injection)
+    sinks:
+      - sqlite3_exec
+      - sqlite3_prepare
+      - sqlite3_prepare_v2
+      - sqlite3_prepare_v3
+      - sqlite3_get_table
+      - mysql_query
+      - mysql_real_query
+      # FMDB / raw NSString-built queries:
+      - executeQuery
+      - executeUpdate
+      - executeStatements
+
+  # ---- path traversal / arbitrary file access ----
+  - id: objc-file-open-path
+    family: [objc]
+    languages: [objc]
+    category: PATH
+    severity: ERROR
+    message: tainted path reaches a file-open API (path traversal / arbitrary file access)
+    sinks:
+      - fopen
+      - open
+      - open64
+      - openat
+      - creat
+      - freopen
+      # Cocoa file APIs (selectors):
+      - contentsOfFileAtPath
+      - dataWithContentsOfFile
+      - stringWithContentsOfFile
+      - contentsAtPath
+      - fileHandleForReadingAtPath
+      - fileHandleForWritingAtPath
+
+  # ---- format string (NSLog / NSString stringWithFormat family + C printf) ----
+  # KNOWN LIMITATION: fires on ANY tainted arg, not only the format arg.
+  - id: objc-format-string
+    family: [objc]
+    languages: [objc]
+    category: FORMAT_STRING
+    severity: ERROR
+    message: tainted value used as (or within) a format string
+    sinks:
+      - NSLog
+      - NSLogv
+      - printf
+      - fprintf
+      - syslog
+      - stringWithFormat
+      - initWithFormat
+      - localizedStringWithFormat
+      - stringByAppendingFormat
+      - appendFormat
+      - predicateWithFormat
+      - NSRunAlertPanel
+      - NSRunCriticalAlertPanel
+
+  # ---- SSRF ----
+  - id: objc-ssrf
+    family: [objc]
+    languages: [objc]
+    category: SSRF
+    severity: ERROR
+    message: tainted value reaches a network request API (server-side request forgery)
+    sinks:
+      - curl_easy_setopt
+      - URLWithString
+      - requestWithURL
+      - dataTaskWithURL
+      - sendSynchronousRequest
+      - sendAsynchronousRequest
+
+  # ---- integer overflow (tainted allocation size) ----
+  - id: objc-alloc-size
+    family: [objc]
+    languages: [objc]
+    category: INTEGER_OVERFLOW
+    severity: ERROR
+    message: tainted value controls an allocation size (integer overflow / under-allocation)
+    sinks:
+      - malloc
+      - calloc
+      - realloc
+      - reallocarray
+      - valloc
+
+  # ---- unsafe deserialization (NSKeyedUnarchiver / NSUnarchiver) ----
+  - id: objc-unsafe-deser
+    family: [objc]
+    languages: [objc]
+    category: DESERIALIZATION
+    severity: ERROR
+    message: tainted data reaches a legacy NSKeyedUnarchiver (insecure deserialization)
+    sinks:
+      - unarchiveObjectWithData
+      - unarchiveTopLevelObjectWithData
+      - unarchiveObjectWithFile
+      - initForReadingWithData
+
+  # ---- additional C/ObjC input sources ----
+  - id: objc-input-sources
+    family: [objc]
+    languages: [objc]
+    category: ANY
+    message: C/ObjC untrusted-input sources (stdin / sockets / scanf family)
+    sources:
+      - recv
+      - recvfrom
+      - read
+      - fgets
+      - fread
+      - gets
+      - scanf
+      - fscanf

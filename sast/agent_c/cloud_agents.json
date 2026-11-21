@@ -1,0 +1,281 @@
+[
+ {
+  "id": "aws",
+  "name": "AWS Security",
+  "handle": "cloudreaver",
+  "icon": "☁",
+  "sev": "high",
+  "kind": "cloud",
+  "desc": "AWS Security — HackTricks-Cloud review."
+ },
+ {
+  "id": "azure",
+  "name": "Azure Security",
+  "handle": "skyforge",
+  "icon": "⛅",
+  "sev": "high",
+  "kind": "cloud",
+  "desc": "Azure Security — HackTricks-Cloud review."
+ },
+ {
+  "id": "gcp",
+  "name": "GCP Security",
+  "handle": "nimbus",
+  "icon": "☁",
+  "sev": "high",
+  "kind": "cloud",
+  "desc": "GCP Security — HackTricks-Cloud review."
+ },
+ {
+  "id": "kubernetes",
+  "name": "Kubernetes Security",
+  "handle": "helmsman",
+  "icon": "⎈",
+  "sev": "high",
+  "kind": "cloud",
+  "desc": "Kubernetes Security — HackTricks-Cloud review."
+ },
+ {
+  "id": "workspace",
+  "name": "Google Workspace / O365",
+  "handle": "tenantx",
+  "icon": "◎",
+  "sev": "high",
+  "kind": "cloud",
+  "desc": "Google Workspace / O365 — HackTricks-Cloud review."
+ },
+ {
+  "id": "digitalocean",
+  "name": "DigitalOcean",
+  "handle": "dropletx",
+  "icon": "◍",
+  "sev": "medium",
+  "kind": "cloud",
+  "desc": "DigitalOcean — HackTricks-Cloud review."
+ },
+ {
+  "id": "ibmcloud",
+  "name": "IBM Cloud",
+  "handle": "bluemix",
+  "icon": "◑",
+  "sev": "medium",
+  "kind": "cloud",
+  "desc": "IBM Cloud — HackTricks-Cloud review."
+ },
+ {
+  "id": "openshift",
+  "name": "OpenShift",
+  "handle": "shiftghost",
+  "icon": "⬡",
+  "sev": "medium",
+  "kind": "cloud",
+  "desc": "OpenShift — HackTricks-Cloud review."
+ },
+ {
+  "id": "confidential",
+  "name": "Confidential Computing",
+  "handle": "enclave",
+  "icon": "⬢",
+  "sev": "medium",
+  "kind": "cloud",
+  "desc": "Confidential Computing — HackTricks-Cloud review."
+ },
+ {
+  "id": "envvarinjection",
+  "name": "Cloud Env-Var Injection",
+  "handle": "envleak",
+  "icon": "⎔",
+  "sev": "medium",
+  "kind": "cloud",
+  "desc": "Cloud Env-Var Injection — HackTricks-Cloud review."
+ },
+ {
+  "id": "jenkins",
+  "name": "Jenkins",
+  "handle": "butler",
+  "icon": "⚙",
+  "sev": "high",
+  "kind": "ci-cd",
+  "desc": "Jenkins — HackTricks-Cloud review."
+ },
+ {
+  "id": "github",
+  "name": "GitHub Actions",
+  "handle": "actionsx",
+  "icon": "⎇",
+  "sev": "high",
+  "kind": "ci-cd",
+  "desc": "GitHub Actions — HackTricks-Cloud review."
+ },
+ {
+  "id": "terraform",
+  "name": "Terraform / IaC",
+  "handle": "statewraith",
+  "icon": "⬡",
+  "sev": "high",
+  "kind": "ci-cd",
+  "desc": "Terraform / IaC — HackTricks-Cloud review."
+ },
+ {
+  "id": "argocd",
+  "name": "ArgoCD",
+  "handle": "gitops",
+  "icon": "⎈",
+  "sev": "high",
+  "kind": "ci-cd",
+  "desc": "ArgoCD — HackTricks-Cloud review."
+ },
+ {
+  "id": "circleci",
+  "name": "CircleCI",
+  "handle": "orbit",
+  "icon": "◴",
+  "sev": "high",
+  "kind": "ci-cd",
+  "desc": "CircleCI — HackTricks-Cloud review."
+ },
+ {
+  "id": "airflow",
+  "name": "Apache Airflow",
+  "handle": "dagster",
+  "icon": "⟟",
+  "sev": "high",
+  "kind": "ci-cd",
+  "desc": "Apache Airflow — HackTricks-Cloud review."
+ },
+ {
+  "id": "okta",
+  "name": "Okta (IdP)",
+  "handle": "identix",
+  "icon": "⚿",
+  "sev": "high",
+  "kind": "ci-cd",
+  "desc": "Okta (IdP) — HackTricks-Cloud review."
+ },
+ {
+  "id": "teamcity",
+  "name": "TeamCity",
+  "handle": "buildcat",
+  "icon": "◰",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "TeamCity — HackTricks-Cloud review."
+ },
+ {
+  "id": "concourse",
+  "name": "Concourse CI",
+  "handle": "pipewraith",
+  "icon": "▰",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "Concourse CI — HackTricks-Cloud review."
+ },
+ {
+  "id": "atlantis",
+  "name": "Atlantis",
+  "handle": "planwraith",
+  "icon": "▱",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "Atlantis — HackTricks-Cloud review."
+ },
+ {
+  "id": "travisci",
+  "name": "TravisCI",
+  "handle": "travx",
+  "icon": "◷",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "TravisCI — HackTricks-Cloud review."
+ },
+ {
+  "id": "ansible",
+  "name": "Ansible Tower / AWX",
+  "handle": "playghost",
+  "icon": "⎙",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "Ansible Tower / AWX — HackTricks-Cloud review."
+ },
+ {
+  "id": "chef",
+  "name": "Chef Automate",
+  "handle": "cookbook",
+  "icon": "⎚",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "Chef Automate — HackTricks-Cloud review."
+ },
+ {
+  "id": "cloudflare",
+  "name": "Cloudflare",
+  "handle": "edgewraith",
+  "icon": "⛆",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "Cloudflare — HackTricks-Cloud review."
+ },
+ {
+  "id": "supabase",
+  "name": "Supabase",
+  "handle": "baaswraith",
+  "icon": "◪",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "Supabase — HackTricks-Cloud review."
+ },
+ {
+  "id": "serverless",
+  "name": "Serverless Framework",
+  "handle": "lambdax",
+  "icon": "ƛ",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "Serverless Framework — HackTricks-Cloud review."
+ },
+ {
+  "id": "vercel",
+  "name": "Vercel",
+  "handle": "edgeverc",
+  "icon": "▲",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "Vercel — HackTricks-Cloud review."
+ },
+ {
+  "id": "gitea",
+  "name": "Gitea",
+  "handle": "teahouse",
+  "icon": "⎇",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "Gitea — HackTricks-Cloud review."
+ },
+ {
+  "id": "gogs",
+  "name": "Gogs",
+  "handle": "gogsghost",
+  "icon": "⎇",
+  "sev": "low",
+  "kind": "ci-cd",
+  "desc": "Gogs — HackTricks-Cloud review."
+ },
+ {
+  "id": "gitblit",
+  "name": "Gitblit",
+  "handle": "blitghost",
+  "icon": "⎇",
+  "sev": "low",
+  "kind": "ci-cd",
+  "desc": "Gitblit — HackTricks-Cloud review."
+ },
+ {
+  "id": "dockerbuild",
+  "name": "Docker Build Context",
+  "handle": "contextx",
+  "icon": "⬒",
+  "sev": "medium",
+  "kind": "ci-cd",
+  "desc": "Docker Build Context — HackTricks-Cloud review."
+ }
+]

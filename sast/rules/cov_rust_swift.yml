@@ -1,0 +1,103 @@
+# Sink/source coverage for Rust and Swift idioms (construct gaps found by audit).
+# family == language name for rust/swift. Bare string = exact callee match;
+# {regex:...} matches `full` OR `callee`. Rust method chains render `full` with a
+# dot (Command::new -> "Command.new"); Swift first-arg labels are folded into the
+# callee by plugins/swift.py (String(contentsOfFile:) vs String(format:)).
+rules:
+  # ---------------- RUST ----------------
+  - id: rust-path-open
+    family: [rust]
+    languages: [rust]
+    category: PATH
+    severity: ERROR
+    message: tainted path reaches a filesystem open/read (path traversal / arbitrary file read)
+    # std::fs::File.open, std::fs.read / read_to_string, OpenOptions::new().open
+    sinks:
+      - {regex: "File\\.open|fs\\.read|OpenOptions|fs\\.File|fs\\.write|fs\\.copy|fs\\.remove_file|fs\\.rename"}
+
+  - id: rust-ssrf-reqwest
+    family: [rust]
+    languages: [rust]
+    category: SSRF
+    severity: ERROR
+    message: tainted URL reaches an HTTP client request (server-side request forgery)
+    # reqwest::get, reqwest::blocking::get, reqwest::Client::new().get(url)... (inline builder)
+    sinks:
+      - {regex: "reqwest"}
+
+  - id: rust-sqli
+    family: [rust]
+    languages: [rust]
+    category: SQLI
+    severity: ERROR
+    message: tainted value reaches a raw SQL query/exec (SQL injection)
+    # diesel::sql_query, diesel batch_execute; sqlx::query already modelled generically.
+    sinks: [sql_query, batch_execute]
+
+  - id: rust-deser
+    family: [rust]
+    languages: [rust]
+    category: DESERIALIZATION
+    severity: ERROR
+    message: tainted bytes reach an unsafe deserializer (insecure deserialization)
+    sinks:
+      - {regex: "serde_yaml\\.from|bincode\\.deser|serde_yaml::from|bincode::deser|rmp_serde\\.from|rmp_serde::from"}
+
+  # ---------------- SWIFT ----------------
+  - id: swift-process-exec
+    family: [swift]
+    languages: [swift]
+    category: CMDI
+    severity: ERROR
+    message: tainted value reaches a direct process-launch API (command injection)
+    # Direct-argument launch forms. NOTE: the `p.arguments=[tainted]; p.launch()`
+    # property-assignment idiom is NOT caught here (receiver/property-assignment
+    # sink — see report) — only direct-arg forms are.
+    sinks:
+      - {regex: "launchedProcess|NSTask"}
+
+  - id: swift-path
+    family: [swift]
+    languages: [swift]
+    category: PATH
+    severity: ERROR
+    message: tainted path reaches a filesystem read (path traversal / arbitrary file read)
+    # String/NSString(contentsOfFile:), Data(contentsOf:), FileManager.contents(atPath:),
+    # FileHandle(forReadingAtPath:), contentsOfDirectory(atPath:)
+    sinks:
+      - {regex: "contentsOfFile|contentsOf:|contents\\(atPath|forReadingAtPath|contentsOfDirectory|forWritingAtPath"}
+
+  - id: swift-ssrf
+    family: [swift]
+    languages: [swift]
+    category: SSRF
+    severity: ERROR
+    message: tainted URL reaches a URLSession request (server-side request forgery)
+    sinks:
+      - {regex: "dataTask|downloadTask|uploadTask"}
+
+  - id: swift-xss
+    family: [swift]
+    languages: [swift]
+    category: XSS
+    severity: ERROR
+    message: tainted value reaches a WebView HTML/JS load (XSS / script injection)
+    sinks: [loadHTMLString, evaluateJavaScript]
+
+  - id: swift-format-string
+    family: [swift]
+    languages: [swift]
+    category: FORMAT_STRING
+    severity: ERROR
+    message: tainted value used as a format string (format-string vulnerability)
+    # NSLog(fmt), String(format:)/NSString(format:), localizedStringWithFormat, appendingFormat
+    sinks:
+      - {regex: "NSLog|\\(format:|localizedStringWithFormat|appendingFormat|initWithFormat"}
+
+  - id: swift-input-sources
+    family: [swift]
+    languages: [swift]
+    category: ANY
+    message: swift untrusted input sources (process env, URL query items)
+    # CommandLine/readLine/stdin already modelled; add process environment + URL query items.
+    sources: [environment, queryItems]

@@ -1,0 +1,12 @@
+# PHP header() with attacker-controlled content = header injection / response
+# splitting / open redirect (e.g. header("Location: ".$_GET['url'])).
+rules:
+  - id: php-header-injection
+    family: [php]
+    languages: [php]
+    category: SSRF
+    severity: ERROR
+    message: tainted value reaches header() — open redirect / header injection
+    sinks:
+      - header
+      - setcookie

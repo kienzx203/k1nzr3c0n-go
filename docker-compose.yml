@@ -43,6 +43,12 @@ services:
       # 把项目根目录的 skills 挂进容器（覆盖镜像内置的 /app/skills）；
       # 改 skill 无需重建镜像，容器读的就是宿主机这份。
       - ./skills:/app/skills
+      # SAST declarative rules (edit without rebuilding the image).
+      - ./sast/rules:/app/sast/rules
+      # Optional: share the host's live Claude Code OAuth token with the claude-sub profile
+      # (fixes 401 "OAuth token revoked" from a stale stored token). Set CLAUDE_CREDENTIALS_FILE
+      # in .env to your host path, e.g. /root/.claude/.credentials.json, then uncomment:
+      # - ${CLAUDE_CREDENTIALS_FILE}:/root/.claude/.credentials.json:ro
     restart: unless-stopped
 
 volumes:

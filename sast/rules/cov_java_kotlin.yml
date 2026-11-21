@@ -1,0 +1,220 @@
+# Coverage closure for Java + Kotlin taint source->sink gaps (see tests_sink_classes.py).
+# Every sink here is argument-based (engine fires a sink only when a sink ARGUMENT is
+# tainted, never on a tainted receiver alone) and gives 0 findings on a constant-arg
+# version. family == language name (java / kotlin).
+rules:
+
+  # --- extra untrusted-input readers Kotlin lacked (servlet + Ktor) ----------
+  # (Kotlin's signature DB only had getParameter/getHeader/getQueryString/getCookies.)
+  - id: kotlin-extra-sources
+    family: [kotlin]
+    languages: [kotlin]
+    category: ANY
+    message: kotlin untrusted input readers (servlet stream/body + Ktor)
+    sources:
+      - getInputStream
+      - getReader
+      - getParameterValues
+      - getParameterMap
+      - getParameterNames
+      - getPart
+      - getParts
+      - getPathInfo
+      - getRequestURI
+      - getRequestURL
+      - getQueryString
+      - getRemoteUser
+      - receiveText
+      - receiveParameters
+      - {regex: "call\\.parameters|call\\.receive"}
+
+  # --- SSRF: new URL(tainted) is the idiomatic anchor; openConnection()/openStream()
+  #     carry taint only on the RECEIVER (no args) so the engine cannot fire there. --
+  - id: java-kotlin-ssrf
+    family: [java, kotlin]
+    languages: [java, kotlin]
+    category: SSRF
+    severity: ERROR
+    message: tainted value builds an outbound request (server-side request forgery)
+    sinks:
+      - URL
+      - URI
+      - getForObject
+      - getForEntity
+      - postForObject
+      - postForEntity
+      - patchForObject
+      - exchange
+      - HttpGet
+      - HttpPost
+
+  # --- OPEN_REDIRECT (Kotlin had no sink; Java is handled in DB but mislabeled XSS) --
+  - id: java-kotlin-open-redirect
+    family: [java, kotlin]
+    languages: [java, kotlin]
+    category: OPEN_REDIRECT
+    severity: ERROR
+    message: tainted value reaches a redirect (open redirect)
+    sinks:
+      - sendRedirect
+
+  # --- HEADER_INJECTION / response splitting (addHeader etc.) ----------------
+  - id: java-kotlin-header-injection
+    family: [java, kotlin]
+    languages: [java, kotlin]
+    category: HEADER_INJECTION
+    severity: ERROR
+    message: tainted value written to a response header (header injection / response splitting)
+    sinks:
+      - addHeader
+      - setHeader
+      - addDateHeader
+      - setDateHeader
+      - addIntHeader
+      - setIntHeader
+
+  # --- XXE: tainted XML fed to a parser (DocumentBuilder/SAXParser/XMLReader.parse,
+  #     JAXB unmarshal). DB only matched the factory names, not the .parse() call. ---
+  - id: java-kotlin-xxe
+    family: [java, kotlin]
+    languages: [java, kotlin]
+    category: XXE
+    severity: ERROR
+    message: tainted XML parsed (XML external entity / XXE when entities enabled)
+    sinks:
+      # a dotted `.parse` call (builder.parse / DocumentBuilder.parse / reader.parse),
+      # but NOT mongo Document/DBObject.parse, JSON parsers, or value parsers
+      # (LocalDate/Integer/URL...) which share the `parse` name but are not XXE.
+      - {regex: "^(?!.*(?:DBObject|Document|Gson|Json|ObjectMapper|LocalDate|LocalTime|LocalDateTime|Instant|Duration|Period|Integer|Long|Double|Float|Boolean|Number|URI|URL|SimpleDateFormat|DateTimeFormatter|CommandLine|MediaType|UUID)).*\\.parse$"}
+      - unmarshal
+
+  # --- TEMPLATE_INJECTION / SSTI (Freemarker/Velocity/Thymeleaf/Groovy) -------
+  - id: java-kotlin-ssti
+    family: [java, kotlin]
+    languages: [java, kotlin]
+    category: TEMPLATE_INJECTION
+    severity: ERROR
+    message: tainted value compiled/rendered as a template (server-side template injection)
+    sinks:
+      - Template
+      - createTemplate
+      - mergeTemplate
+      - processTemplate
+      - renderTemplate
+
+  # --- Kotlin PATH (DB had zero Kotlin PATH sinks) ---------------------------
+  - id: kotlin-path
+    family: [kotlin]
+    languages: [kotlin]
+    category: PATH
+    severity: ERROR
+    message: tainted path reaches a filesystem API (path traversal)
+    sinks:
+      - File
+      - FileInputStream
+      - FileOutputStream
+      - FileReader
+      - FileWriter
+      - RandomAccessFile
+      - {regex: "Paths\\.get"}
+
+  # --- Kotlin NOSQL injection (Mongo) ----------------------------------------
+  - id: kotlin-nosqli
+    family: [kotlin]
+    languages: [kotlin]
+    category: NOSQLI
+    severity: ERROR
+    message: tainted value builds a Mongo query (NoSQL injection)
+    sinks:
+      - find
+      - aggregate
+      - findOneAndUpdate
+      - findOneAndDelete
+      - {regex: "BasicDBObject|Document\\.parse"}
+
+  # --- Kotlin TRUST_BOUNDARY (session attribute) -----------------------------
+  - id: kotlin-trust-boundary
+    family: [kotlin]
+    languages: [kotlin]
+    category: TRUST_BOUNDARY
+    severity: ERROR
+    message: untrusted value stored across a trust boundary (session attribute)
+    sinks:
+      - setAttribute
+
+  # ===========================================================================
+  # NON-TAINT pattern detections (no untrusted source exists for these classes).
+  # Emitted as Semgrep-style SEARCH findings (search=True), not taint flows.
+  # ===========================================================================
+
+  # --- CRYPTO_WEAK: weak cipher / mode / digest chosen by a constant algorithm --
+  - id: java-kotlin-weak-cipher
+    family: [java, kotlin]
+    languages: [java, kotlin]
+    category: CRYPTO_WEAK
+    severity: WARNING
+    message: weak or insecure cipher/mode (DES/RC2/RC4/Blowfish or ECB)
+    patterns:
+      - pattern: Cipher.getInstance($ALG)
+      - metavariable-regex:
+          metavariable: $ALG
+          regex: "\"(.*(DES|RC2|RC4|Blowfish|ECB).*)\""
+  - id: java-kotlin-weak-digest
+    family: [java, kotlin]
+    languages: [java, kotlin]
+    category: CRYPTO_WEAK
+    severity: WARNING
+    message: weak hash algorithm (MD2/MD4/MD5/SHA-1)
+    patterns:
+      - pattern: MessageDigest.getInstance($ALG)
+      - metavariable-regex:
+          metavariable: $ALG
+          regex: "\"(MD2|MD4|MD5|SHA-?1|sha1|md5).*\""
+
+  # --- HARDCODED_SECRET: a credential-named field/var assigned a string literal --
+  - id: java-hardcoded-secret
+    family: [java]
+    languages: [java]
+    category: HARDCODED_SECRET
+    severity: WARNING
+    message: hardcoded secret assigned to a credential-named field
+    patterns:
+      - pattern: String $NAME = $VAL;
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: "(?i).*(password|passwd|pwd|secret|apikey|api_key|token|privatekey|private_key|credential).*"
+      - metavariable-regex:
+          metavariable: $VAL
+          regex: "\".+\""
+  - id: kotlin-hardcoded-secret
+    family: [kotlin]
+    languages: [kotlin]
+    category: HARDCODED_SECRET
+    severity: WARNING
+    message: hardcoded secret assigned to a credential-named val/var
+    patterns:
+      - pattern: val $NAME = $VAL
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: "(?i).*(password|passwd|pwd|secret|apikey|api_key|token|privatekey|private_key|credential).*"
+      - metavariable-regex:
+          metavariable: $VAL
+          regex: "\".+\""
+
+  # --- ZIP_SLIP: zip entry name concatenated into a File path without validation --
+  - id: java-zip-slip
+    family: [java]
+    languages: [java]
+    category: ZIP_SLIP
+    severity: WARNING
+    message: zip entry name used to build a File path (Zip Slip path traversal)
+    pattern: new File($DIR, $ENTRY.getName())
+  - id: kotlin-zip-slip
+    family: [kotlin]
+    languages: [kotlin]
+    category: ZIP_SLIP
+    severity: WARNING
+    message: zip entry name used to build a File path (Zip Slip path traversal)
+    pattern-either:
+      - pattern: File($DIR, $ENTRY.getName())
+      - pattern: File($DIR, $ENTRY.name)

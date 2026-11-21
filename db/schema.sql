@@ -1399,3 +1399,45 @@ CREATE INDEX IF NOT EXISTS idx_notification_deliveries_batch
     ON notification_deliveries(batch_id) WHERE batch_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_notification_deliveries_channel
     ON notification_deliveries(channel_id, id DESC);
+
+-- task_review_units: the engine-tracked REVIEW COVERAGE LEDGER for source-review tasks.
+-- Every function (from the SAST inventory) and every endpoint (from the route extractor)
+-- is seeded here as the DETERMINISTIC denominator; the worker marks each reviewed with the
+-- classes it checked + a verdict; the planner's completion gate reads coverage from here, so
+-- "no function/endpoint missed" is ENFORCED BY THE ENGINE, not trusted to the agent's memory.
+CREATE TABLE IF NOT EXISTS task_review_units (
+    id               BIGSERIAL PRIMARY KEY,
+    task_id          BIGINT NOT NULL,
+    kind             TEXT   NOT NULL,              -- 'function' | 'endpoint'
+    unit_key         TEXT   NOT NULL,              -- stable id (file:line:label)
+    label            TEXT   NOT NULL DEFAULT '',   -- display name / route
+    file             TEXT   NOT NULL DEFAULT '',
+    line             INTEGER NOT NULL DEFAULT 0,
+    classes_reviewed TEXT   NOT NULL DEFAULT '',   -- comma-joined vuln classes checked
+    verdict          TEXT   NOT NULL DEFAULT 'pending', -- pending | reviewed | vulnerable | na
+    note             TEXT   NOT NULL DEFAULT '',
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(task_id, kind, unit_key)
+);
+CREATE INDEX IF NOT EXISTS idx_review_units_task ON task_review_units(task_id);
+CREATE INDEX IF NOT EXISTS idx_review_units_pending ON task_review_units(task_id) WHERE verdict='pending';
+
+
+-- Mission profiles: per-mission system prompts for the review agents, so a task's mission
+-- (bugbounty / redteam / review-source) selects which Main/Planner/Worker/Goals brain runs.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS mission TEXT NOT NULL DEFAULT 'bugbounty';
+ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS mission TEXT NOT NULL DEFAULT 'bugbounty';
+CREATE TABLE IF NOT EXISTS mission_prompts (
+    mission    TEXT NOT NULL,            -- bugbounty | redteam | review-source
+    agent_key  TEXT NOT NULL,            -- mainagent | planner | worker | goals
+    body       TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (mission, agent_key)
+);
+-- Per-task override of a single agent's brain (the "override lẻ" level).
+CREATE TABLE IF NOT EXISTS task_agent_prompt (
+    task_id   BIGINT NOT NULL,
+    agent_key TEXT NOT NULL,
+    body      TEXT NOT NULL,
+    PRIMARY KEY (task_id, agent_key)
+);

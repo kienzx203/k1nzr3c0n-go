@@ -1,0 +1,110 @@
+# Sink/source coverage for .NET (C# + VB.NET).
+#
+# CRITICAL: csharp AND vbnet both map to the taint DB family `dotnet`
+# (run_lang.LANG_FAMILY['csharp']=='dotnet', same for vbnet). Rules MUST use
+# `family: [dotnet]` or they are silently never merged into the spec. The
+# `languages:` field is documentary only here.
+#
+# Every sink below is taint-gated (fires only when a tracked source reaches it),
+# so a constant/parameterized-safe argument yields zero findings.
+rules:
+  # ---- CODE_INJECTION: runtime script eval / dynamic compilation ----------
+  # C# Roslyn scripting (CSharpScript.EvaluateAsync/RunAsync), CodeDom compile,
+  # VB late-bound Eval. Callee names are distinctive; taint-gated.
+  - id: dotnet-code-injection
+    family: [dotnet]
+    languages: [csharp, vbnet]
+    category: CODE_INJECTION
+    severity: ERROR
+    message: tainted value reaches a .NET runtime code-eval / dynamic-compile API (code injection)
+    sinks:
+      - EvaluateAsync
+      - RunAsync
+      - Eval
+      - CompileAssemblyFromSource
+      - CompileAssemblyFromDom
+      - CompileAssemblyFromFile
+      - {regex: "(CSharpScript|VisualBasicScript)\\.(Create|Run|RunAsync|EvaluateAsync)"}
+
+  # ---- LDAP injection: System.DirectoryServices ---------------------------
+  # `new DirectorySearcher("(cn="+taint+")")` and friends. DB's LDAPI sink
+  # regex (lowercase `search`) never matches the PascalCase .NET API.
+  - id: dotnet-ldap-injection
+    family: [dotnet]
+    languages: [csharp, vbnet]
+    category: LDAPI
+    severity: ERROR
+    message: tainted value builds an LDAP filter / DirectorySearcher (LDAP injection)
+    sinks:
+      - DirectorySearcher
+      - DirectoryEntry
+
+  # ---- XPath injection: System.Xml / System.Xml.XPath --------------------
+  # SelectNodes/SelectSingleNode/Compile with a concatenated XPath. DB's XPATHI
+  # regex is lowercase and misses the PascalCase .NET API.
+  - id: dotnet-xpath-injection
+    family: [dotnet]
+    languages: [csharp, vbnet]
+    category: XPATHI
+    severity: ERROR
+    message: tainted value builds an XPath expression (XPath injection)
+    sinks:
+      - SelectNodes
+      - SelectSingleNode
+      - XPathSelectElement
+      - XPathSelectElements
+      - XPathEvaluate
+      - {regex: "XPathExpression\\.Compile"}
+
+  # ---- SSRF: outbound request APIs ---------------------------------------
+  # WebRequest/HttpWebRequest.Create, HttpClient.*Async, WebClient.Download*.
+  # DB had no dotnet SSRF sinks (WebRequest.Create only matched PARAM_TAMPERING
+  # by the accidental "Request." substring; HttpClient/WebClient were missed).
+  - id: dotnet-ssrf
+    family: [dotnet]
+    languages: [csharp, vbnet]
+    category: SSRF
+    severity: ERROR
+    message: tainted URL reaches an outbound HTTP/web request API (SSRF)
+    sinks:
+      - GetAsync
+      - PostAsync
+      - PutAsync
+      - SendAsync
+      - GetStringAsync
+      - GetStreamAsync
+      - GetByteArrayAsync
+      - DownloadString
+      - DownloadData
+      - DownloadFile
+      - DownloadStringAsync
+      - UploadString
+      - UploadData
+      - {regex: "(WebRequest|HttpWebRequest|FtpWebRequest)\\.Create"}
+
+  # ---- Template injection: RazorEngine / runtime Razor compilation -------
+  # `Engine.Razor.RunCompile(userTemplate)` / `Razor.Parse(userTemplate)`.
+  - id: dotnet-template-injection
+    family: [dotnet]
+    languages: [csharp, vbnet]
+    category: TEMPLATE_INJECTION
+    severity: ERROR
+    message: tainted value compiled as a Razor template (server-side template injection)
+    sinks:
+      - RunCompile
+      - RunCompileAsync
+      - CompileRenderStringAsync
+      - CompileRenderAsync
+      - {regex: "(RazorEngine|Razor)\\.(Parse|ParseAsync|Compile|RunCompile)"}
+
+  # ---- HTTP response splitting / header injection (augment) --------------
+  # DB HTTP_SPLITTING covers AddHeader; add AppendHeader / Headers.Add.
+  - id: dotnet-header-injection
+    family: [dotnet]
+    languages: [csharp, vbnet]
+    category: HTTP_SPLITTING
+    severity: ERROR
+    message: tainted value reaches a response header API (HTTP response splitting / header injection)
+    sinks:
+      - AppendHeader
+      - {regex: "Response\\.Headers\\.(Add|Append|Set)"}

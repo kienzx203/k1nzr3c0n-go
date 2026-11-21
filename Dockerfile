@@ -100,6 +100,11 @@ COPY --from=binary /out/artex /app/artex
 COPY start.sh /app/start.sh
 RUN chmod +x /app/artex /app/start.sh
 COPY skills/ /app/skills/
+
+# SAST source-review engine (merged from SAST_k1nz) — offline wheels, no network.
+COPY sast /app/sast
+RUN pip install --no-cache-dir --no-index --find-links=/app/sast/wheels \
+    tree_sitter tree_sitter_language_pack pyyaml && rm -rf /app/sast/wheels
 # data/（SQLite + jwt.key）持久化点
 VOLUME ["/app/data"]
 EXPOSE 8787 8788

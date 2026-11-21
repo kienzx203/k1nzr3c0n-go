@@ -101,8 +101,8 @@ Current task goal: {{.Goal}}
 
 Do not fabricate findings; answer only from the real data returned by the tools.`
 
-func mainAgentSystem(goal, dataDir, workDir string) string {
-	body := renderSystem("mainagent", mainAgentDefaultTmpl, MainVars{Goal: goal, DataDir: dataDir, Now: nowStr()})
+func mainAgentSystem(goal, dataDir, workDir, mission string, taskID int64) string {
+	body := renderSystemMission("mainagent", mission, taskID, mainAgentDefaultTmpl, MainVars{Goal: goal, DataDir: dataDir, Now: nowStr()})
 	return body + artifactSpec(workDir)
 }
 
@@ -132,7 +132,7 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	// This task's working directory <workDir>/tasks/<taskID>, created ahead of time.
 	mainDir := ensureRunDir(m.workDir, taskID, 0)
 	ctx = intercept.WithReviewWorkingDirectory(ctx, mainDir)
-	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir), def)
+	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir, missionFor(taskID), taskID), def)
 	opts := agentcore.Options{
 		Provider:        m.prov,
 		SystemPrompt:    system,

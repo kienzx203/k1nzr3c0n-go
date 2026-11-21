@@ -25,6 +25,8 @@ import type {
   BatchCategoryItem,
   BatchControlItem,
   ChatAttachment,
+  SastSourceRoot,
+  SastRegistrySource,
   CommandRecord,
   Company,
   CompanyScopeMutation,
@@ -241,6 +243,7 @@ export const api = {
     categoryId?: number;
     description: string;
     goal: string;
+    mission?: string;
     llmProfileIds?: number[];
     sourceTaskIds?: string[];
     companyIds?: number[];
@@ -258,6 +261,7 @@ export const api = {
       category_id: input.categoryId ?? null,
       description: input.description,
       goal: input.goal,
+      mission: input.mission ?? "bugbounty",
       llm_profile_ids: input.llmProfileIds ?? [],
       source_task_ids: input.sourceTaskIds ?? [],
       company_ids: input.companyIds ?? [],
@@ -953,6 +957,26 @@ export const api = {
     });
     if (!r.ok) throw new Error(swt("interface.m2419", { p0: r.status, p1: await r.text() }));
     return r.json() as Promise<{ attachments: ChatAttachment[] }>;
+  },
+  // sastSources lists sources for review (draft roots + shared registry; uploads sync across graph + new-task).
+  sastSources: async (draft?: string) => {
+    if (MOCK) return { sources: [] as SastSourceRoot[], registry: [] as SastRegistrySource[] };
+    const token = getToken();
+    const q = draft ? `?draft=${encodeURIComponent(draft)}` : "";
+    const r = await fetch(`/api/sast/sources${q}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!r.ok) throw new Error(swt("interface.m2419", { p0: r.status, p1: await r.text() }));
+    return r.json() as Promise<{ sources: SastSourceRoot[]; registry?: SastRegistrySource[] }>;
+  },
+  sastScanById: async (id: string) => {
+    const token = getToken();
+    const r = await fetch(`/api/sast/scan?id=${encodeURIComponent(id)}`, {
+      method: "POST",
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!r.ok) throw new Error(swt("interface.m2419", { p0: r.status, p1: await r.text() }));
+    return r.json();
   },
   stopChat: (taskId: string) => post<{ status: string }>(`/tasks/${taskId}/chat/stop`, {}),
   gc: (ttl = 86400) => post<{ removed: number }>(`/gc?ttl=${ttl}`, {}),

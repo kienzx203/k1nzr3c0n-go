@@ -1,0 +1,2 @@
+C/C++ security rules by Marco Ivaldi (0xdea), MIT-licensed.
+Source: https://github.com/0xdea/semgrep-rules — imported for SAST_k1nz search-mode.

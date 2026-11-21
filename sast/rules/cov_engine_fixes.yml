@@ -1,0 +1,74 @@
+# Central fixes (maintainer): gaps the per-language agents reported but could not own.
+rules:
+  - id: ruby-weak-crypto
+    family: [ruby]
+    languages: [ruby]
+    category: WEAK_CRYPTO
+    severity: ERROR
+    message: tainted value hashed/encrypted with a weak algorithm (MD5/SHA1/DES/RC4)
+    sinks:
+      - {regex: "Digest::MD5|Digest::SHA1|OpenSSL::Digest::(MD5|SHA1)|OpenSSL::Cipher"}
+  - id: python-extra-sources
+    family: [python]
+    languages: [python]
+    category: ANY
+    message: python/framework untrusted sources missed by subscript/attribute reads
+    sources:
+      - {regex: "os\\.environ|os\\.getenviron|\\bos\\.getenv\\b|\\benviron\\b"}
+      - {regex: "request\\.(body|data|stream|files|json|form|values|args|GET|POST|headers|cookies|get_json)"}
+      - {regex: "\\bsys\\.argv\\b|\\bargv\\b"}
+  - id: go-extra-sources
+    family: [go]
+    languages: [go]
+    category: ANY
+    message: go untrusted sources (os.Args, env, request readers)
+    sources:
+      - {regex: "os\\.Args|os\\.Getenv|os\\.Environ|r\\.URL\\.Query|FormValue|PostFormValue|\\.Header\\.Get|r\\.Body|mux\\.Vars"}
+  - id: ruby-extra-sources
+    family: [ruby]
+    languages: [ruby]
+    category: ANY
+    message: ruby/rails untrusted sources (cookies/session/request element reads)
+    sources:
+      - {regex: "cookies\\[|session\\[|\\bparams\\b|request\\.(params|body|query_parameters|request_parameters|GET|POST|headers)"}
+  - id: php-raw-body-source
+    family: [php]
+    languages: [php]
+    category: ANY
+    message: php raw request body / stdin source (php://input)
+    sources: [php_input_source]
+  - id: c-array-oob-index
+    family: [cpp, objc]
+    languages: [cpp, objc]
+    category: OOB
+    severity: ERROR
+    message: tainted/attacker-controlled value used as an array index (out-of-bounds CWE-129)
+    sinks: [array_index]
+  - id: c-buffer-overflow-extra
+    family: [cpp, objc]
+    languages: [cpp, objc]
+    category: BUFFER_OVERFLOW
+    severity: ERROR
+    message: tainted data reaches an unsafe memory/string op (buffer overflow)
+    sinks: [strncpy, strncat, memset, bcopy, swab, getwd, gets_s, _mbscpy, lstrcpyn, RtlCopyMemory, wmemcpy, wcsncpy, stpncpy]
+  - id: c-integer-overflow-extra
+    family: [cpp, objc]
+    languages: [cpp, objc]
+    category: INTEGER_OVERFLOW
+    severity: ERROR
+    message: tainted size in an allocation (integer/size overflow → undersized buffer)
+    sinks: [malloc, calloc, realloc, alloca, valloc, aligned_alloc, kmalloc, OPENSSL_malloc, g_malloc, VirtualAlloc, HeapAlloc]
+  - id: c-dangerous-functions
+    family: [cpp, objc]
+    languages: [cpp, objc]
+    category: BUFFER_OVERFLOW
+    severity: WARNING
+    message: use of an inherently unsafe function with no bounds checking (CWE-242 / CWE-676)
+    patterns:
+      - pattern-either:
+          - {pattern: "gets(...)"}
+          - {pattern: "getwd(...)"}
+          - {pattern: "scanf(...)"}
+          - {pattern: "mktemp(...)"}
+          - {pattern: "tmpnam(...)"}
+          - {pattern: "gets_s(...)"}

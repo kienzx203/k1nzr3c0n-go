@@ -13,6 +13,53 @@ import (
 // behavior is identical until a user edits a prompt in the UI.
 var PromptOverride func(agentKey string) (string, bool)
 
+// Mission-profile hooks (wired by the server). A task's mission selects which agent brain
+// runs; a per-task override can replace one agent's brain. Precedence in renderSystemMission:
+// per-task override > mission brain > global PromptOverride > built-in default.
+var (
+	MissionOf               func(taskID int64) string                        // tasks.mission (default "bugbounty")
+	MissionPromptOverride   func(agentKey, mission string) (string, bool)     // mission_prompts
+	TaskAgentPromptOverride func(taskID int64, agentKey string) (string, bool) // task_agent_prompt
+)
+
+// missionFor returns the mission of a task (safe default when the hook is unset).
+func missionFor(taskID int64) string {
+	if MissionOf != nil && taskID > 0 {
+		if m := MissionOf(taskID); m != "" {
+			return m
+		}
+	}
+	return "bugbounty"
+}
+
+// renderSystemMission is renderSystem with mission-profile precedence: a per-task agent
+// override wins, then the mission's brain, then the global PromptOverride, then the default.
+func renderSystemMission(agentKey, mission string, taskID int64, def string, vars any, lang ...locale.Lang) string {
+	tmpl := def
+	if PromptOverride != nil {
+		if t, ok := PromptOverride(agentKey); ok && t != "" {
+			tmpl = t
+		}
+	}
+	if MissionPromptOverride != nil && mission != "" {
+		if t, ok := MissionPromptOverride(agentKey, mission); ok && t != "" {
+			tmpl = t
+		}
+	}
+	if TaskAgentPromptOverride != nil && taskID > 0 {
+		if t, ok := TaskAgentPromptOverride(taskID, agentKey); ok && t != "" {
+			tmpl = t
+		}
+	}
+	if out, err := renderTmpl(tmpl, vars); err == nil {
+		return out
+	}
+	if out, err := renderTmpl(def, vars); err == nil {
+		return out
+	}
+	return def
+}
+
 // Prompt-variable structs — fields mirror each agent's catalog (docs §5a) so a
 // user template referencing a catalog variable renders; referencing anything else
 // fails template execution and falls back to the built-in default.

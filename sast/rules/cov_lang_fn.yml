@@ -1,0 +1,65 @@
+# Close known per-language FN: sinks the spec was missing for swift / rust / objc / vbnet.
+# Combined with the recall param-source for these langs, a param reaching one of these
+# dangerous calls now surfaces as a candidate.
+
+rules:
+  # swift: SQLite exec with a concatenated query
+  - id: swift-sqlite-exec
+    family: [swift]
+    languages: [swift]
+    category: SQLI
+    severity: high
+    message: tainted value reaches a SQLite exec (SQL injection)
+    sinks:
+      - { regex: "sqlite3_exec|sqlite3_prepare" }
+
+  # swift: direct Process launch (property-assign form handled by _ASSIGN_SINKS; add the
+  # launch call itself so a recall flow to it is recognised as dangerous)
+  - id: swift-process-launch
+    family: [swift]
+    languages: [swift]
+    category: CMDI
+    severity: high
+    message: tainted value reaches a process launch (command injection)
+    sinks:
+      - { regex: "\\.launch$|\\.run$|Process$|NSTask$" }
+
+  # rust: std::process::Command
+  - id: rust-command
+    family: [rust]
+    languages: [rust]
+    category: CMDI
+    severity: high
+    message: tainted value reaches std::process::Command (command injection)
+    sinks:
+      - { regex: "Command\\.new|Command::new|\\.arg$|\\.args$|\\.output$|\\.spawn$" }
+
+  # objc: -[NSString stringWithFormat:] / NSLog with a tainted format string
+  - id: objc-format
+    family: [objc, cpp]
+    languages: [objc]
+    category: FORMAT_STRING
+    severity: high
+    message: tainted value used as a format string (format-string vulnerability)
+    sinks:
+      - { regex: "stringWithFormat|initWithFormat|appendFormat|NSLog|stringByAppendingFormat" }
+
+  # vbnet / .NET: Process.Start / Shell command execution
+  - id: dotnet-process-start
+    family: [dotnet]
+    languages: [vbnet, csharp]
+    category: CMDI
+    severity: high
+    message: tainted value reaches Process.Start / Shell (command injection)
+    sinks:
+      - { regex: "Process\\.Start|ProcessStartInfo|\\bShell\\b|Interaction\\.Shell|Diagnostics\\.Process" }
+
+  # vbnet / .NET: SqlCommand / OleDbCommand built from concatenation
+  - id: dotnet-sqlcommand
+    family: [dotnet]
+    languages: [vbnet, csharp]
+    category: SQLI
+    severity: high
+    message: tainted value reaches an ADO.NET command (SQL injection)
+    sinks:
+      - { regex: "SqlCommand|OleDbCommand|OdbcCommand|MySqlCommand|NpgsqlCommand|SqlDataAdapter" }

@@ -1,0 +1,86 @@
+# Linux Privesc — @rootpath skill
+> kind: pentest · severity: high · source: HackTricks
+
+## What it is
+Linux Privesc. HackTricks reference pages for this domain are indexed below.
+
+## VERIFY
+- Use these pages as the attack/review reference for this domain. When this agent
+  reviews a target, CONFIRM a finding only with concrete evidence from the code/config;
+  treat name-only or version-only signals as LIKELY until verified.
+
+## HackTricks pages (69)
+
+- [Android Rooting Frameworks (KernelSU/Magisk) Manager Auth Bypass & Syscall Hook Abuse](https://hacktricks.wiki/en/linux-hardening/software-information/android-rooting-frameworks-manager-auth-bypass-syscall-hook)
+- [AppArmor](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/apparmor)
+- [Arbitrary File Write to Root](https://hacktricks.wiki/en/linux-hardening/interesting-files-permissions/write-to-root)
+- [Assessment And Hardening](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/assessment-and-hardening)
+- [Bypass FS protections: read-only / no-exec / Distroless](https://hacktricks.wiki/en/linux-hardening/linux-basics/bypass-linux-restrictions/bypass-fs-protections-read-only-no-exec-distroless/README)
+- [Bypass Linux Restrictions](https://hacktricks.wiki/en/linux-hardening/linux-basics/bypass-linux-restrictions/README)
+- [Cisco - vmanage](https://hacktricks.wiki/en/linux-hardening/network-information/cisco-vmanage)
+- [Container Protections Overview](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/README)
+- [Container Runtimes, Engines, Builders, And Sandboxes](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/runtimes-and-engines)
+- [Container Security](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/README)
+- [Containerd (ctr) Privilege Escalation](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/containerd-ctr-privilege-escalation)
+- [Copy Fail: AF_ALG + splice page-cache overwrite (CVE-2026-31431)](https://hacktricks.wiki/en/linux-hardening/main-system-information/kernel-lpe-cves/copy-fail-af_alg-splice-page-cache-overwrite-cve-2026-31431)
+- [D-Bus Enumeration & Command Injection Privilege Escalation](https://hacktricks.wiki/en/linux-hardening/processes-crontab-systemd-dbus/d-bus-enumeration-and-command-injection-privilege-escalation)
+- [DDexec / EverythingExec](https://hacktricks.wiki/en/linux-hardening/linux-basics/bypass-linux-restrictions/bypass-fs-protections-read-only-no-exec-distroless/ddexec)
+- [Distroless Containers](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/distroless)
+- [Escaping From --privileged Containers](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/privileged-containers)
+- [Escaping from Jails](https://hacktricks.wiki/en/linux-hardening/main-system-information/escaping-from-limited-bash)
+- [Filesystem, Inodes and Recovery](https://hacktricks.wiki/en/linux-hardening/main-system-information/filesystem-inodes-and-recovery)
+- [FreeIPA Pentesting](https://hacktricks.wiki/en/linux-hardening/software-information/freeipa-pentesting)
+- [IPC Namespace](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/namespaces/ipc-namespace)
+- [Image Security, Signing, And Secrets](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/image-security-and-secrets)
+- [Interesting Groups - Linux Privesc](https://hacktricks.wiki/en/linux-hardening/user-information/interesting-groups-linux-pe/README)
+- [Kernel Modules and modprobe Abuse](https://hacktricks.wiki/en/linux-hardening/main-system-information/kernel-modules-and-modprobe)
+- [Linux Active Directory](https://hacktricks.wiki/en/linux-hardening/user-information/linux-active-directory)
+- [Linux Capabilities](https://hacktricks.wiki/en/linux-hardening/interesting-files-permissions/linux-capabilities)
+- [Linux Capabilities In Containers](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/capabilities)
+- [Linux Environment Variables](https://hacktricks.wiki/en/linux-hardening/linux-basics/linux-environment-variables)
+- [Linux Post-Exploitation](https://hacktricks.wiki/en/linux-hardening/post-exploitation/linux-post-exploitation/README)
+- [Linux Privilege Escalation](https://hacktricks.wiki/en/linux-hardening/linux-basics/linux-privilege-escalation/README)
+- [Linux Privilege Escalation Checklist](https://hacktricks.wiki/en/linux-hardening/main-system-information/linux-privilege-escalation-checklist)
+- [Linux ptrace exit-race pidfd_getfd() FD theft](https://hacktricks.wiki/en/linux-hardening/main-system-information/kernel-lpe-cves/linux-ptrace-exit-race-pidfd_getfd-fd-theft)
+- [Local Network and Socket Triage](https://hacktricks.wiki/en/linux-hardening/network-information/local-network-and-socket-triage)
+- [Logstash Privilege Escalation](https://hacktricks.wiki/en/linux-hardening/software-information/logstash)
+- [Masked Paths](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/masked-paths)
+- [Mount Namespace](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/namespaces/mount-namespace)
+- [NFS No Root Squash Misconfiguration Privilege Escalation](https://hacktricks.wiki/en/linux-hardening/interesting-files-permissions/nfs-no_root_squash-misconfiguration-pe)
+- [Namespaces](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/namespaces/README)
+- [Network Namespace](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/namespaces/network-namespace)
+- [Node inspector/CEF debug abuse](https://hacktricks.wiki/en/linux-hardening/software-information/electron-cef-chromium-debugger-abuse)
+- [PAM - Pluggable Authentication Modules](https://hacktricks.wiki/en/linux-hardening/software-information/pam-pluggable-authentication-modules)
+- [PID Namespace](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/namespaces/pid-namespace)
+- [POSIX CPU Timers TOCTOU race (CVE-2025-38352)](https://hacktricks.wiki/en/linux-hardening/main-system-information/kernel-lpe-cves/posix-cpu-timers-toctou-cve-2025-38352)
+- [Payloads to execute](https://hacktricks.wiki/en/linux-hardening/processes-crontab-systemd-dbus/payloads-to-execute)
+- [Read-Only System Paths](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/read-only-paths)
+- [RunC Privilege Escalation](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/runc-privilege-escalation)
+- [Runtime API And Daemon Exposure](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/runtime-api-and-daemon-exposure)
+- [Runtime Authorization Plugins](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/authorization-plugins)
+- [SELinux](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/selinux)
+- [SELinux](https://hacktricks.wiki/en/linux-hardening/interesting-files-permissions/selinux)
+- [SSH Agent Forwarding Exploitation](https://hacktricks.wiki/en/linux-hardening/user-information/ssh-forward-agent-exploitation)
+- [SUID Shared Library and Linker Abuse](https://hacktricks.wiki/en/linux-hardening/interesting-files-permissions/suid-shared-library-and-linker-abuse)
+- [Sensitive Host Mounts](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/sensitive-host-mounts)
+- [Socket Command Injection](https://hacktricks.wiki/en/linux-hardening/network-information/socket-command-injection)
+- [Splunk LPE and Persistence](https://hacktricks.wiki/en/linux-hardening/software-information/splunk-lpe-and-persistence)
+- [Sudo Command Abuse](https://hacktricks.wiki/en/linux-hardening/main-system-information/sudo-command-abuse)
+- [Time Namespace](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/namespaces/time-namespace)
+- [Trojanized System Daemons and Reverse Proxies](https://hacktricks.wiki/en/linux-hardening/post-exploitation/linux-post-exploitation/trojanized-system-daemons-and-reverse-proxies)
+- [UTS Namespace](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/namespaces/uts-namespace)
+- [Useful Linux Commands](https://hacktricks.wiki/en/linux-hardening/linux-basics/useful-linux-commands)
+- [User Namespace](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/namespaces/user-namespace)
+- [VMware Tools service discovery LPE (CWE-426) via regex-based binary discovery (CVE-2025-41](https://hacktricks.wiki/en/linux-hardening/main-system-information/kernel-lpe-cves/vmware-tools-service-discovery-untrusted-search-path-cve-2025-41244)
+- [Wildcards Spare Tricks](https://hacktricks.wiki/en/linux-hardening/interesting-files-permissions/wildcards-spare-tricks)
+- [cgroup Namespace](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/namespaces/cgroup-namespace)
+- [cgroups](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/cgroups)
+- [euid, ruid, suid](https://hacktricks.wiki/en/linux-hardening/user-information/euid-ruid-suid)
+- [ld.so privesc exploit example](https://hacktricks.wiki/en/linux-hardening/interesting-files-permissions/ld.so.conf-example)
+- [lxd/lxc Group - Privilege escalation](https://hacktricks.wiki/en/linux-hardening/user-information/interesting-groups-linux-pe/lxd-privilege-escalation)
+- [no_new_privs](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/no-new-privileges)
+- [seccomp](https://hacktricks.wiki/en/linux-hardening/containers-namespaces/container-security/protections/seccomp)
+
+## References
+- HackTricks: https://hacktricks.wiki/en/
+- HackTricks repo: https://github.com/HackTricks-wiki/hacktricks

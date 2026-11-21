@@ -1,0 +1,37 @@
+# PayloadsAllTheThings extra classes: CSV/formula, XSLT, email-header, XQuery, GraphQL.
+rules:
+  - id: csv-formula-injection
+    family: [php, python, java, dotnet, javascript, typescript]
+    languages: [php, python, java, csharp, vbnet, javascript, typescript]
+    category: CSV_INJECTION
+    severity: WARNING
+    message: tainted value written to a CSV/spreadsheet cell (formula/CSV injection)
+    sinks: [fputcsv, writerow, writerows, writeNext, writeRecord, WriteField, WriteRecord, putNextEntry, csvWriter]
+  - id: xslt-injection
+    family: [php, java, dotnet, python]
+    languages: [php, java, csharp, vbnet, python]
+    category: XSLT_INJECTION
+    severity: ERROR
+    message: tainted value controls an XSLT stylesheet/transform (XSLT injection)
+    sinks: [transformToXml, transformToDoc, transformToUri, transformToDocument, XslCompiledTransform, newTransformer, importStylesheet]
+  - id: email-header-injection
+    family: [php, java, python]
+    languages: [php, java, python]
+    category: HEADER_INJECTION
+    severity: ERROR
+    message: tainted value in an email header (SMTP/email header injection)
+    sinks: [mail, mb_send_mail, addHeader, setFrom, setSubject, addRecipient, sendmail]
+  - id: xquery-injection-fix
+    family: [java, dotnet]
+    languages: [java, csharp]
+    category: XQUERYI
+    severity: ERROR
+    message: tainted value in an XQuery expression (XQuery injection)
+    sinks: [prepareExpression, createExpression, setExpression, compile]
+  - id: graphql-injection
+    family: [javascript, typescript, python, java]
+    languages: [javascript, typescript, python, java]
+    category: GRAPHQL_INJECTION
+    severity: ERROR
+    message: tainted value concatenated into a GraphQL query (GraphQL injection)
+    sinks: [gql, graphql, buildSchema]

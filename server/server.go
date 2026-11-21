@@ -199,6 +199,15 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			}
 			return a.WrapupPrompt, true
 		}
+		// Mission profiles: a task's mission selects the Main/Planner/Worker brain, with an
+		// optional per-task per-agent override. Unset mission/row → built-in default (unchanged).
+		agent.MissionOf = func(taskID int64) string { return m.pg.MissionOfTask(taskID) }
+		agent.MissionPromptOverride = func(agentKey, mission string) (string, bool) {
+			return m.pg.MissionPrompt(mission, agentKey)
+		}
+		agent.TaskAgentPromptOverride = func(taskID int64, agentKey string) (string, bool) {
+			return m.pg.TaskAgentPrompt(taskID, agentKey)
+		}
 		// Wire DB-stored wrap-up turn budgets. 0 / missing → built-in per-agent default.
 		agent.WrapupMaxTurnsOverride = func(key string) (int, bool) {
 			a, err := m.pg.GetAgentByKey(key)
@@ -694,6 +703,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/task-templates", s.pgCreateTaskTemplate)
 	mux.HandleFunc("PATCH /api/task-templates/{id}", s.pgUpdateTaskTemplate)
 	mux.HandleFunc("DELETE /api/task-templates/{id}", s.pgDeleteTaskTemplate)
+	mux.HandleFunc("POST /api/sast/scan", s.sastScan)
+	mux.HandleFunc("GET /api/sast/sources", s.sastDraftSources)
 	mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)
 	mux.HandleFunc("PATCH /api/tasks/{id}/category", s.updateTaskCategory)
@@ -1479,6 +1490,7 @@ type createTaskReq struct {
 	CategoryID           *int64   `json:"category_id,omitempty"`
 	Description          string   `json:"description"`
 	Goal                 string   `json:"goal"`
+	Mission              string   `json:"mission,omitempty"` // bugbounty|redteam|review-source; empty = bugbounty default
 	LLMProfileID         *int64   `json:"llm_profile_id,omitempty"`    // the LLM profile to run this task; omitted/null = use the active profile
 	LLMProfileIDs        []int64  `json:"llm_profile_ids,omitempty"`   // ordered task-level profile chain; the first item takes effect initially
 	SourceTaskIDs        []string `json:"source_task_ids,omitempty"`   // source tasks for direct, read-only inheritance only
@@ -1562,6 +1574,11 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		}
 		writeErr(w, 500, err.Error())
 		return
+	}
+	// Mission profile: record the chosen mission (default bugbounty) so the task runs the
+	// matching Main/Planner/Worker brains + tools/skills.
+	if tid, perr := strconv.ParseInt(t.ID, 10, 64); perr == nil {
+		_ = s.m.pg.SetTaskMission(tid, strings.TrimSpace(req.Mission))
 	}
 	log.Printf("[task] created task #%s «%s» goal: %s", t.ID, req.Description, req.Goal)
 	// Shared post-creation flow (seed + seed intent + background goal decomposition + engine.Run), reused by spawn_task.

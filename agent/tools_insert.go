@@ -651,6 +651,7 @@ func splitLines(s string) []string {
 // WorkerTools returns the tool set for a work agent.
 func (t *ToolSet) WorkerTools() []actool.CoreTool {
 	return []actool.CoreTool{
+		t.sastScan(), t.scaScan(), t.codeRefs(), t.listEndpoints(), t.listCodeUnits(), t.reviewSeed(), t.reviewMark(), t.reviewCoverage(), t.reviewReport(),
 		// list_findings is kept: before reporting a vulnerability, first check this task's
 		// confirmed vulnerabilities to avoid reporting the same one twice.
 		t.listFindings(),

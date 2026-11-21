@@ -1,0 +1,108 @@
+# Systematic sink coverage for construct/idiom gaps found by tests_sink_classes.py.
+rules:
+  - id: python-file-open-path
+    family: [python]
+    languages: [python]
+    category: PATH
+    severity: ERROR
+    message: tainted path reaches open() (path traversal / arbitrary file read)
+    sinks: [open]
+  - id: ruby-raw-sql
+    family: [ruby]
+    languages: [ruby]
+    category: SQLI
+    severity: ERROR
+    message: tainted value reaches a raw SQL method (SQL injection)
+    sinks: [find_by_sql, exec_query, execute, where, find_by, order, group, having, pluck, select]
+  - id: vbnet-process-start
+    family: [vbnet]
+    languages: [vbnet]
+    category: CMDI
+    severity: ERROR
+    message: tainted value reaches Process.Start (command execution)
+    sinks: [Start, Shell]
+  - id: vbnet-sql-command
+    family: [vbnet]
+    languages: [vbnet]
+    category: SQLI
+    severity: ERROR
+    message: tainted value builds a SQL command (SQL injection)
+    sinks: [SqlCommand, OleDbCommand, OdbcCommand, SqlDataAdapter, ExecuteReader, ExecuteNonQuery, ExecuteScalar]
+  - id: swift-command-exec
+    family: [swift]
+    languages: [swift]
+    category: CMDI
+    severity: ERROR
+    message: tainted value reaches a process/shell execution API (command injection)
+    sinks: [system, popen, execv, execvp, execl, execlp, launch, "Process"]
+  - id: swift-sqlite
+    family: [swift]
+    languages: [swift]
+    category: SQLI
+    severity: ERROR
+    message: tainted value reaches sqlite3_exec (SQL injection)
+    sinks: [sqlite3_exec, sqlite3_prepare, sqlite3_prepare_v2]
+  - id: perl-code-eval
+    family: [perl]
+    languages: [perl]
+    category: CODE_INJECTION
+    severity: ERROR
+    message: tainted value reaches perl eval (code injection)
+    sinks: [eval]
+  - id: perl-file-open
+    family: [perl]
+    languages: [perl]
+    category: PATH
+    severity: ERROR
+    message: tainted path reaches open (path traversal / 2-arg open command injection)
+    sinks: [open, sysopen, opendir]
+  - id: objc-command-exec
+    family: [objc]
+    languages: [objc]
+    category: CMDI
+    severity: ERROR
+    message: tainted value reaches a process/shell execution API (command injection)
+    sinks: [system, popen, execv, execvp, execl, execlp, execle]
+  - id: perl-sources
+    family: [perl]
+    languages: [perl]
+    category: ANY
+    message: perl untrusted input sources (CGI params, env, argv, stdin)
+    sources: [param, cookie, Vars, url_param, "ARGV", "ENV", "STDIN", upload, multi_param, query_param, body_parameters, query_parameters]
+  - id: rust-sources
+    family: [rust]
+    languages: [rust]
+    category: ANY
+    message: rust untrusted input sources (env args/vars, stdin, web extractors)
+    sources: [args, var, var_os, args_os, read_line, read_to_string, "stdin", nth]
+  - id: objc-cli-sources
+    family: [objc]
+    languages: [objc]
+    category: ANY
+    message: objc/C untrusted input sources (argv, environ, getenv)
+    sources: [argv, environ, getenv, "NSProcessInfo", environment, UTF8String]
+  - id: c-buffer-overflow
+    family: [cpp, objc]
+    languages: [cpp, objc]
+    category: BUFFER_OVERFLOW
+    severity: ERROR
+    message: tainted/unbounded data reaches an unsafe memory op (buffer overflow)
+    sinks: [strcpy, strcat, strncpy, strncat, stpcpy, sprintf, vsprintf, snprintf, vsnprintf, memcpy, memmove, bcopy, gets, scanf, sscanf, fscanf, vscanf, alloca, realpath, getwd, wcscpy, wcscat, lstrcpy, lstrcat, StrCpy, CopyMemory, MoveMemory]
+  - id: csharp-deserialization
+    family: [dotnet, csharp]
+    languages: [csharp]
+    category: DESERIALIZATION
+    severity: ERROR
+    message: tainted stream reaches an unsafe .NET deserializer (insecure deserialization)
+    sinks:
+      - Deserialize
+      - ReadObject
+      - {regex: "BinaryFormatter|LosFormatter|SoapFormatter|NetDataContractSerializer|ObjectStateFormatter|JavaScriptSerializer|fastJSON|TypeNameHandling"}
+  - id: ruby-deserialization
+    family: [ruby]
+    languages: [ruby]
+    category: DESERIALIZATION
+    severity: ERROR
+    message: tainted value reaches an unsafe deserializer (insecure deserialization)
+    sinks:
+      - {regex: "Marshal\\.(load|restore)|YAML\\.(load|unsafe_load)|Oj\\.load|Psych\\.(load|unsafe_load)|Ox\\.load"}

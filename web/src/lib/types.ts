@@ -637,6 +637,25 @@ export interface ChatAttachment {
   abs?: string; // Absolute path returned for staging uploads and appended to descriptions before task creation.
 }
 
+// SastSourceRoot is one candidate source root detected in a draft's uploads.
+export interface SastSourceRoot {
+  path: string;
+  name: string;
+  marker: string;
+  files: number;
+}
+
+// SastRegistrySource is one entry in the shared source registry (uploaded at graph or new-task).
+export interface SastRegistrySource {
+  id: string;
+  name: string;
+  path: string;
+  files: number;
+  created: number;
+  has_result: boolean;
+  origin: "graph" | "task";
+}
+
 export interface Activity {
   seq: number;
   intent_id?: string;

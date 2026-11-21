@@ -186,6 +186,9 @@ func (d *DB) Exploration(id int64) *ExplorationStore { return &ExplorationStore{
 
 func (s *ExplorationStore) ID() int64 { return s.expID }
 
+
+// DB exposes the underlying handle for task-scoped helpers (e.g. the review ledger).
+func (s *ExplorationStore) DB() *DB { return s.db }
 // Root returns the exploration's description and goal.
 func (s *ExplorationStore) Root() (description, goal string, err error) {
 	var d sql.NullString

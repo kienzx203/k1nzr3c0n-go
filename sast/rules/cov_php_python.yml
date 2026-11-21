@@ -1,0 +1,231 @@
+# Coverage closure for PHP and Python taint source->sink gaps.
+# Each sink here is taint-gated by the engine: a CONSTANT-arg call never fires
+# (verified), only a call reached by an untrusted source produces a finding.
+# Categories are chosen so the engine's category-collapse reports the correct
+# (most specific) vuln class (see orchestrator._collapse_categories / _CAT_PREF).
+rules:
+
+  # ------------------------------------------------------------------ PHP ----
+  # SQLI — DB only has a generic INJECTION regex (medium). A dedicated SQLI
+  # category (no generic competitor) fires HIGH so the class reports as SQLI.
+  - id: php-sqli
+    family: [php]
+    languages: [php]
+    category: SQLI
+    severity: ERROR
+    message: tainted value reaches a raw SQL query/exec method (SQL injection)
+    sinks:
+      - query
+      - mysqli_query
+      - mysql_query
+      - mysqli_multi_query
+      - multi_query
+      - real_query
+      - pg_query
+      - pg_query_params
+      - pg_send_query
+      - sqlite_query
+      - mssql_query
+      - querySingle
+
+  # NOSQL — MongoDB PHP driver collection methods (no DB signature at all).
+  - id: php-nosql
+    family: [php]
+    languages: [php]
+    category: NOSQLI
+    severity: ERROR
+    message: tainted value reaches a MongoDB query/write method (NoSQL injection)
+    sinks:
+      - find
+      - findOne
+      - insertOne
+      - insertMany
+      - updateOne
+      - updateMany
+      - deleteOne
+      - deleteMany
+      - aggregate
+      - findOneAndUpdate
+      - findOneAndDelete
+
+  # SSRF — DB SSRF regex has curl_exec/fsockopen/file_get_contents but NOT the
+  # url-taking entry points, so curl_init($_GET) was a miss.
+  - id: php-ssrf-extra
+    family: [php]
+    languages: [php]
+    category: SSRF
+    severity: ERROR
+    message: tainted URL reaches an outbound request/connection API (SSRF)
+    sinks:
+      - curl_init
+      - curl_setopt
+      - stream_socket_client
+      - pfsockopen
+      - get_headers
+
+  # XXE — DB regex is case-sensitive "LoadXml"/"simplexml_load"; real PHP methods
+  # are loadXML / loadHTML (camelCase) which did not match (-> RECALL only).
+  - id: php-xxe
+    family: [php]
+    languages: [php]
+    category: XXE
+    severity: ERROR
+    message: tainted XML reaches a DOM/SimpleXML loader (XML external entity)
+    sinks:
+      - loadXML
+      - loadHTML
+      - loadHTMLFile
+      - simplexml_load_string
+      - simplexml_load_file
+
+  # OPEN_REDIRECT — header("Location: ".$x). The engine IR callee is "header"
+  # (no literal paren), so the DB's `header\(` regex never matched; a bare
+  # callee rule in the OPEN_REDIRECT category out-ranks the generic SSRF mapping.
+  - id: php-open-redirect
+    family: [php]
+    languages: [php]
+    category: OPEN_REDIRECT
+    severity: ERROR
+    message: tainted value reaches header() Location (open redirect)
+    sinks:
+      - header
+
+  # HEADER_INJECTION — cookie/header value splitting via setcookie().
+  - id: php-header-injection-cov
+    family: [php]
+    languages: [php]
+    category: HEADER_INJECTION
+    severity: ERROR
+    message: tainted value reaches a cookie/header setter (response header injection)
+    sinks:
+      - setcookie
+      - setrawcookie
+
+  # SSTI — Twig Environment::createTemplate($userSource) compiles user input as a
+  # template. (render() is intentionally NOT a sink: render($tpl, $userContext)
+  # is a safe idiom and would false-positive on the context argument.)
+  - id: php-ssti
+    family: [php]
+    languages: [php]
+    category: TEMPLATE_INJECTION
+    severity: ERROR
+    message: tainted value compiled as a template (server-side template injection)
+    sinks:
+      - createTemplate
+
+  # WEAK_CRYPTO — untrusted data hashed with a broken algorithm.
+  - id: php-weak-crypto
+    family: [php]
+    languages: [php]
+    category: WEAK_CRYPTO
+    severity: WARNING
+    message: data processed with a weak hash (md5/sha1) — weak cryptography
+    sinks:
+      - md5
+      - sha1
+
+  # MASS_ASSIGNMENT — Eloquent fill()/forceFill() with request data.
+  - id: php-mass-assignment
+    family: [php]
+    languages: [php]
+    category: MASS_ASSIGNMENT
+    severity: WARNING
+    message: request data reaches a bulk attribute setter (mass assignment)
+    sinks:
+      - fill
+      - forceFill
+
+  # --------------------------------------------------------------- PYTHON ----
+  # NOSQL — pymongo collection methods.
+  - id: python-nosql
+    family: [python]
+    languages: [python]
+    category: NOSQLI
+    severity: ERROR
+    message: tainted value reaches a MongoDB query/write method (NoSQL injection)
+    sinks:
+      - find
+      - find_one
+      - insert_one
+      - insert_many
+      - update_one
+      - update_many
+      - delete_one
+      - delete_many
+      - replace_one
+      - find_one_and_update
+      - aggregate
+
+  # XSS — reflected XSS via a response constructor returning tainted markup
+  # (the DB XSS regex is template/print oriented and missed these call sinks).
+  - id: python-xss
+    family: [python]
+    languages: [python]
+    category: XSS
+    severity: ERROR
+    message: tainted value written into an HTTP response body (reflected XSS)
+    sinks:
+      - HttpResponse
+      - HttpResponseBadRequest
+      - Markup
+      - make_response
+
+  # OPEN_REDIRECT — Flask/Django redirect(user_url). IR callee is "redirect"
+  # (no paren) so the DB `redirect\(` regex only reached RECALL.
+  - id: python-open-redirect
+    family: [python]
+    languages: [python]
+    category: OPEN_REDIRECT
+    severity: ERROR
+    message: tainted value reaches redirect() (open redirect)
+    sinks:
+      - redirect
+
+  # XXE — lxml / ElementTree / minidom parsers (DB regex missed fromstring/XML).
+  - id: python-xxe
+    family: [python]
+    languages: [python]
+    category: XXE
+    severity: ERROR
+    message: tainted XML reaches an XML parser (XML external entity)
+    sinks:
+      - fromstring
+      - XML
+      - parseString
+      - { regex: "etree\\.parse|minidom\\.parse|sax\\.parse|sax\\.parseString" }
+
+  # SSTI — jinja2 Template(user)/render_template_string(user). The template
+  # SOURCE is the sink argument, so there is no safe-context false positive.
+  - id: python-ssti
+    family: [python]
+    languages: [python]
+    category: TEMPLATE_INJECTION
+    severity: ERROR
+    message: tainted value compiled as a Jinja2 template (server-side template injection)
+    sinks:
+      - Template
+      - render_template_string
+      - from_string
+
+  # REDOS — user-controlled regex compiled with re.compile (pattern-only call,
+  # so a tainted *subject* in re.search/match cannot false-positive here).
+  - id: python-redos
+    family: [python]
+    languages: [python]
+    category: REDOS
+    severity: WARNING
+    message: untrusted value compiled as a regular expression (ReDoS)
+    sinks:
+      - { regex: "re\\.compile" }
+
+  # WEAK_CRYPTO — untrusted data hashed with a broken algorithm.
+  - id: python-weak-crypto
+    family: [python]
+    languages: [python]
+    category: WEAK_CRYPTO
+    severity: WARNING
+    message: data processed with a weak hash (md5/sha1/md4) — weak cryptography
+    sinks:
+      - md5
+      - sha1
+      - md4

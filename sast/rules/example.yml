@@ -1,0 +1,17 @@
+# SAST_k1nz declarative rules (Semgrep-style + CodeQL config semantics).
+# Edit/add files here (no code change) to extend source/sink/sanitizer/propagator.
+rules:
+  - id: demo-custom-sqli
+    family: [php]
+    category: SQLI
+    severity: high
+    sources:
+      - "read_user_input"                 # exact callee name
+      - regex: "req_(get|post)_param"
+    sinks:
+      - "run_db"
+    sanitizers:
+      - "my_clean"
+    propagators:
+      - { call: "my_wrap", from: arg, to: return }      # my_wrap($x) propagates taint
+      - { call: "sb_append", from: arg, to: receiver }

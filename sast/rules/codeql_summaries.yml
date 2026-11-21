@@ -1,0 +1,17 @@
+# CodeQL Models-as-Data (MaD): library functions whose taint flows into an OUTPUT
+# parameter (not the return value). Declared as DATA so taint crosses libc calls.
+rules:
+  - id: mad-libc-output-params
+    family: [cpp]
+    languages: [c, cpp]
+    summaries:
+      - {call: strcpy,   from: "arg[1]", to: "arg[0]"}
+      - {call: strncpy,  from: "arg[1]", to: "arg[0]"}
+      - {call: strcat,   from: "arg[1]", to: "arg[0]"}
+      - {call: strncat,  from: "arg[1]", to: "arg[0]"}
+      - {call: memcpy,   from: "arg[1]", to: "arg[0]"}
+      - {call: memmove,  from: "arg[1]", to: "arg[0]"}
+      - {call: stpcpy,   from: "arg[1]", to: "arg[0]"}
+      - {call: sprintf,  from: "arg",    to: "arg[0]"}
+      - {call: vsprintf, from: "arg",    to: "arg[0]"}
+      - {call: snprintf, from: "arg",    to: "arg[0]"}

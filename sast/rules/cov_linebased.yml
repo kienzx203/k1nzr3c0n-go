@@ -1,0 +1,129 @@
+# Sink/source coverage for the LINE-BASED (regex) extractor languages:
+# PL/SQL (Oracle), VB6/VBScript, COBOL.  Extraction is coarse (agent_a/line_extract.py),
+# so these rules target the callee text that extractor emits — verified empirically.
+#
+# FAMILY MAPPING (run_lang.LANG_FAMILY): plsql->plsql, cobol->cobol, but VB6->DOTNET.
+# So vb6 rules MUST use `family: [dotnet]` (that is the family the engine applies for a
+# vb6 scan); names are chosen VB-specific to avoid C#/VB.NET false positives.
+#
+# Taint source for all three = procedure/program PARAMETERS (orchestrator sets
+# az.param_source for plsql/cobol/vb6) plus COBOL ACCEPT/LINKAGE. A sink only fires
+# when a tainted value reaches it, so a constant/safe call reports nothing.
+rules:
+
+  # ---------------- PL/SQL (Oracle) ----------------
+  # Call-shaped untrusted-input readers (web PL/SQL / remote data). These taint in
+  # the NORMAL categorized pass. A stored-procedure PARAMETER is also external input
+  # but the engine seeds params only in the deterministic RECALL layer, so a
+  # param->sink flow surfaces as a needs-review RECALL finding, not a typed one.
+  - id: plsql-sources
+    family: [plsql]
+    languages: [plsql]
+    category: ANY
+    message: PL/SQL untrusted input (OWA/HTP CGI env, UTL_HTTP response, SYS_CONTEXT)
+    sources:
+      - {regex: "OWA_UTIL\\.get_cgi_env"}
+      - {regex: "UTL_HTTP\\.(get_response|request|read_text|read_line)"}
+      - {regex: "SYS_CONTEXT"}
+      - get_cgi_env
+
+  - id: plsql-sqli
+    family: [plsql]
+    languages: [plsql]
+    category: SQLI
+    severity: ERROR
+    message: concatenated/dynamic user input in dynamic SQL (SQL injection)
+    sinks:
+      - EXECUTE_IMMEDIATE                       # EXECUTE IMMEDIATE <stmt>
+      - OPEN_FOR                                # OPEN cur FOR <dynamic stmt> (dynamic cursor)
+      - {regex: "DBMS_SQL\\.(PARSE|EXECUTE)"}   # DBMS_SQL dynamic SQL API
+      - {regex: "DBMS_UTILITY\\.EXEC_DDL_STATEMENT"}
+
+  - id: plsql-cmdi
+    family: [plsql]
+    languages: [plsql]
+    category: CMDI
+    severity: ERROR
+    message: user input reaches an OS-command / external-program API (command injection)
+    sinks:
+      - {regex: "DBMS_SCHEDULER\\.(CREATE_JOB|CREATE_PROGRAM|RUN_JOB)"}
+
+  # ---------------- VB6 / VBScript (family = dotnet) ----------------
+  # Call-shaped untrusted-input readers. These taint in the NORMAL (categorized)
+  # pass; a Sub PARAMETER is also input but only seeds the deterministic RECALL
+  # layer (engine seeds params only there) -> such hits surface as needs-review.
+  - id: vb6-sources
+    family: [dotnet]
+    languages: [vb6]
+    category: ANY
+    message: VB6/VBScript/ASP untrusted input (InputBox, Command$, Request.*)
+    sources:
+      - InputBox
+      - Command
+      - {regex: "Request\\.(QueryString|Form|Cookies|ServerVariables|Item|Params)"}
+      - QueryString
+      - ServerVariables
+
+  - id: vb6-cmdi
+    family: [dotnet]
+    languages: [vb6]
+    category: CMDI
+    severity: ERROR
+    message: user input reaches Shell/ShellExecute (command injection)
+    sinks: [Shell, ShellExecute, ShellExecuteEx]
+
+  - id: vb6-code
+    family: [dotnet]
+    languages: [vb6]
+    category: CODE_INJECTION
+    severity: ERROR
+    message: user input reaches VBScript Eval/Execute (code injection)
+    sinks: [Eval, ExecuteGlobal, ExecuteStatement]
+
+  - id: vb6-path
+    family: [dotnet]
+    languages: [vb6]
+    category: PATH
+    severity: ERROR
+    message: user-controlled path reaches a file-open API (path traversal)
+    sinks: [VB_FILE_OPEN, OpenTextFile, CreateTextFile, GetFile, OpenAsTextStream]
+
+  - id: vb6-sqli
+    family: [dotnet]
+    languages: [vb6]
+    category: SQLI
+    severity: ERROR
+    message: concatenated user input in an ADO Recordset.Open/Connection.Execute (SQL injection)
+    # ADODB idiom: `rs.Open sql, conn` / `conn.Execute sql`. Recordset.Open is
+    # extracted as a VB-specific ADODB_OPEN callee (so it cannot mislabel a C#
+    # `.Open()`); `Execute` is already a dotnet SQLI sink. Taint-gated: a constant
+    # query never fires.
+    sinks: [ADODB_OPEN, Execute]
+
+  # ---------------- COBOL ----------------
+  # ACCEPT reads external input (terminal/JCL/SYSIN) -> a real call-shaped source
+  # that taints in the normal categorized pass (LINKAGE params only seed RECALL).
+  - id: cobol-sources
+    family: [cobol]
+    languages: [cobol]
+    category: ANY
+    message: COBOL untrusted input (ACCEPT)
+    sources: [ACCEPT]
+
+  - id: cobol-cmdi
+    family: [cobol]
+    languages: [cobol]
+    category: CMDI
+    severity: ERROR
+    message: user input reaches CALL 'SYSTEM' (command injection)
+    sinks: [SYSTEM, BPXWUNIX]
+
+  - id: cobol-sqli
+    family: [cobol]
+    languages: [cobol]
+    category: SQLI
+    severity: ERROR
+    message: built string reaches dynamic EXEC SQL (EXECUTE IMMEDIATE / PREPARE) — SQL injection
+    # Only DYNAMIC embedded SQL. Static EXEC SQL uses :host-vars as bind parameters
+    # (safe) and is extracted as EXEC_SQL, which is deliberately NOT a sink here.
+    sinks: [EXEC_SQL_DYNAMIC]

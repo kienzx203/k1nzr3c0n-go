@@ -1,0 +1,11 @@
+# Rust process execution sink (idiomatic RCE): std::process::Command::new(cmd).
+# A tainted command string reaching Command::new is command injection.
+rules:
+  - id: rust-command-exec
+    family: [rust]
+    languages: [rust]
+    category: CMDI
+    severity: ERROR
+    message: tainted value reaches std::process::Command::new (command execution)
+    sinks:
+      - {regex: "Command\\.new|Command::new|process::Command"}

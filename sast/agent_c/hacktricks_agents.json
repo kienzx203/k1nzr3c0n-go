@@ -1,0 +1,146 @@
+[
+ {
+  "id": "websec",
+  "name": "Web Pentest (misc)",
+  "handle": "webwraith",
+  "icon": "⌬",
+  "sev": "high",
+  "kind": "pentest",
+  "desc": "Web Pentest (misc) — HackTricks knowledge base."
+ },
+ {
+  "id": "netsvc",
+  "name": "Network Services Pentest",
+  "handle": "portreaper",
+  "icon": "⇵",
+  "sev": "high",
+  "kind": "pentest",
+  "desc": "Network Services Pentest — HackTricks knowledge base."
+ },
+ {
+  "id": "methodology",
+  "name": "Methodology & Recon",
+  "handle": "reconwraith",
+  "icon": "◈",
+  "sev": "medium",
+  "kind": "pentest",
+  "desc": "Methodology & Recon — HackTricks knowledge base."
+ },
+ {
+  "id": "winpriv",
+  "name": "Windows / AD Privesc",
+  "handle": "ntlmghost",
+  "icon": "⊞",
+  "sev": "high",
+  "kind": "pentest",
+  "desc": "Windows / AD Privesc — HackTricks knowledge base."
+ },
+ {
+  "id": "binexp",
+  "name": "Binary Exploitation",
+  "handle": "pwnsmith",
+  "icon": "⊹",
+  "sev": "high",
+  "kind": "pentest",
+  "desc": "Binary Exploitation — HackTricks knowledge base."
+ },
+ {
+  "id": "macos",
+  "name": "macOS Security",
+  "handle": "applecore",
+  "icon": "◖",
+  "sev": "medium",
+  "kind": "pentest",
+  "desc": "macOS Security — HackTricks knowledge base."
+ },
+ {
+  "id": "linpriv",
+  "name": "Linux Privesc",
+  "handle": "rootpath",
+  "icon": "⌸",
+  "sev": "high",
+  "kind": "pentest",
+  "desc": "Linux Privesc — HackTricks knowledge base."
+ },
+ {
+  "id": "mobile",
+  "name": "Mobile (Android/iOS)",
+  "handle": "droidfruit",
+  "icon": "▣",
+  "sev": "medium",
+  "kind": "pentest",
+  "desc": "Mobile (Android/iOS) — HackTricks knowledge base."
+ },
+ {
+  "id": "aipent",
+  "name": "AI / LLM Pentest",
+  "handle": "promptreaper",
+  "icon": "◉",
+  "sev": "high",
+  "kind": "pentest",
+  "desc": "AI / LLM Pentest — HackTricks knowledge base."
+ },
+ {
+  "id": "privacy",
+  "name": "Privacy / OPSEC",
+  "handle": "ghostmask",
+  "icon": "◐",
+  "sev": "low",
+  "kind": "pentest",
+  "desc": "Privacy / OPSEC — HackTricks knowledge base."
+ },
+ {
+  "id": "generichack",
+  "name": "Generic Hacking / Pivoting",
+  "handle": "pivoteer",
+  "icon": "⇄",
+  "sev": "medium",
+  "kind": "pentest",
+  "desc": "Generic Hacking / Pivoting — HackTricks knowledge base."
+ },
+ {
+  "id": "reversing",
+  "name": "Reverse Engineering",
+  "handle": "disasm",
+  "icon": "⊶",
+  "sev": "medium",
+  "kind": "pentest",
+  "desc": "Reverse Engineering — HackTricks knowledge base."
+ },
+ {
+  "id": "hardware",
+  "name": "Hardware / Physical",
+  "handle": "jtaghost",
+  "icon": "⎓",
+  "sev": "medium",
+  "kind": "pentest",
+  "desc": "Hardware / Physical — HackTricks knowledge base."
+ },
+ {
+  "id": "crypto",
+  "name": "Crypto Attacks",
+  "handle": "cipherbane",
+  "icon": "⊗",
+  "sev": "medium",
+  "kind": "pentest",
+  "desc": "Crypto Attacks — HackTricks knowledge base."
+ },
+ {
+  "id": "blockchain",
+  "name": "Blockchain / Web3",
+  "handle": "chainwraith",
+  "icon": "⬠",
+  "sev": "medium",
+  "kind": "pentest",
+  "desc": "Blockchain / Web3 — HackTricks knowledge base."
+ },
+ {
+  "id": "stego",
+  "name": "Steganography / Forensics",
+  "handle": "stegwraith",
+  "icon": "▦",
+  "sev": "low",
+  "kind": "pentest",
+  "desc": "Steganography / Forensics — HackTricks knowledge base."
+ }
+]

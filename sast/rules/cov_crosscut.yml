@@ -1,0 +1,51 @@
+# Cross-cutting coverage for HARD, often-missed vuln classes in the languages
+# whose per-language rule file SKIPPED that class entirely. Everything else in
+# the hard-class matrix (SSRF/XXE/SSTI/LDAP/XPATH/NoSQL/open-redirect/header-
+# injection/ReDoS across php, python, java/kotlin, js/ts, go, dotnet, cpp, rust,
+# swift, objc) is already covered by the DB signatures and the per-language
+# cov_*.yml files, so it is deliberately NOT duplicated here (duplicating would
+# only split category labels or step on the owning agent).
+#
+# Each sink is TAINT-shaped (fires only on a tainted argument) and scoped via
+# {regex} / library-specific callee names so a constant/safe call yields nothing
+# (verified: 0 findings on the constant version of every rule below).
+# Matching: bare string = exact callee; {regex:"..."} is searched against the
+# call `full` and `callee`.
+rules:
+
+  # --- XXE: ruby owner (cov_ruby_perl.yml) ships no XXE rule --------------------
+  # Nokogiri / REXML / libxml-ruby parsing of attacker XML. (Ox.load is already a
+  # DESERIALIZATION sink, so it is intentionally excluded here.)
+  - id: cc-ruby-xxe
+    family: [ruby]
+    languages: [ruby]
+    category: XXE
+    severity: ERROR
+    message: tainted XML parsed by a ruby XML parser (XXE / XML entity expansion)
+    sinks:
+      - {regex: "Nokogiri(\\.|::)XML|REXML::Document|LibXML::XML|XML::Parser|XML::SAX"}
+
+  # --- XPATH: ruby owner ships no XPath rule -----------------------------------
+  # Nokogiri node.xpath / at_xpath with an attacker-controlled expression.
+  - id: cc-ruby-xpath
+    family: [ruby]
+    languages: [ruby]
+    category: XPATHI
+    severity: ERROR
+    message: tainted expression reaches a Nokogiri XPath query (XPath injection)
+    sinks: [xpath, at_xpath]
+
+  # --- XXE: perl owner (cov_ruby_perl.yml) covers only SQLi + SSRF -------------
+  # XML::LibXML / XML::Simple parsing attacker XML.
+  - id: cc-perl-xxe
+    family: [perl]
+    languages: [perl]
+    category: XXE
+    severity: ERROR
+    message: tainted XML parsed by XML::LibXML / XML::Simple (XXE)
+    sinks:
+      - parse_string
+      - parse_file
+      - parse_fh
+      - load_xml
+      - {regex: "XMLin|XML::Simple|XML::LibXML"}

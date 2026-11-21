@@ -340,8 +340,8 @@ Task goal: {{.Goal}}
 
 Don't duplicate, don't force busywork; but when the goal is unmet and a deeper uncovered approach exists, dispatch when you should. Concise, focused, efficient.`
 
-func plannerSystem(goal, dataDir, workDir string) string {
-	body := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: goal, DataDir: dataDir, Now: nowStr()})
+func plannerSystem(goal, dataDir, workDir, mission string, taskID int64) string {
+	body := renderSystemMission("planner", mission, taskID, plannerDefaultTmpl, PlannerVars{Goal: goal, DataDir: dataDir, Now: nowStr()})
 	return body + artifactSpec(workDir)
 }
 
@@ -395,7 +395,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	// This task's working directory <workDir>/tasks/<taskID>, created ahead of time.
 	taskDir := ensureRunDir(p.workDir, taskID, 0)
 	ctx = intercept.WithReviewContext(ctx, taskDir, intercept.ReviewBackground{})
-	sysBody := plannerSystem(goal, p.workDir, taskDir)
+	sysBody := plannerSystem(goal, p.workDir, taskDir, missionFor(taskID), taskID)
 	if p.wantConstraints() {
 		sysBody += constraintBlock(ts) // operation constraints (if any) injected into the system prompt to frame the exploration boundary
 	}

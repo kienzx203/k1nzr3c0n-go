@@ -1,0 +1,72 @@
+# Second-order / STORED taint (stored XSS, second-order SQLi).
+#
+# The classic miss of a pure source→sink engine: user input is WRITTEN to a store (DB,
+# cache, file, session) in request A, then READ BACK in request B and sent to a sink
+# without re-encoding. There is no direct source→sink in either request alone.
+#
+# We model the READ-BACK APIs as taint sources under XSS/SQLI. This is an over-approximation
+# (a read is only truly tainted if user data was stored there), so it is intentionally
+# gated by the engine's flow requirement — a read only becomes a finding when it actually
+# REACHES a dangerous sink — and kept at medium severity: these are second-order CANDIDATES
+# for the reviewer to confirm (is the stored value attacker-written?), not proven bugs.
+#
+# Only distinctive DB read-back APIs are listed (not generic .get/.find) to limit noise.
+
+rules:
+  - id: second-order-python
+    family: [python]
+    category: XSS
+    severity: medium
+    message: value read back from a datastore reaches an output sink (possible STORED XSS — confirm the stored value is attacker-written)
+    sinks: []
+    sources:
+      - fetchone
+      - fetchall
+      - fetchmany
+
+  - id: second-order-python-sqli
+    family: [python]
+    category: SQLI
+    severity: medium
+    message: value read back from a datastore reaches a SQL sink (possible SECOND-ORDER SQLi)
+    sinks: []
+    sources:
+      - fetchone
+      - fetchall
+      - fetchmany
+
+  - id: second-order-php
+    family: [php]
+    category: XSS
+    severity: medium
+    message: value read back from a datastore reaches an output sink (possible STORED XSS)
+    sinks: []
+    sources:
+      - { regex: "fetch_assoc" }
+      - { regex: "fetch_array" }
+      - { regex: "fetch_row" }
+      - { regex: "fetch_object" }
+      - { regex: "fetchAll" }
+      - { regex: "fetchColumn" }
+
+  - id: second-order-php-sqli
+    family: [php]
+    category: SQLI
+    severity: medium
+    message: value read back from a datastore reaches a SQL sink (possible SECOND-ORDER SQLi)
+    sinks: []
+    sources:
+      - { regex: "fetch_assoc" }
+      - { regex: "fetch_array" }
+      - { regex: "fetchAll" }
+
+  - id: second-order-java
+    family: [java]
+    category: XSS
+    severity: medium
+    message: value read back from the database (ResultSet/JPA) reaches an output sink (possible STORED XSS)
+    sinks: []
+    sources:
+      - getResultList
+      - getSingleResult
+      - { regex: "ResultSet" }

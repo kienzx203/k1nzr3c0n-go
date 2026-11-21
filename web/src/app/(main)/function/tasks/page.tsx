@@ -128,6 +128,7 @@ import { type SortDirection, useStoredSortPreference } from "@/lib/sort-preferen
 import type {
   AssetInterceptRuleInput,
   ChatAttachment,
+  SastSourceRoot,
   Company,
   DeleteTaskOptions,
   DeleteTaskResult,
@@ -161,6 +162,21 @@ function appendUploads(desc: string, atts: ChatAttachment[]): string {
   }
   const head = desc.trim() ? `${desc.replace(/\s*$/, "")}\n\n` : "";
   return swt("interface.m0817", { p0: head, p1: UPLOAD_MARKER, p2: bullets });
+}
+
+// REVIEW_SOURCE_MARKER labels the block of chosen source roots inside the description, so
+// re-selecting replaces the same block rather than stacking copies.
+const REVIEW_SOURCE_MARKER = "── REVIEW SOURCE (the source root(s) chosen to review) ──";
+
+// setReviewSourceBlock keeps exactly one REVIEW-SOURCE block at the end of the description
+// listing the chosen absolute paths; empty selection removes the block.
+function setReviewSourceBlock(desc: string, paths: string[]): string {
+  const idx = desc.indexOf(REVIEW_SOURCE_MARKER);
+  const base = (idx >= 0 ? desc.slice(0, idx) : desc).replace(/\s*$/, "");
+  if (paths.length === 0) return base;
+  const body = paths.map((p) => `- ${p}`).join("\n");
+  const block = `${REVIEW_SOURCE_MARKER}\n${body}\nReview ONLY the source root(s) above — review_seed each of them.`;
+  return base ? `${base}\n\n${block}` : block;
 }
 
 // POLL_MS is the task-list refresh interval. Task state moves on the server (planner /
@@ -3130,6 +3146,7 @@ function CreateTaskSheet({
   const [description, setDescription] = React.useState("");
   const [goal, setGoal] = React.useState("");
   const [selectedTemplateID, setSelectedTemplateID] = React.useState<number | null>(null);
+  const [mission, setMission] = React.useState("bugbounty"); // bugbounty|redteam|review-source — selects Main/Planner/Worker brains
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [companies, setCompanies] = React.useState<Company[]>([]);
   const [sourceTaskIDs, setSourceTaskIDs] = React.useState<string[]>([]);
@@ -3148,6 +3165,11 @@ function CreateTaskSheet({
   // Before task creation, stage uploads in drafts/<draftId>/uploads/ and append returned absolute paths to description.
   const [uploading, setUploading] = React.useState(false);
   const [uploadCount, setUploadCount] = React.useState(0);
+  // Candidate source roots discovered in the staged uploads (zips extracted + project
+  // markers detected) and which the user picked to review.
+  const [sources, setSources] = React.useState<SastSourceRoot[]>([]);
+  const [selectedSources, setSelectedSources] = React.useState<string[]>([]);
+  const [detectingSources, setDetectingSources] = React.useState(false);
   const draftIdRef = React.useRef<string>("");
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const sheetContentRef = React.useRef<HTMLDivElement>(null);
@@ -3162,6 +3184,10 @@ function CreateTaskSheet({
       .companies()
       .then(setCompanies)
       .catch(() => setCompanies([]));
+    // preload the shared source registry so sources uploaded at the graph page are
+    // immediately pickable here (upload sync), even before uploading anything in this form.
+    void refreshSources();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // pickFiles uploads the chosen files into this draft's staging dir and appends their
@@ -3178,12 +3204,48 @@ function CreateTaskSheet({
       const r = await api.chatUpload("staging", draftIdRef.current, Array.from(files));
       setDescription((prev) => appendUploads(prev, r.attachments));
       setUploadCount((n) => n + r.attachments.length);
+      void refreshSources(); // discover source roots in the just-uploaded files
     } catch (e) {
       toast.error(swt("interface.m0079") + (e as Error).message);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = ""; // allow re-picking the same file
     }
+  }
+
+  // refreshSources asks the backend which SOURCE ROOTS it found in the staged uploads
+  // (zips extracted + project markers detected) so the user can choose what to review.
+  async function refreshSources() {
+    setDetectingSources(true);
+    try {
+      const r = await api.sastSources(draftIdRef.current || undefined);
+      // registry = sources uploaded ANYWHERE (graph page included) → shown here too, so the
+      // two upload paths stay in sync. Merge with this draft's just-detected roots, dedup by path.
+      const regAsRoots: SastSourceRoot[] = (r.registry ?? []).map((e) => ({
+        path: e.path,
+        name: e.name + (e.origin === "graph" ? " (graph upload)" : ""),
+        marker: e.origin,
+        files: e.files,
+      }));
+      const byPath = new Map<string, SastSourceRoot>();
+      for (const s of [...(r.sources ?? []), ...regAsRoots]) byPath.set(s.path, s);
+      setSources(Array.from(byPath.values()));
+    } catch {
+      /* best-effort: no picker if detection fails */
+    } finally {
+      setDetectingSources(false);
+    }
+  }
+
+  // toggleSource adds/removes a source root from the review selection and keeps a single
+  // "REVIEW SOURCE" block in the description listing the chosen absolute paths — the agents
+  // review_seed exactly those roots.
+  function toggleSource(path: string) {
+    setSelectedSources((prev) => {
+      const next = prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path];
+      setDescription((d) => setReviewSourceBlock(d, next));
+      return next;
+    });
   }
 
   async function createTask() {
@@ -3204,6 +3266,7 @@ function CreateTaskSheet({
         categoryId: categoryID,
         description: description.trim(),
         goal: goal.trim(),
+        mission,
         llmProfileIds: llmProfileIDs.map(Number),
         sourceTaskIds: sourceTaskIDs,
         companyIds: companyIDs,
@@ -3244,6 +3307,7 @@ function CreateTaskSheet({
       setCoverageEnabled(true);
       setInterceptRules([]);
       setUploadCount(0);
+      setSources([]); setSelectedSources([]);
       draftIdRef.current = "";
       setOpen(false);
       onCreated();
@@ -3286,6 +3350,7 @@ function CreateTaskSheet({
                 setCategoryID(template.category_id ?? undefined);
                 setInterceptRules(template.intercept_rules ?? []);
                 setUploadCount(0);
+      setSources([]); setSelectedSources([]);
               }}
               portalContainer={sheetContentRef}
             />
@@ -3309,6 +3374,22 @@ function CreateTaskSheet({
               />
               <FieldDescription>{swt("interface.m1032")}</FieldDescription>
             </Field>
+            <div className="grid gap-2">
+              <Label htmlFor="mission">Mission</Label>
+              <select
+                id="mission"
+                className="border-input bg-background h-9 rounded-md border px-3 text-sm"
+                value={mission}
+                onChange={(e) => setMission(e.target.value)}
+              >
+                <option value="bugbounty">Bug Bounty</option>
+                <option value="redteam">Red Team</option>
+                <option value="review-source">Source Review</option>
+              </select>
+              <p className="text-muted-foreground text-xs">
+                Chọn mission → nạp bộ não Main/Planner/Worker + tool/skill phù hợp. Source Review dùng SAST engine + coverage gate.
+              </p>
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="description">{swt("interface.m0605")}</Label>
               <Textarea
@@ -3341,6 +3422,50 @@ function CreateTaskSheet({
                     ? swt("interface.m1034", { p0: uploadCount })
                     : swt("interface.m1035")}
                 </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void refreshSources()}
+                  disabled={detectingSources}
+                >
+                  {detectingSources ? <Loader2Icon className="animate-spin" /> : null}
+                  ⟳ Load uploaded sources
+                </Button>
+              </div>
+              {/* Choose which uploaded SOURCE ROOT(S) to review. Detected from the staged
+                  uploads (zips extracted + project markers); selection is folded into the
+                  description so the agents review_seed exactly those roots. */}
+              <div className="rounded-md border p-2">
+                <p className="text-muted-foreground mb-1 text-xs font-medium">
+                  Choose the source(s) to review ({selectedSources.length} selected)
+                </p>
+                {sources.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">
+                    No uploaded source yet. Upload a .zip above, or upload at the Graph page, then press “⟳ Load uploaded sources”.
+                  </p>
+                ) : (
+                  <div className="flex max-h-44 flex-col gap-1 overflow-auto">
+                    {sources.map((s) => (
+                      <label
+                        key={s.path}
+                        className="hover:bg-muted flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedSources.includes(s.path)}
+                          onChange={() => toggleSource(s.path)}
+                        />
+                        <span className="flex-1 truncate text-xs" title={s.path}>
+                          {s.name}
+                        </span>
+                        <span className="text-muted-foreground shrink-0 text-[10px]">
+                          {s.marker} · {s.files} files
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid gap-2">

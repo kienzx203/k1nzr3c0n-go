@@ -1,0 +1,166 @@
+# Framework-aware source / sink / sanitizer modeling (precision + recall on real apps).
+#
+# Two jobs:
+#   SANITIZERS  — register the output-encoders and safe-escapers of each framework so
+#                 taint flowing THROUGH them is cleared (kills the big XSS/SQLi false-
+#                 positive source: data that IS encoded before output).
+#   DANGEROUS SINKS — register the explicitly-UNescaped output + raw-query APIs that
+#                 bypass a framework's default auto-escaping (the real XSS/SQLi here).
+#
+# Deliberately NOT sinks: auto-escaping renderers (render_template, Blade {{ }}, Razor
+# @model, JSX {expr}) — those are safe by default, so flagging them false-positives. We
+# flag only the raw/unescaped escape hatches.
+
+rules:
+  # ───────────────────────── XSS: output-encoders are sanitizers ─────────────────────────
+  # CONTEXT NOTE: only HTML-context encoders are listed. URL/JS-context encoders
+  # (encodeURIComponent, urlencode) are deliberately EXCLUDED — they do NOT neutralise
+  # HTML-context XSS, so registering them as XSS sanitizers would FALSE-NEGATIVE a real
+  # reflected XSS. For a recall-first tool, under-sanitising beats over-sanitising.
+  - id: fw-xss-sanitizers-php
+    family: [php]
+    category: XSS
+    severity: medium
+    sinks: []
+    sanitizers:
+      - htmlspecialchars
+      - htmlentities
+      - strip_tags
+      - { regex: "^e$" }                 # Laravel/Blade e() helper (HTML-escapes)
+
+  - id: fw-xss-sanitizers-python
+    family: [python]
+    category: XSS
+    severity: medium
+    sinks: []
+    sanitizers:
+      - escape                            # markupsafe / django.utils.html / html.escape — HTML-escape
+      - conditional_escape
+      - { regex: "^(html\\.)?escape$" }
+      - { regex: "bleach\\.(clean|linkify)" }
+      - { regex: "markupsafe\\.escape" }
+
+  - id: fw-xss-sanitizers-js
+    family: [javascript]
+    category: XSS
+    severity: medium
+    sinks: []
+    sanitizers:
+      - { regex: "DOMPurify\\.sanitize" }
+      - sanitizeHtml
+      - escapeHtml
+      - { regex: "he\\.encode" }
+      - { regex: "validator\\.escape" }
+      - { regex: "_\\.escape" }
+
+  - id: fw-xss-sanitizers-java
+    family: [java]
+    category: XSS
+    severity: medium
+    sinks: []
+    sanitizers:
+      - { regex: "htmlEscape" }
+      - { regex: "escapeHtml" }
+      - { regex: "encodeForHTML" }
+      - { regex: "encodeForJavaScript" }
+      - { regex: "ESAPI\\.encoder" }
+      - { regex: "Encode\\.forHtml" }
+
+  # ───────────────────────── XSS: explicitly-UNescaped output sinks ─────────────────────────
+  - id: fw-xss-raw-js
+    family: [javascript]
+    category: XSS
+    severity: high
+    message: tainted value written as raw HTML (bypasses framework auto-escaping)
+    sinks:
+      - { regex: "innerHTML" }
+      - { regex: "outerHTML" }
+      - insertAdjacentHTML
+      - { regex: "document\\.write" }
+      - { regex: "\\.html$" }             # jQuery $(x).html(tainted)
+      - dangerouslySetInnerHTML           # React escape hatch
+      - { regex: "v-html" }               # Vue escape hatch
+
+  - id: fw-xss-raw-python
+    family: [python]
+    category: XSS
+    severity: high
+    message: tainted value marked safe / rendered unescaped (bypasses Jinja/Django auto-escaping)
+    sinks:
+      - mark_safe                         # Django: disables auto-escape
+      - Markup                            # Jinja2/markupsafe: raw HTML
+      - format_html_join
+
+  - id: fw-xss-raw-php
+    family: [php]
+    category: XSS
+    severity: high
+    message: tainted value echoed without encoding
+    sinks:
+      - { regex: "->raw$" }               # Blade {!! !!} compiles to raw echo helpers
+      - print_r
+
+  # ───────────────────────── SQLi: raw-query escape hatches are sinks ─────────────────────────
+  # ORM query builders are safe (parameterized); their RAW variants concatenate — flag those.
+  - id: fw-sqli-raw-python
+    family: [python]
+    category: SQLI
+    severity: high
+    message: tainted value in a raw/extra ORM query (bypasses the ORM's parameterization)
+    sinks:
+      - { regex: "\\.raw$" }              # Django Model.objects.raw(tainted)
+      - { regex: "\\.extra$" }            # Django .extra(where=[tainted])
+      - RawSQL
+      - { regex: "text$" }                # SQLAlchemy text(tainted)
+
+  - id: fw-sqli-raw-php
+    family: [php]
+    category: SQLI
+    severity: high
+    message: tainted value in a raw query builder clause (Laravel raw helpers concatenate)
+    sinks:
+      - { regex: "whereRaw$" }
+      - { regex: "orderByRaw$" }
+      - { regex: "havingRaw$" }
+      - { regex: "selectRaw$" }
+      - { regex: "DB::raw" }
+
+  - id: fw-sqli-raw-js
+    family: [javascript]
+    category: SQLI
+    severity: high
+    message: tainted value in a raw SQL interface (Sequelize/Knex raw concatenates)
+    sinks:
+      - { regex: "\\.raw$" }              # knex.raw(tainted) / sequelize.query
+      - { regex: "sequelize\\.query" }
+
+  # SQLi sanitizers: explicit escapers + integer casts (weak but defeat basic injection).
+  - id: fw-sqli-sanitizers
+    family: [php, python, javascript, java]
+    category: SQLI
+    severity: high
+    sinks: []
+    sanitizers:
+      - mysqli_real_escape_string
+      - pg_escape_string
+      - { regex: "->quote$" }             # PDO::quote
+      - { regex: "escape_string" }
+      - intval
+      - { regex: "^int$" }                # python int(x) cast
+      - { regex: "parseInt" }
+      - { regex: "Integer\\.parseInt" }
+      - { regex: "Long\\.parseLong" }
+
+  # ───────────────────────── Path traversal: name-only sanitizers ─────────────────────────
+  - id: fw-path-sanitizers
+    family: [php, python, javascript, java, go]
+    category: PATH
+    severity: high
+    sinks: []
+    sanitizers:
+      - basename                          # strips directory components
+      - { regex: "os\\.path\\.basename" }
+      - { regex: "path\\.basename" }
+      - { regex: "Paths\\.get" }          # only when combined w/ normalize+check (over-approx)
+      - { regex: "FilenameUtils\\.getName" }
+      - { regex: "filepath\\.Base" }      # Go

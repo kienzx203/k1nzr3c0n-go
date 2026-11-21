@@ -249,6 +249,17 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 			byKey[t.Key] = t
 		}
 		runInfo := agent.RunInfoFrom(ctx)
+		// Mission-scoped tools: the SAST source-review tools are shown only in the
+		// "review-source" mission; other missions (bugbounty/redteam) don't see them.
+		mission := "bugbounty"
+		if runInfo.TaskID > 0 {
+			mission = pg.MissionOfTask(runInfo.TaskID)
+		}
+		reviewOnlyTools := map[string]bool{
+			"sast_scan": true, "sca_scan": true, "code_refs": true, "list_endpoints": true,
+			"list_code_units": true, "review_seed": true, "review_mark": true,
+			"review_coverage": true, "review_report": true,
+		}
 		resolve := func(t actool.CoreTool, row *db.Tool) actool.CoreTool {
 			var schema map[string]any
 			if len(row.Schema) > 0 {
@@ -265,6 +276,9 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 			}
 			if !row.Enabled || !contains(row.Agents, agentKey) {
 				continue // disabled globally or not bound to this agent → drop
+			}
+			if mission != "review-source" && reviewOnlyTools[t.Name()] {
+				continue // SAST review tools are only exposed in the source-review mission
 			}
 			out = append(out, resolve(t, row))
 		}

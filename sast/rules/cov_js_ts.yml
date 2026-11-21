@@ -1,0 +1,160 @@
+# JS/TS sink/source coverage closure (SAST_k1nz).
+# family == language name; both javascript and typescript resolve to family
+# "javascript" (run_lang.LANG_FAMILY), so "javascript" is the one that binds —
+# "typescript" is listed for clarity/robustness.
+# All sinks are taint-gated by the engine: a constant/safe argument produces 0
+# findings (verified in tests_cov_js_ts). YAML sinks are reported HIGH severity,
+# so they win category-collapse over the generic/medium DB matches that currently
+# mislabel these constructs (e.g. exec->SQLI, http.get->PATH).
+rules:
+  # ---- untrusted input sources not already in the DB ---------------------- #
+  - id: js-ts-dom-node-sources
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: ANY
+    message: browser/DOM and Node untrusted input sources
+    sources:
+      - {regex: "(?i)(^|\\.)location\\.(search|hash|href|pathname|hostname|host)$"}
+      - {regex: "(?i)(^|\\.)document\\.(URL|documentURI|baseURI|referrer|cookie|location)"}
+      - {regex: "(?i)(^|\\.)window\\.name$"}
+      - {regex: "(?i)(^|\\.)process\\.env(\\.|\\[|$)"}
+      - {regex: "(?i)(^|\\.)process\\.argv(\\.|\\[|$)"}
+      - {regex: "(?i)URLSearchParams"}
+      - {regex: "(?i)(req|request)\\.(query|body|params|header|headers|cookies|cookie|hostname|url|originalUrl|path)"}
+
+  # ---- command injection -------------------------------------------------- #
+  - id: js-ts-command-injection
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: CMDI
+    severity: ERROR
+    message: tainted value reaches a child_process execution API (command injection)
+    sinks: [exec, execSync, execFile, execFileSync, spawn, spawnSync, fork]
+
+  # ---- code injection (eval / Function / vm) ------------------------------ #
+  - id: js-ts-code-injection
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: CODE_INJECTION
+    severity: ERROR
+    message: tainted value reaches dynamic code evaluation (code injection)
+    sinks: [eval, Function, runInContext, runInNewContext, runInThisContext, compileFunction]
+
+  # ---- SQL injection (raw/concat query) ----------------------------------- #
+  - id: js-ts-sql-injection
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: SQLI
+    severity: ERROR
+    message: tainted value reaches a raw SQL execution method (SQL injection)
+    sinks: [query, execute, raw]
+
+  # ---- NoSQL injection (mongo find/update with user object / $where) ------ #
+  - id: js-ts-nosql-injection
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: NOSQLI
+    severity: ERROR
+    message: tainted object/key reaches a MongoDB query (NoSQL injection / $where)
+    sinks: [find, findOne, findOneAndUpdate, findOneAndDelete, updateOne, updateMany, deleteOne, deleteMany]
+
+  # ---- XSS: reflected (res.send) + DOM-call sinks ------------------------- #
+  # NOTE: DOM-ASSIGNMENT XSS (el.innerHTML = x / outerHTML / insertAdjacentHTML=)
+  # is handled by engine._ASSIGN_SINKS and already works; these are the CALL sinks.
+  - id: js-ts-xss
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: XSS
+    severity: ERROR
+    message: tainted value reaches an HTML/response write (reflected / DOM XSS)
+    sinks: [send, insertAdjacentHTML, html, write, writeln]
+
+  # ---- path traversal / arbitrary file read ------------------------------- #
+  - id: js-ts-path-traversal
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: PATH
+    severity: ERROR
+    message: tainted path reaches a filesystem API (path traversal)
+    sinks: [readFile, readFileSync, createReadStream, writeFile, writeFileSync,
+            createWriteStream, appendFile, appendFileSync, readdir, readdirSync,
+            unlink, unlinkSync, sendFile]
+
+  # ---- SSRF (http/https/axios/fetch/request/got with user URL) ------------ #
+  - id: js-ts-ssrf
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: SSRF
+    severity: ERROR
+    message: tainted URL reaches an outbound HTTP client (SSRF)
+    sinks:
+      - fetch
+      - request
+      - {regex: "(?i)(\\baxios\\b|\\bfetch\\b|\\brequest\\b|\\bgot\\b|superagent|needle|node-fetch|\\bhttp\\b|\\bhttps\\b)"}
+
+  # ---- open redirect ------------------------------------------------------ #
+  # location / location.href assignment is engine._ASSIGN_SINKS (reported SSRF);
+  # res.redirect(...) is the call sink here.
+  - id: js-ts-open-redirect
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: OPEN_REDIRECT
+    severity: ERROR
+    message: tainted value reaches a redirect (open redirect)
+    sinks: [redirect]
+
+  # ---- insecure deserialization ------------------------------------------- #
+  - id: js-ts-deserialization
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: DESERIALIZATION
+    severity: ERROR
+    message: tainted value reaches an unsafe deserializer (node-serialize / insecure deserialization)
+    sinks: [unserialize, deserialize]
+
+  # ---- prototype pollution ------------------------------------------------ #
+  - id: js-ts-prototype-pollution
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: PROTOTYPE_POLLUTION
+    severity: ERROR
+    message: tainted key/object reaches a recursive merge (prototype pollution)
+    # NOTE: `set`/`setWith` are intentionally OMITTED — they collide with the JS
+    # built-in Map.prototype.set (`m.set(userKey, v)`), and the coarse IR cannot
+    # tell `_.set(obj,path,v)` from `map.set(k,v)` by callee name, so including
+    # them produced false positives. The recursive-merge family below is the
+    # distinctive, FP-safe signal for prototype pollution.
+    sinks: [merge, mergeWith, defaultsDeep, defaults, extend, assignIn, assignInWith]
+
+  # ---- template injection (SSTI) ------------------------------------------ #
+  # `render`/`renderFile` are matched only when the call carries a template-engine
+  # name (regex over the full callee text), so Express's safe `res.render(view,
+  # locals)` does NOT fire while `ejs.render(userTpl)` / `pug.render(userTpl)` do.
+  - id: js-ts-template-injection
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: TEMPLATE_INJECTION
+    severity: ERROR
+    message: tainted value reaches a template compile/render (server-side template injection)
+    sinks:
+      - compile
+      - renderString
+      - {regex: "(?i)\\b(ejs|pug|jade|handlebars|hbs|nunjucks|mustache|twig|liquid|dustjs|squirrelly)\\b"}
+
+  # ---- ReDoS (user-built RegExp) ------------------------------------------ #
+  - id: js-ts-redos
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: REDOS
+    severity: ERROR
+    message: tainted value builds a RegExp (ReDoS / regular expression denial of service)
+    sinks: [RegExp]
+
+  # ---- XXE (libxmljs / xml2js with entities) ------------------------------ #
+  - id: js-ts-xxe
+    family: [javascript, typescript]
+    languages: [javascript, typescript]
+    category: XXE
+    severity: ERROR
+    message: tainted XML reaches a parser (XML external entity / XXE)
+    sinks: [parseXml, parseXmlString, parseString, parseStringPromise]
