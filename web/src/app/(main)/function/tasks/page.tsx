@@ -164,6 +164,27 @@ function appendUploads(desc: string, atts: ChatAttachment[]): string {
   return swt("interface.m0817", { p0: head, p1: UPLOAD_MARKER, p2: bullets });
 }
 
+// DOCS_MARKER labels the uploaded PROJECT-DOCUMENT paths so the agent reads them as context
+// (scope / API / architecture / ROE), kept distinct from the review source.
+const DOCS_MARKER = "── PROJECT DOCUMENTS (reference — read these to understand the target) ──";
+
+// appendDocs folds uploaded reference-document paths into the description with guidance telling
+// the agent to read them first (and extract text from PDF/DOCX) before working.
+function appendDocs(desc: string, atts: ChatAttachment[]): string {
+  const bullets = atts.map((a) => `- ${a.abs ?? a.path} (${fmtBytes(a.size)})`).join("\n");
+  const guide =
+    "These are REFERENCE documents for this engagement (e.g. program scope, API/Swagger/Postman, " +
+    "architecture, ROE, design/threat-model). READ them FIRST to understand the target; they are " +
+    "context, NOT the review target. For PDF/DOCX, extract text first (pdftotext / strings / unzip).";
+  const idx = desc.indexOf(DOCS_MARKER);
+  if (idx >= 0) {
+    // append new bullets under the existing block (before any trailing content is fine)
+    return `${desc.replace(/\s*$/, "")}\n${bullets}\n`;
+  }
+  const head = desc.trim() ? `${desc.replace(/\s*$/, "")}\n\n` : "";
+  return `${head}${DOCS_MARKER}\n${guide}\n${bullets}\n`;
+}
+
 // REVIEW_SOURCE_MARKER labels the block of chosen source roots inside the description, so
 // re-selecting replaces the same block rather than stacking copies.
 const REVIEW_SOURCE_MARKER = "── REVIEW SOURCE (the source root(s) chosen to review) ──";
@@ -3172,6 +3193,8 @@ function CreateTaskSheet({
   // Before task creation, stage uploads in drafts/<draftId>/uploads/ and append returned absolute paths to description.
   const [uploading, setUploading] = React.useState(false);
   const [uploadCount, setUploadCount] = React.useState(0);
+  const [uploadingDocs, setUploadingDocs] = React.useState(false);
+  const [docsCount, setDocsCount] = React.useState(0);
   // Candidate source roots discovered in the staged uploads (zips extracted + project
   // markers detected) and which the user picked to review.
   const [sources, setSources] = React.useState<SastSourceRoot[]>([]);
@@ -3179,6 +3202,7 @@ function CreateTaskSheet({
   const [detectingSources, setDetectingSources] = React.useState(false);
   const draftIdRef = React.useRef<string>("");
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const docsInputRef = React.useRef<HTMLInputElement>(null);
   const sheetContentRef = React.useRef<HTMLDivElement>(null);
 
   // load LLM profiles once for the create-task profile picker.
@@ -3227,6 +3251,27 @@ function CreateTaskSheet({
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = ""; // allow re-picking the same file
+    }
+  }
+
+  // pickDocs uploads REFERENCE documents (scope/API/architecture/ROE) the agent reads as context,
+  // kept distinct from the review source (no source-root detection on these).
+  async function pickDocs(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    if (!draftIdRef.current) {
+      draftIdRef.current =
+        globalThis.crypto?.randomUUID?.() ?? `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+    }
+    setUploadingDocs(true);
+    try {
+      const r = await api.chatUpload("staging", draftIdRef.current, Array.from(files));
+      setDescription((prev) => appendDocs(prev, r.attachments));
+      setDocsCount((n) => n + r.attachments.length);
+    } catch (e) {
+      toast.error(swt("interface.m0079") + (e as Error).message);
+    } finally {
+      setUploadingDocs(false);
+      if (docsInputRef.current) docsInputRef.current.value = "";
     }
   }
 
@@ -3326,7 +3371,7 @@ function CreateTaskSheet({
       setSeedFirstIntent(false);
       setCoverageEnabled(true);
       setInterceptRules([]);
-      setUploadCount(0);
+      setUploadCount(0); setDocsCount(0);
       setSources([]); setSelectedSources([]);
       draftIdRef.current = "";
       setOpen(false);
@@ -3369,7 +3414,7 @@ function CreateTaskSheet({
                 setGoal(template.goal);
                 setCategoryID(template.category_id ?? undefined);
                 setInterceptRules(template.intercept_rules ?? []);
-                setUploadCount(0);
+                setUploadCount(0); setDocsCount(0);
       setSources([]); setSelectedSources([]);
               }}
               portalContainer={sheetContentRef}
@@ -3523,6 +3568,27 @@ function CreateTaskSheet({
                     ? swt("interface.m1034", { p0: uploadCount })
                     : swt("interface.m1035")}
                 </span>
+                <input
+                  ref={docsInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => void pickDocs(e.target.files)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => docsInputRef.current?.click()}
+                  disabled={uploadingDocs}
+                  title="Tài liệu tham khảo (scope / API / Swagger / ROE / design) — agent đọc để hiểu mục tiêu"
+                >
+                  {uploadingDocs ? <Loader2Icon className="animate-spin" /> : <PaperclipIcon />}
+                  Project documents
+                </Button>
+                {docsCount > 0 && (
+                  <span className="text-muted-foreground text-xs">{docsCount} docs</span>
+                )}
                 <Button
                   type="button"
                   variant="ghost"
