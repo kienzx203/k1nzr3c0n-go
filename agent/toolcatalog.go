@@ -60,7 +60,7 @@ func builtinToolsByAgent() map[string][]actool.CoreTool {
 		// pentest (the standalone pentest agent) binds by default: list assets / insert
 		// assets / report finding / list findings / list companies.
 		// New DBs are written by this seed; old DBs are migrated by seedPentestDefaultBindings.
-		"pentest": {ts.listAssets(), ts.insertAssets(), ts.addFinding(), ts.listFindings(), ts.listCompanies(), ts.sastScan(), ts.scaScan(), ts.codeRefs(), ts.listEndpoints(), ts.listCodeUnits(), ts.reviewSeed(), ts.reviewMark(), ts.reviewCoverage(), ts.reviewReport()},
+		"pentest": {ts.listAssets(), ts.insertAssets(), ts.addFinding(), ts.listFindings(), ts.listCompanies(), ts.sastScan(), ts.sastAddFlow(), ts.scaScan(), ts.codeRefs(), ts.listEndpoints(), ts.listCodeUnits(), ts.reviewSeed(), ts.reviewMark(), ts.reviewCoverage(), ts.reviewReport()},
 	}
 }
 

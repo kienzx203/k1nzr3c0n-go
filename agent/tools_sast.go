@@ -100,6 +100,57 @@ func (t *ToolSet) sastScan() actool.CoreTool {
 	})
 }
 
+// sastAddFlow is the sast_add_flow tool: the agent records a CONFIRMED source→sink into the
+// reviewed source's SAST graph, so a vulnerability found while running a review task shows up on
+// the Source-Review graph/upload pages (not only in the task's exploration graph). It appends one
+// JSON line to "<root>/.sast_agent_findings.jsonl" (append-safe for parallel workers); the server
+// reads it back by matching the registry entry whose path == root.
+func (t *ToolSet) sastAddFlow() actool.CoreTool {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"root":      map[string]any{"type": "string", "description": "The source ROOT directory being reviewed (the SAME path you passed to sast_scan / review_seed). The finding is attached to this source's SAST graph."},
+			"source":    map[string]any{"type": "string", "description": "The untrusted SOURCE as 'file:line — what enters' (e.g. 'app/ctrl.php:42 — $_GET[\"id\"]')."},
+			"sink":      map[string]any{"type": "string", "description": "The dangerous SINK the tainted value reaches as 'file:line — the operation' (e.g. 'app/db.php:88 — mysqli_query() concat')."},
+			"flow":      map[string]any{"type": "string", "description": "Optional ordered data-flow 'file:line → file:line → …' incl. the missing/bypassed sanitizer."},
+			"vulnclass": map[string]any{"type": "string", "description": "Vulnerability class (sqli/xss/cmdi/ssrf/path/lfi/xxe/ssti/deserialization/idor/…)."},
+			"severity":  map[string]any{"type": "string", "description": "critical|high|medium|low."},
+			"message":   map[string]any{"type": "string", "description": "One-line description of the confirmed finding."},
+		},
+		"required": []string{"root", "sink", "vulnclass"},
+	}
+	desc := "Add a CONFIRMED source→sink finding to the SAST GRAPH of the source you are reviewing, so it appears on the Source-Review graph/upload pages alongside the engine's output (not only in the task). Call it right AFTER report_finding for every confirmed source-review vulnerability. 'root' must be the source directory you reviewed (same path as sast_scan/review_seed)."
+	return readTool("sast_add_flow", desc, schema, func(ctx context.Context, raw json.RawMessage) (actool.Result, error) {
+		var in struct {
+			Root, Source, Sink, Flow, VulnClass, Severity, Message string
+		}
+		_ = json.Unmarshal(raw, &in)
+		in.Root = strings.TrimSpace(in.Root)
+		if in.Root == "" || strings.TrimSpace(in.Sink) == "" || strings.TrimSpace(in.VulnClass) == "" {
+			return actool.Errorf("sast_add_flow: 'root', 'sink' and 'vulnclass' are required"), nil
+		}
+		fi, err := os.Stat(in.Root)
+		if err != nil || !fi.IsDir() {
+			return actool.Errorf(fmt.Sprintf("sast_add_flow: root not a directory: %s", in.Root)), nil
+		}
+		rec := map[string]any{
+			"ts": time.Now().Unix(), "vulnclass": in.VulnClass, "severity": in.Severity,
+			"source": in.Source, "sink": in.Sink, "flow": in.Flow, "message": in.Message,
+			"worker": t.worker, "task_id": t.taskID,
+		}
+		b, _ := json.Marshal(rec)
+		f, err := os.OpenFile(filepath.Join(in.Root, ".sast_agent_findings.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			return actool.Errorf("sast_add_flow: cannot write to the source dir: " + err.Error()), nil
+		}
+		defer f.Close()
+		if _, err := f.Write(append(b, '\n')); err != nil {
+			return actool.Errorf("sast_add_flow: write failed: " + err.Error()), nil
+		}
+		return actool.Text(fmt.Sprintf("added to SAST graph: [%s] sink %s (source: %s). It will show on the Source-Review graph/upload pages for this source.", in.VulnClass, in.Sink, in.Source)), nil
+	})
+}
+
 // codeRefs is the code_refs tool: find a symbol's definition + all references (call
 // sites / usages) across a code tree, for inter-procedural tracing and reachability
 // ("who calls this entry?", "where does this tainted value flow?"). Backed by grep.

@@ -275,7 +275,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 			mission = pg.MissionOfTask(runInfo.TaskID)
 		}
 		reviewOnlyTools := map[string]bool{
-			"sast_scan": true, "sca_scan": true, "code_refs": true, "list_endpoints": true,
+			"sast_scan": true, "sast_add_flow": true, "sca_scan": true, "code_refs": true, "list_endpoints": true,
 			"list_code_units": true, "review_seed": true, "review_mark": true,
 			"review_coverage": true, "review_report": true,
 		}

@@ -705,6 +705,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/task-templates/{id}", s.pgDeleteTaskTemplate)
 	mux.HandleFunc("POST /api/sast/scan", s.sastScan)
 	mux.HandleFunc("GET /api/sast/sources", s.sastDraftSources)
+	mux.HandleFunc("GET /api/sast/agent-findings", s.sastAgentFindings)
 	// Mission profiles: edit per-mission agent brains (M5) + per-task agent overrides (M4).
 	mux.HandleFunc("GET /api/mission-prompts", s.pgListMissionPrompts)
 	mux.HandleFunc("GET /api/mission-prompts/effective", s.pgEffectivePrompts)

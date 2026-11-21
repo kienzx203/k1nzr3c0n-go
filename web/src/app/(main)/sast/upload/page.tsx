@@ -12,7 +12,7 @@ function token(): string {
 type Summary = { language?: string; engine?: string; functions?: number; edges?: number };
 type Target = { name?: string; target?: string; summary?: Summary; findings?: unknown[]; error?: string };
 type Result = { targets?: Target[]; summary?: Summary; findings?: unknown[]; name?: string };
-type Source = { id: string; name: string; result: Result; ts: number };
+type Source = { id: string; name: string; result: Result; ts: number; regId?: string };
 // A shared-registry entry: a source uploaded here OR staged in a new-task draft (origin).
 type RegEntry = { id: string; name: string; path: string; files: number; origin: "graph" | "task"; has_result: boolean };
 
@@ -53,7 +53,7 @@ export default function SastUploadPage() {
       });
       if (!r.ok) { const t = await r.text(); throw new Error(t || `HTTP ${r.status}`); }
       const j: Result = await r.json();
-      const src: Source = { id: "s" + Date.now().toString(36), name, result: j, ts: Date.now() };
+      const src: Source = { id: "s" + Date.now().toString(36), name, result: j, ts: Date.now(), regId: id };
       const next = [...loadSources(), src];
       saveSources(next); setSources(next); loadRegistry();
     } catch (e) { setErr(e instanceof Error ? e.message : "scan failed"); }
@@ -73,7 +73,8 @@ export default function SastUploadPage() {
       });
       if (!r.ok) { const t = await r.text(); throw new Error(t || `HTTP ${r.status}`); }
       const j: Result = await r.json();
-      const src: Source = { id: "s" + Date.now().toString(36), name: f.name.replace(/\.zip$/i, ""), result: j, ts: Date.now() };
+      const regId = r.headers.get("X-Sast-Source-Id") || undefined;
+      const src: Source = { id: "s" + Date.now().toString(36), name: f.name.replace(/\.zip$/i, ""), result: j, ts: Date.now(), regId };
       const next = [...loadSources(), src];
       saveSources(next); setSources(next); loadRegistry();
     } catch (e) { setErr(e instanceof Error ? e.message : "scan failed"); }

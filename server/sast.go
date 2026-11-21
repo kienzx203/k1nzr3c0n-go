@@ -146,6 +146,42 @@ func (s *Server) sastScan(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(b)
 }
 
+// sastAgentFindings handles GET /api/sast/agent-findings?id=<registry id>: it returns the
+// source→sink findings the review AGENT added during task runs (sast_add_flow wrote them to
+// "<source path>/.sast_agent_findings.jsonl"). The graph/upload pages overlay these on the SAST
+// graph so a vulnerability found while running a task shows up for that source.
+func (s *Server) sastAgentFindings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" || strings.ContainsAny(id, "/\\.") {
+		writeErr(w, 400, "invalid source id")
+		return
+	}
+	var path string
+	for _, e := range s.listSastSources() {
+		if e.ID == id {
+			path = filepath.Join(e.Path, ".sast_agent_findings.jsonl")
+			break
+		}
+	}
+	out := []map[string]any{}
+	if path != "" {
+		if b, err := os.ReadFile(path); err == nil {
+			for _, line := range strings.Split(string(b), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				var m map[string]any
+				if json.Unmarshal([]byte(line), &m) == nil {
+					out = append(out, m)
+				}
+			}
+		}
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"findings": out})
+}
+
 // sastSourceRoot is one candidate source the user can pick to review.
 type sastSourceRoot struct {
 	Path   string `json:"path"`   // absolute on-disk path (what the review targets)

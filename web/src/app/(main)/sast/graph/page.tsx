@@ -23,10 +23,15 @@ type Finding = {
 };
 type Target = { name?: string; target?: string; summary?: { functions?: number; language?: string }; findings?: Finding[]; graph?: Graph };
 type Result = { targets?: Target[]; graph?: Graph };
-type Source = { id: string; name: string; result: Result };
+type Source = { id: string; name: string; result: Result; regId?: string };
+// AgentFinding is a source→sink the review agent added during a task run (sast_add_flow).
+type AgentFinding = { vulnclass?: string; severity?: string; source?: string; sink?: string; flow?: string; message?: string; worker?: string; task_id?: number; ts?: number };
 
 function loadSources(): Source[] {
   try { return JSON.parse(localStorage.getItem("sastk1nz.sources") || "[]"); } catch { return []; }
+}
+function authToken(): string {
+  try { return localStorage.getItem("artex_token") || ""; } catch { return ""; }
 }
 function cleanPos(p?: string): string {
   if (!p) return "";
@@ -335,6 +340,16 @@ function GraphView({ source, onBack }: { source: Source; onBack: () => void }) {
   const [q, setQ] = useState("");
   const [showList, setShowList] = useState(true);
   const [sevFilter, setSevFilter] = useState<string | null>(null);
+  // Agent-added source→sink findings (sast_add_flow during a review task), overlaid on this SAST graph.
+  const [agentF, setAgentF] = useState<AgentFinding[]>([]);
+  const [showAgent, setShowAgent] = useState(true);
+  useEffect(() => {
+    if (!source.regId) { setAgentF([]); return; }
+    fetch(`/api/sast/agent-findings?id=${encodeURIComponent(source.regId)}`, { headers: { Authorization: `Bearer ${authToken()}` } })
+      .then((r) => (r.ok ? r.json() : { findings: [] }))
+      .then((d) => setAgentF((d.findings as AgentFinding[]) || []))
+      .catch(() => setAgentF([]));
+  }, [source.regId]);
   const g = targets[ti]?.graph ?? { nodes: [], edges: [] };
   const files = g.files || {};
   // all taint vulnerabilities in this target, severity-ranked (for the list panel).
@@ -423,6 +438,11 @@ function GraphView({ source, onBack }: { source: Source; onBack: () => void }) {
         <Button size="sm" variant={showList ? "default" : "outline"} onClick={() => setShowList(!showList)}>
           ⊗ Vulnerabilities ({vulns.length})
         </Button>
+        {agentF.length > 0 && (
+          <Button size="sm" variant={showAgent ? "default" : "outline"} onClick={() => setShowAgent(!showAgent)}>
+            🤖 Agent findings ({agentF.length})
+          </Button>
+        )}
         <span className="flex items-center gap-1 text-[11px]">
           {Object.entries(sevCounts).map(([s, c]) => (
             <span key={s} className="rounded px-1.5 py-0.5 font-medium" style={{ background: sevColor(s) + "22", color: sevColor(s) }}>{c} {s}</span>
@@ -437,6 +457,30 @@ function GraphView({ source, onBack }: { source: Source; onBack: () => void }) {
         </span>
       </div>
       <div className="relative flex-1">
+        {showAgent && agentF.length > 0 && (
+          <Card className="absolute right-3 top-3 z-10 flex w-[28rem] max-h-[92%] flex-col overflow-hidden p-0 shadow-xl border-sky-500/40">
+            <div className="flex items-center gap-2 border-b px-3 py-2">
+              <span className="text-sm font-semibold text-sky-400">🤖 Agent-added findings ({agentF.length})</span>
+              <button className="ml-auto text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowAgent(false)}>✕</button>
+            </div>
+            <div className="overflow-auto p-2 space-y-2 text-xs">
+              <div className="text-[11px] text-muted-foreground px-1">Source→sink confirmed by the review agent during task runs (via sast_add_flow).</div>
+              {agentF.map((f, i) => (
+                <div key={i} className="rounded border p-2 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: sevColor(f.severity || "") + "22", color: sevColor(f.severity || "") }}>{f.severity || "?"}</span>
+                    <span className="font-semibold">{f.vulnclass || "finding"}</span>
+                    {f.task_id ? <span className="ml-auto text-[10px] text-muted-foreground">task #{f.task_id}</span> : null}
+                  </div>
+                  {f.message && <div className="text-muted-foreground">{f.message}</div>}
+                  {f.source && <div><span className="text-[#16e0ff]">SOURCE</span> {f.source}</div>}
+                  {f.sink && <div><span className="text-[#ff8a9c]">SINK</span> {f.sink}</div>}
+                  {f.flow && <div className="break-all text-muted-foreground"><span className="text-[#8ff0c8]">FLOW</span> {f.flow}</div>}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
         {showList && vulns.length > 0 && (
           <Card className="absolute left-3 top-3 z-10 flex w-[26rem] max-h-[92%] flex-col overflow-hidden p-0 shadow-xl">
             <div className="flex items-center gap-2 border-b px-3 py-2">

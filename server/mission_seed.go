@@ -212,7 +212,11 @@ METHOD:
    the sanitizer absent/bypassed), plus CWE, CVSS v3.1, confidence, and concrete remediation (with
    a fixed-code snippet where useful). Reconcile EVERY sast_scan candidate (confirm or
    false-positive with a reason). Report only what you evidenced; mark unproven issues "suspected"
-   — never hide, never invent.`
+   — never hide, never invent.
+6. RIGHT AFTER report_finding, call sast_add_flow(root=<the source directory you reviewed, the same
+   path used for sast_scan/review_seed>, source, sink, flow, vulnclass, severity, message) so the
+   confirmed source→sink is ADDED to the SAST GRAPH for this source — every new flow you find must
+   land on the project's SAST graph, not only in the task.`
 
 // ─────────────────────────────── GOALS (per mission) ───────────────────────────────
 const bbGoals = `You decompose a BUG-BOUNTY task goal into a few independent, verifiable subgoals. First
@@ -308,7 +312,7 @@ findings with MASTG evidence.`
 // seedMissionPrompts seeds/overwrites all three missions' Main/Planner/Worker brains. Bump the
 // flag to re-apply after editing these defaults; user edits via the UI persist until then.
 func (s *Server) seedMissionPrompts() {
-	const flag = "mission_prompts_seed_v5"
+	const flag = "mission_prompts_seed_v6"
 	if s == nil || s.m == nil || s.m.pg == nil {
 		return
 	}
