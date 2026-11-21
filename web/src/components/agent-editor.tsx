@@ -53,6 +53,16 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
   const [diffVer, setDiffVer] = React.useState<PromptVersion | null>(null);
 
   const [prompt, setPrompt] = React.useState("");
+  // Mission tab: "default" edits the global/built-in brain; a mission key edits that
+  // mission's brain (mission_prompts), so /system/agents is in sync with the task's mission.
+  const missionAgent = ["mainagent", "planner", "worker", "goals"].includes(agentKey);
+  const MISSIONS = [
+    { key: "default", label: "Default" },
+    { key: "bugbounty", label: "Bug Bounty" },
+    { key: "redteam", label: "Red Team" },
+    { key: "review-source", label: "Source Review" },
+  ];
+  const [missionTab, setMissionTab] = React.useState("default");
   const [mcpVisible, setMcpVisible] = React.useState<number[]>([]);
   const [skillVisible, setSkillVisible] = React.useState<string[]>([]);
   const [preview, setPreview] = React.useState("");
@@ -118,6 +128,25 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
     reload();
   }, [reload]);
 
+  // When the mission tab changes, swap the editing buffer to that mission's brain.
+  // "default" = the global/built-in prompt (from detail); a mission key = its stored brain
+  // (empty = that mission inherits the Default brain).
+  React.useEffect(() => {
+    if (!missionAgent) return;
+    if (missionTab === "default") {
+      setPrompt(detail?.prompt ?? "");
+      return;
+    }
+    api
+      .missionPrompts()
+      .then((r) => {
+        const row = (r.prompts ?? []).find((p) => p.mission === missionTab && p.agent_key === agentKey);
+        setPrompt(row?.body ?? "");
+      })
+      .catch(() => setPrompt(""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missionTab, agentKey]);
+
   async function doPreview() {
     try {
       const r = await api.previewAgentPrompt(agentKey, prompt);
@@ -128,6 +157,12 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
   }
   async function savePrompt() {
     try {
+      if (missionAgent && missionTab !== "default") {
+        await api.saveMissionPrompt(missionTab, agentKey, prompt);
+        toast.success(`Saved ${missionTab} brain`);
+        onSaved?.();
+        return;
+      }
       const r = await api.saveAgentPrompt(agentKey, prompt);
       toast.success(swt("interface.m1900", { p0: r.version }));
       reload();
@@ -138,6 +173,13 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
   }
   async function resetPrompt() {
     try {
+      if (missionAgent && missionTab !== "default") {
+        // Clear this mission's brain → it inherits the Default brain again.
+        await api.saveMissionPrompt(missionTab, agentKey, "");
+        setPrompt("");
+        toast.success(`Cleared ${missionTab} brain (inherits Default)`);
+        return;
+      }
       const r = await api.resetAgentPrompt(agentKey);
       toast.success(swt("interface.m1901", { p0: r.version }));
       reload();
@@ -386,6 +428,32 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
             </div>
           </div>
 
+          {missionAgent && (
+            <div className="flex flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-1">
+                {MISSIONS.map((m) => (
+                  <button
+                    key={m.key}
+                    type="button"
+                    onClick={() => setMissionTab(m.key)}
+                    className={
+                      "rounded-md border px-2.5 py-1 text-xs " +
+                      (missionTab === m.key
+                        ? "border-primary bg-primary/10 text-primary font-medium"
+                        : "text-muted-foreground hover:bg-muted")
+                    }
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-muted-foreground text-[11px]">
+                {missionTab === "default"
+                  ? "Default brain — dùng khi mission chưa có brain riêng (Bug Bounty / Red Team để trống sẽ dùng cái này)."
+                  : `Brain riêng cho mission «${missionTab}». Để trống + Reset = kế thừa Default. Task chọn mission này sẽ chạy brain này.`}
+              </p>
+            </div>
+          )}
           <Textarea className="font-mono text-xs" rows={16} value={prompt}
             placeholder={swt("interface.m1930")} onChange={(e) => setPrompt(e.target.value)} />
 
