@@ -3411,10 +3411,20 @@ function CreateTaskSheet({
               </p>
               <button
                 type="button"
-                className="text-muted-foreground hover:text-foreground w-fit text-xs underline"
                 onClick={() => setShowBrainOverride((v) => !v)}
+                className="border-input hover:bg-muted/50 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors"
               >
-                {showBrainOverride ? "▾" : "▸"} Override agent brains (tùy chọn, cho task này)
+                <span className="flex items-center gap-2">
+                  <SlidersHorizontalIcon className="size-4" />
+                  <span className="font-medium">Override agent brains</span>
+                  <span className="text-muted-foreground text-xs">(tùy chọn, cho task này)</span>
+                  {Object.values(agentPrompts).filter((v) => v?.trim()).length > 0 && (
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                      {Object.values(agentPrompts).filter((v) => v?.trim()).length} overridden
+                    </span>
+                  )}
+                </span>
+                <ChevronRightIcon className={"size-4 transition-transform " + (showBrainOverride ? "rotate-90" : "")} />
               </button>
               {showBrainOverride && (
                 <div className="flex flex-col gap-3 rounded-lg border p-3">
@@ -3438,13 +3448,15 @@ function CreateTaskSheet({
                             {agentPrompts[k]?.trim() ? (
                               <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-500">overridden</span>
                             ) : null}
-                            <button
+                            <Button
                               type="button"
-                              className="text-muted-foreground hover:text-foreground text-xs underline"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 gap-1 px-2 text-xs"
                               onClick={() => setViewPrompt(open ? "" : k)}
                             >
-                              {open ? "Ẩn prompt hiện tại" : "Xem prompt hiện tại"}
-                            </button>
+                              <EyeIcon className="size-3.5" /> {open ? "Ẩn prompt" : "Xem prompt hiện tại"}
+                            </Button>
                           </div>
                         </div>
                         <div className="flex flex-col gap-2 p-3">
