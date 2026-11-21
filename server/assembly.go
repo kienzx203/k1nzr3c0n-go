@@ -42,9 +42,11 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 			// mission (review-source → appsec-vuln-verify, bugbounty → bugbounty-methodology,
 			// redteam → redteam-attack). Drop the others for the current task's mission.
 			skillMission := map[string]string{
-				"appsec-vuln-verify":     "review-source",
-				"bugbounty-methodology":  "bugbounty",
-				"redteam-attack":         "redteam",
+				"appsec-vuln-verify":    "review-source",
+				"bugbounty-methodology": "bugbounty",
+				"redteam-attack":        "redteam",
+				"secure-sdlc":           "design-review",
+				"android-pentest":       "android",
 			}
 			curMission := "bugbounty"
 			if ri := agent.RunInfoFrom(ctx); ri.TaskID > 0 {

@@ -14,7 +14,7 @@ import (
 // keys are mainagent / planner / worker / goals.
 
 var missionAgentKeys = map[string]bool{"mainagent": true, "planner": true, "worker": true, "goals": true}
-var missionNames = map[string]bool{"bugbounty": true, "redteam": true, "review-source": true}
+var missionNames = map[string]bool{"bugbounty": true, "redteam": true, "review-source": true, "design-review": true, "android": true}
 
 // pgEffectivePrompts handles GET /api/mission-prompts/effective?mission=X → the prompt
 // that WOULD actually run for each agent under that mission, with its source. Precedence:

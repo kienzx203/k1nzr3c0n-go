@@ -11,6 +11,8 @@ const MISSIONS = [
   { key: "bugbounty", label: "Bug Bounty" },
   { key: "redteam", label: "Red Team" },
   { key: "review-source", label: "Source Review" },
+  { key: "design-review", label: "Design Review (SDLC)" },
+  { key: "android", label: "Android Pentest" },
 ];
 const AGENTS = ["mainagent", "planner", "worker", "goals"];
 

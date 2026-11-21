@@ -61,6 +61,8 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
     { key: "bugbounty", label: "Bug Bounty" },
     { key: "redteam", label: "Red Team" },
     { key: "review-source", label: "Source Review" },
+    { key: "design-review", label: "Design Review" },
+    { key: "android", label: "Android" },
   ];
   const [missionTab, setMissionTab] = React.useState("default");
   const [mcpVisible, setMcpVisible] = React.useState<number[]>([]);

@@ -3450,6 +3450,8 @@ function CreateTaskSheet({
                 <option value="bugbounty">Bug Bounty</option>
                 <option value="redteam">Red Team</option>
                 <option value="review-source">Source Review</option>
+                <option value="design-review">Design Review (SDLC)</option>
+                <option value="android">Android Pentest</option>
               </select>
               <p className="text-muted-foreground text-xs">
                 Chọn mission → nạp bộ não Main/Planner/Worker + tool/skill phù hợp. Source Review dùng SAST engine + coverage gate.
