@@ -93,6 +93,7 @@ export const sidebarItems: NavGroup[] = [
     items: [
       { id: "llm", title: "LLM", url: "/system/llm", icon: Brain },
       { id: "agents", get title() { return swt("english.e082"); }, url: "/system/agents", icon: Bot },
+      { id: "mission-brains", title: "Mission Brains", url: "/system/mission-brains", icon: Brain },
       { id: "mcp", title: "MCP", url: "/system/mcp", icon: Plug },
       { id: "skills", get title() { return swt("english.e084"); }, url: "/system/skills", icon: Sparkles },
       { id: "tools", get title() { return swt("interface.m0292"); }, url: "/system/tools", icon: Wrench },

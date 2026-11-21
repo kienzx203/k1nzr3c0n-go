@@ -3147,6 +3147,8 @@ function CreateTaskSheet({
   const [goal, setGoal] = React.useState("");
   const [selectedTemplateID, setSelectedTemplateID] = React.useState<number | null>(null);
   const [mission, setMission] = React.useState("bugbounty"); // bugbounty|redteam|review-source — selects Main/Planner/Worker brains
+  const [agentPrompts, setAgentPrompts] = React.useState<Record<string, string>>({}); // M4: per-task brain override
+  const [showBrainOverride, setShowBrainOverride] = React.useState(false);
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [companies, setCompanies] = React.useState<Company[]>([]);
   const [sourceTaskIDs, setSourceTaskIDs] = React.useState<string[]>([]);
@@ -3267,6 +3269,9 @@ function CreateTaskSheet({
         description: description.trim(),
         goal: goal.trim(),
         mission,
+        agentPrompts: Object.fromEntries(
+          Object.entries(agentPrompts).filter(([, v]) => v && v.trim() !== ""),
+        ),
         llmProfileIds: llmProfileIDs.map(Number),
         sourceTaskIds: sourceTaskIDs,
         companyIds: companyIDs,
@@ -3389,6 +3394,31 @@ function CreateTaskSheet({
               <p className="text-muted-foreground text-xs">
                 Chọn mission → nạp bộ não Main/Planner/Worker + tool/skill phù hợp. Source Review dùng SAST engine + coverage gate.
               </p>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground w-fit text-xs underline"
+                onClick={() => setShowBrainOverride((v) => !v)}
+              >
+                {showBrainOverride ? "▾" : "▸"} Override agent brains (tùy chọn, cho task này)
+              </button>
+              {showBrainOverride && (
+                <div className="flex flex-col gap-2 rounded-md border p-2">
+                  {(["mainagent", "planner", "worker"] as const).map((k) => (
+                    <div key={k} className="grid gap-1">
+                      <Label htmlFor={`brain-${k}`} className="text-xs capitalize">
+                        {k} prompt (để trống = dùng brain của mission)
+                      </Label>
+                      <Textarea
+                        id={`brain-${k}`}
+                        className="min-h-20 font-mono text-xs"
+                        placeholder={`Custom ${k} system prompt for this task…`}
+                        value={agentPrompts[k] ?? ""}
+                        onChange={(e) => setAgentPrompts((p) => ({ ...p, [k]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="description">{swt("interface.m0605")}</Label>

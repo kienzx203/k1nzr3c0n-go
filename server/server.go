@@ -705,6 +705,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/task-templates/{id}", s.pgDeleteTaskTemplate)
 	mux.HandleFunc("POST /api/sast/scan", s.sastScan)
 	mux.HandleFunc("GET /api/sast/sources", s.sastDraftSources)
+	// Mission profiles: edit per-mission agent brains (M5) + per-task agent overrides (M4).
+	mux.HandleFunc("GET /api/mission-prompts", s.pgListMissionPrompts)
+	mux.HandleFunc("PUT /api/mission-prompts/{mission}/{agent}", s.pgSaveMissionPrompt)
+	mux.HandleFunc("GET /api/tasks/{id}/agent-prompts", s.pgTaskAgentPrompts)
+	mux.HandleFunc("PUT /api/tasks/{id}/agent-prompt/{agent}", s.pgSaveTaskAgentPrompt)
 	mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)
 	mux.HandleFunc("PATCH /api/tasks/{id}/category", s.updateTaskCategory)
@@ -1490,7 +1495,8 @@ type createTaskReq struct {
 	CategoryID           *int64   `json:"category_id,omitempty"`
 	Description          string   `json:"description"`
 	Goal                 string   `json:"goal"`
-	Mission              string   `json:"mission,omitempty"` // bugbounty|redteam|review-source; empty = bugbounty default
+	Mission              string            `json:"mission,omitempty"`       // bugbounty|redteam|review-source; empty = bugbounty default
+	AgentPrompts         map[string]string `json:"agent_prompts,omitempty"` // M4: per-task override of a single agent's brain (mainagent/planner/worker)
 	LLMProfileID         *int64   `json:"llm_profile_id,omitempty"`    // the LLM profile to run this task; omitted/null = use the active profile
 	LLMProfileIDs        []int64  `json:"llm_profile_ids,omitempty"`   // ordered task-level profile chain; the first item takes effect initially
 	SourceTaskIDs        []string `json:"source_task_ids,omitempty"`   // source tasks for direct, read-only inheritance only
@@ -1579,6 +1585,11 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	// matching Main/Planner/Worker brains + tools/skills.
 	if tid, perr := strconv.ParseInt(t.ID, 10, 64); perr == nil {
 		_ = s.m.pg.SetTaskMission(tid, strings.TrimSpace(req.Mission))
+		for key, body := range req.AgentPrompts { // M4: per-task agent brain overrides
+			if missionAgentKeys[key] {
+				_ = s.m.pg.SetTaskAgentPrompt(tid, key, strings.TrimSpace(body))
+			}
+		}
 	}
 	log.Printf("[task] created task #%s «%s» goal: %s", t.ID, req.Description, req.Goal)
 	// Shared post-creation flow (seed + seed intent + background goal decomposition + engine.Run), reused by spawn_task.

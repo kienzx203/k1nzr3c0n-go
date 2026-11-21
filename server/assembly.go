@@ -38,6 +38,11 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 			for _, n := range names {
 				nameSet[n] = true
 			}
+			// Mission-scoped skill: the source-review knowledge skill is visible only in the
+			// review-source mission; other missions don't load it.
+			if ri := agent.RunInfoFrom(ctx); ri.TaskID > 0 && pg.MissionOfTask(ri.TaskID) != "review-source" {
+				delete(nameSet, "appsec-vuln-verify")
+			}
 			if allReg, err := skill.LoadDir(skillDir); err == nil && allReg != nil {
 				reg = skill.NewRegistry()
 				for _, s := range allReg.List() {

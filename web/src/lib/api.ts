@@ -244,6 +244,7 @@ export const api = {
     description: string;
     goal: string;
     mission?: string;
+    agentPrompts?: Record<string, string>; // M4: per-task override of mainagent/planner/worker brain
     llmProfileIds?: number[];
     sourceTaskIds?: string[];
     companyIds?: number[];
@@ -262,6 +263,7 @@ export const api = {
       description: input.description,
       goal: input.goal,
       mission: input.mission ?? "bugbounty",
+      agent_prompts: input.agentPrompts ?? {},
       llm_profile_ids: input.llmProfileIds ?? [],
       source_task_ids: input.sourceTaskIds ?? [],
       company_ids: input.companyIds ?? [],
@@ -977,6 +979,17 @@ export const api = {
     });
     if (!r.ok) throw new Error(swt("interface.m2419", { p0: r.status, p1: await r.text() }));
     return r.json();
+  },
+  // Mission profiles: list + edit the per-mission agent brains (M5).
+  missionPrompts: () => get<{ prompts: { mission: string; agent_key: string; body: string }[] }>("/mission-prompts"),
+  saveMissionPrompt: async (mission: string, agent: string, body: string) => {
+    const token = getToken();
+    const r = await fetch(`/api/mission-prompts/${encodeURIComponent(mission)}/${encodeURIComponent(agent)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ body }),
+    });
+    if (!r.ok) throw new Error(await r.text());
   },
   stopChat: (taskId: string) => post<{ status: string }>(`/tasks/${taskId}/chat/stop`, {}),
   gc: (ttl = 86400) => post<{ removed: number }>(`/gc?ttl=${ttl}`, {}),
