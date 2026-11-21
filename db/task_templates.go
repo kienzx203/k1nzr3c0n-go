@@ -34,6 +34,7 @@ type TaskTemplate struct {
 	NKey           string                   `json:"-"`
 	Description    string                   `json:"description"`
 	Goal           string                   `json:"goal"`
+	Mission        string                   `json:"mission"`
 	CategoryID     *int64                   `json:"category_id"`
 	InterceptRules []TaskInterceptRuleInput `json:"intercept_rules"`
 	CreatedAt      time.Time                `json:"created_at"`
@@ -45,6 +46,7 @@ type TaskTemplateInput struct {
 	Name           string
 	Description    string
 	Goal           string
+	Mission        string
 	CategoryID     *int64
 	InterceptRules []TaskInterceptRuleInput
 }
@@ -56,18 +58,33 @@ type TaskTemplatePatch struct {
 	Name              *string
 	Description       *string
 	Goal              *string
+	Mission           *string
 	CategoryID        *int64
 	SetCategoryID     bool
 	InterceptRules    []TaskInterceptRuleInput
 	SetInterceptRules bool
 }
 
-const taskTemplateCols = `id, name, nkey, description, goal, category_id, intercept_rules, created_at, updated_at`
+// validMissions are the engagement types a template/task may carry. An unknown or
+// empty mission normalizes to "bugbounty" so older templates keep working.
+var validMissions = map[string]bool{
+	"bugbounty": true, "redteam": true, "review-source": true, "design-review": true, "android": true,
+}
+
+func normalizeMission(m string) string {
+	m = strings.TrimSpace(m)
+	if !validMissions[m] {
+		return "bugbounty"
+	}
+	return m
+}
+
+const taskTemplateCols = `id, name, nkey, description, goal, mission, category_id, intercept_rules, created_at, updated_at`
 
 func scanTaskTemplate(row interface{ Scan(...any) error }) (TaskTemplate, error) {
 	var t TaskTemplate
 	var rulesRaw []byte
-	if err := row.Scan(&t.ID, &t.Name, &t.NKey, &t.Description, &t.Goal, &t.CategoryID, &rulesRaw, &t.CreatedAt, &t.UpdatedAt); err != nil {
+	if err := row.Scan(&t.ID, &t.Name, &t.NKey, &t.Description, &t.Goal, &t.Mission, &t.CategoryID, &rulesRaw, &t.CreatedAt, &t.UpdatedAt); err != nil {
 		return t, err
 	}
 	t.InterceptRules = []TaskInterceptRuleInput{}
@@ -101,6 +118,7 @@ func normalizeTaskTemplateInput(in TaskTemplateInput) (TaskTemplateInput, string
 	in.Name = taskTemplateName(in.Name)
 	in.Description = strings.TrimSpace(in.Description)
 	in.Goal = strings.TrimSpace(in.Goal)
+	in.Mission = normalizeMission(in.Mission)
 	switch {
 	case in.Name == "":
 		return in, "", fmt.Errorf("%w: name is required", ErrTaskTemplateInvalid)
@@ -119,8 +137,12 @@ func normalizeTaskTemplateInput(in TaskTemplateInput) (TaskTemplateInput, string
 }
 
 func normalizeTaskTemplatePatch(patch TaskTemplatePatch) (TaskTemplatePatch, *string, error) {
-	if patch.Name == nil && patch.Description == nil && patch.Goal == nil && !patch.SetCategoryID && !patch.SetInterceptRules {
+	if patch.Name == nil && patch.Description == nil && patch.Goal == nil && patch.Mission == nil && !patch.SetCategoryID && !patch.SetInterceptRules {
 		return patch, nil, fmt.Errorf("%w: no fields supplied", ErrTaskTemplateInvalid)
+	}
+	if patch.Mission != nil {
+		m := normalizeMission(*patch.Mission)
+		patch.Mission = &m
 	}
 	var nkey *string
 	if patch.Name != nil {
@@ -174,10 +196,10 @@ func (d *DB) CreateTaskTemplate(in TaskTemplateInput) (*TaskTemplate, error) {
 		return nil, err
 	}
 	t, err := scanTaskTemplate(d.QueryRow(`
-INSERT INTO task_templates(name, nkey, description, goal, category_id, intercept_rules)
-VALUES ($1,$2,$3,$4,$5,$6)
+INSERT INTO task_templates(name, nkey, description, goal, mission, category_id, intercept_rules)
+VALUES ($1,$2,$3,$4,$5,$6,$7)
 ON CONFLICT (nkey) DO NOTHING
-RETURNING `+taskTemplateCols, in.Name, nkey, in.Description, in.Goal, in.CategoryID, rulesJSON))
+RETURNING `+taskTemplateCols, in.Name, nkey, in.Description, in.Goal, in.Mission, in.CategoryID, rulesJSON))
 	if err == sql.ErrNoRows {
 		return nil, ErrTaskTemplateNameConflict
 	}
@@ -224,7 +246,7 @@ func (d *DB) UpdateTaskTemplate(id int64, in TaskTemplateInput) (*TaskTemplate, 
 		return nil, err
 	}
 	return d.PatchTaskTemplate(id, TaskTemplatePatch{
-		Name: &in.Name, Description: &in.Description, Goal: &in.Goal,
+		Name: &in.Name, Description: &in.Description, Goal: &in.Goal, Mission: &in.Mission,
 	})
 }
 
@@ -246,7 +268,8 @@ SET name=CASE WHEN $2 THEN $3::text ELSE name END,
     description=CASE WHEN $5 THEN $6::text ELSE description END,
     goal=CASE WHEN $7 THEN $8::text ELSE goal END,
     category_id=CASE WHEN $9 THEN $10::bigint ELSE category_id END,
-    intercept_rules=CASE WHEN $11 THEN $12::jsonb ELSE intercept_rules END
+    intercept_rules=CASE WHEN $11 THEN $12::jsonb ELSE intercept_rules END,
+    mission=CASE WHEN $13 THEN $14::text ELSE mission END
 WHERE id=$1
 RETURNING `+taskTemplateCols,
 		id,
@@ -255,6 +278,7 @@ RETURNING `+taskTemplateCols,
 		patch.Goal != nil, patch.Goal,
 		patch.SetCategoryID, patch.CategoryID,
 		patch.SetInterceptRules, rulesJSON,
+		patch.Mission != nil, patch.Mission,
 	))
 	if err == sql.ErrNoRows {
 		return nil, ErrTaskTemplateNotFound

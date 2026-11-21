@@ -54,6 +54,7 @@ export interface TaskTemplate {
   name: string;
   description: string;
   goal: string;
+  mission?: string; // Engagement type this template runs under (selects the Main/Planner/Worker brains).
   category_id?: number | null; // Preset category; null/omitted means none.
   intercept_rules?: AssetInterceptRuleInput[]; // Preset task-specific block/allow rules.
   created_at: string;

@@ -178,6 +178,7 @@ func (s *Server) seedReviewTaskTemplate() {
 		Name:        reviewTemplateName,
 		Description: reviewTemplateDescription,
 		Goal:        reviewTemplateGoal,
+		Mission:     "review-source",
 	}
 	_, err := s.m.pg.CreateTaskTemplate(in)
 	switch {
@@ -203,7 +204,7 @@ func (s *Server) refreshReviewTaskTemplate(in db.TaskTemplateInput) {
 		if t.Name != reviewTemplateName {
 			continue
 		}
-		if t.Description == in.Description && t.Goal == in.Goal {
+		if t.Description == in.Description && t.Goal == in.Goal && t.Mission == in.Mission {
 			return // already current
 		}
 		if _, err := s.m.pg.UpdateTaskTemplate(t.ID, in); err != nil {

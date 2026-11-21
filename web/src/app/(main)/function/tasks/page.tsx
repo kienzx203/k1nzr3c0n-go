@@ -3412,6 +3412,7 @@ function CreateTaskSheet({
               onApply={(template) => {
                 setDescription(template.description);
                 setGoal(template.goal);
+                if (template.mission) setMission(template.mission); // template carries its engagement type → select the right brains
                 setCategoryID(template.category_id ?? undefined);
                 setInterceptRules(template.intercept_rules ?? []);
                 setUploadCount(0); setDocsCount(0);

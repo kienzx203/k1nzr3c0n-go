@@ -22,6 +22,7 @@ type taskTemplateRequest struct {
 	Name           *string                `json:"name"`
 	Description    *string                `json:"description"`
 	Goal           *string                `json:"goal"`
+	Mission        *string                `json:"mission"`
 	CategoryID     *int64                 `json:"category_id"`
 	InterceptRules []taskInterceptRuleReq `json:"intercept_rules"`
 }
@@ -129,6 +130,7 @@ func (s *Server) pgCreateTaskTemplate(w http.ResponseWriter, r *http.Request) {
 		Name:           stringValue(req.Name),
 		Description:    stringValue(req.Description),
 		Goal:           stringValue(req.Goal),
+		Mission:        stringValue(req.Mission),
 		CategoryID:     req.CategoryID,
 		InterceptRules: rules,
 	})
@@ -160,11 +162,11 @@ func (s *Server) pgUpdateTaskTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 	_, catPresent := present["category_id"]
 	_, rulesPresent := present["intercept_rules"]
-	if req.Name == nil && req.Description == nil && req.Goal == nil && !catPresent && !rulesPresent {
+	if req.Name == nil && req.Description == nil && req.Goal == nil && req.Mission == nil && !catPresent && !rulesPresent {
 		writeErr(w, http.StatusBadRequest, "at least one of name, description, goal, category_id, or intercept_rules must be provided")
 		return
 	}
-	patch := db.TaskTemplatePatch{Name: req.Name, Description: req.Description, Goal: req.Goal}
+	patch := db.TaskTemplatePatch{Name: req.Name, Description: req.Description, Goal: req.Goal, Mission: req.Mission}
 	if catPresent {
 		patch.SetCategoryID = true
 		patch.CategoryID = req.CategoryID

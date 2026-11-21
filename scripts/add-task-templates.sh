@@ -30,9 +30,11 @@ if [ -z "$TOKEN" ]; then
   exit 1
 fi
 
-create() { # upsert <name> <goal> <description> — updates a same-named template in place
+create() { # upsert <name> <goal> <description> [mission] — updates a same-named template in place.
+  # mission (4th arg) tags the template with its engagement type so the task created from it
+  # loads the right Main/Planner/Worker/Goals brains; defaults to bugbounty when omitted.
   local payload code id
-  payload=$(NAME="$1" GOAL="$2" DESC="$3" python3 -c 'import json,os; print(json.dumps({"name":os.environ["NAME"],"goal":os.environ["GOAL"],"description":os.environ["DESC"]}))')
+  payload=$(NAME="$1" GOAL="$2" DESC="$3" MISSION="${4:-bugbounty}" python3 -c 'import json,os; print(json.dumps({"name":os.environ["NAME"],"goal":os.environ["GOAL"],"description":os.environ["DESC"],"mission":os.environ["MISSION"]}))')
   # find an existing template with the same name → PATCH it (so re-running IMPROVES
   # the template in place instead of 409-conflicting on the duplicate name).
   id=$(curl -sS -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/task-templates" 2>/dev/null \
@@ -191,7 +193,102 @@ DESC="# PLAYBOOK THỰC THI 6-PHASE (chi tiết). BẤT BIẾN + RÀNG BUỘC �
 
 
 echo "Creating the Red Team task template on $BASE_URL ..."
-create "Red Team" "$GOAL" "$DESC"
+create "Red Team" "$GOAL" "$DESC" "redteam"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BUG BOUNTY — săn lỗ có giá trị thật, kỷ luật nhiễu (mission=bugbounty)
+# ─────────────────────────────────────────────────────────────────────────────
+BB_GOAL=$(cat <<'EOF'
+# BUG BOUNTY — MỤC TIÊU + BẤT BIẾN + KỶ LUẬT NHIỄU (chuyên gia AppSec)
+MISSION: săn lỗ CÓ GIÁ TRỊ THẬT trên <TARGET> trong scope chương trình; mỗi lỗ nộp phải có PoC TÁI LẬP + impact CHỨNG MINH được. Tư duy attacker, chain lỗ nhỏ -> impact lớn.
+## INVARIANTS (bất biến)
+1. SCOPE: chỉ test tài sản IN-SCOPE của program (<điền domain/app/wildcard>); phát hiện ngoài scope -> dừng, ghi nhận, báo operator.
+2. SONG SONG QUA FRONTIER: mỗi host/app = 1 intent qua add_intent trong task NÀY; KHÔNG spawn_task. Tên intent "[#i] <host>".
+3. KỶ LUẬT NHIỄU — KHÔNG report (trừ khi chain ra impact thật): self-XSS, thiếu security-header đơn thuần, version-disclosure không PoC, CSRF trên form không nhạy cảm, SPF/DMARC thiếu, clickjacking không impact, rate-limit lý thuyết, "best practice" không khai thác được.
+4. VERIFY 2× trước report_finding; PoC có STEPS TO REPRODUCE đánh số chạy-lại-được; giữ NGUYÊN giá trị thật (request/response/ID/token) để tái lập.
+5. FINDING chuẩn: title cụ thể "<lỗ> trên <asset> qua <param>" + severity + CWE + CVSS + impact + evidence + traffic + remediation.
+DONE = mọi endpoint (JS+crawl+swagger/openapi/GraphQL) qua MA TRẬN AUTH (unauth · self · user#2 BOLA/IDOR · admin · cross-tenant) × method × param; mọi lớp vuln áp-dụng-được ở terminal state (tested|reasoned-negative|out-of-scope); mọi lead chain tới impact tối đa.
+> Methodology + payload đầy đủ nằm trong brain bugbounty + skill bugbounty-methodology & web-pentest (load_skill TRƯỚC mỗi mảng việc).
+EOF
+)
+BB_DESC=$(cat <<'EOF'
+## PROGRAM & SCOPE
+- In-scope: <domain/subdomain/wildcard, app, API>
+- Out-of-scope: <bên thứ 3, host cấm, hành vi cấm (DoS, spam, social-eng)>
+- Loại báo cáo chương trình NHẬN / KHÔNG nhận: <điền theo policy>
+## MATERIALS (nếu có — upload qua "Project documents")
+- Swagger/OpenAPI/Postman: <path>  · Tài khoản test (nhiều role để BOLA): <user/role>
+## TRỌNG TÂM (ưu tiên theo payout/impact)
+- Auth/session, access-control (IDOR/BOLA/BFLA), injection, SSRF, business-logic/race, chaining; bỏ qua marketing/static site trừ khi dẫn tới impact.
+## QUY TRÌNH (tóm tắt — chi tiết ở brain/skill)
+1. Recon bề mặt (run_workflow) -> QUEUE host. 2. Mỗi host: bóc JS endpoint, map auth-matrix. 3. Test theo VULN CATALOGUE. 4. Chain -> impact. 5. VERIFY -> report_finding.
+## DELIVERABLE
+- Mỗi lỗ: report_finding chuẩn HackerOne (như GOAL). Cuối engagement: review_report tổng hợp + mức độ + đề xuất vá.
+EOF
+)
+echo "Creating the Bug Bounty task template ..."
+create "Bug Bounty" "$BB_GOAL" "$BB_DESC" "bugbounty"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DESIGN REVIEW (SECURE SDLC) — đánh giá thiết kế, KHÔNG khai thác (mission=design-review)
+# ─────────────────────────────────────────────────────────────────────────────
+DR_GOAL=$(cat <<'EOF'
+# DESIGN REVIEW / SECURE SDLC — ĐÁNH GIÁ THIẾT KẾ (chuyên gia AppSec, KHÔNG khai thác)
+MISSION: đọc tài liệu thiết kế/kiến trúc của <DỰ ÁN>, dựng mô hình hệ thống + threat model, suy ra security requirements, chỉ ra rủi ro thiết kế + gap SDLC, khuyến nghị thiết kế CỤ THỂ thực thi được.
+## INVARIANTS (bất biến)
+1. ĐÂY LÀ ĐÁNH GIÁ THIẾT KẾ — threat-model & KHUYẾN NGHỊ; TUYỆT ĐỐI KHÔNG khai thác/scan/tấn công hệ thống thật.
+2. ĐỌC TÀI LIỆU TRƯỚC (đã upload qua "Project documents"): PDF/DOCX -> extract text (pdftotext/unzip). Dựng DFD: component, trust boundary, data store, tích hợp ngoài, actor/role, PHÂN LOẠI DỮ LIỆU mỗi phần (public/internal/confidential/PII-PHI-PCI).
+3. PHỦ ĐỦ: mỗi component & mỗi data-flow QUA trust boundary -> STRIDE; PII/PHI -> thêm LINDDUN; mỗi gap map tới ASVS chapter (+OWASP API Top 10 nếu có API).
+4. TÁCH CONFIRMED (sai thiết kế rõ, có căn cứ trong tài liệu) với QUESTION (tài liệu im lặng -> record_fact + hỏi operator, KHÔNG suy diễn thành lỗ).
+5. Nếu có code: đối chiếu design-vs-implementation drift (không khai thác, chỉ đọc).
+DONE = mọi component/trust-boundary threat-modeled + security requirements suy ra (ASVS) + rủi ro kiến trúc/cloud/supply-chain liệt kê + SDLC phase-gate (requirements->design->impl->test->release/ops) đánh giá present/partial/missing + roadmap ưu tiên (quick-win -> structural).
+> Phương pháp đầy đủ (STRIDE/LINDDUN/attack-tree/ASVS/API-Top10/cloud-IaC/SSDF/SAMM-BSIMM) ở brain design-review + skill secure-sdlc (load_skill).
+EOF
+)
+DR_DESC=$(cat <<'EOF'
+## TÀI LIỆU ĐÁNH GIÁ (upload qua "Project documents")
+- Kiến trúc/HLD/LLD, DFD, sequence diagram, API spec (Swagger/AsyncAPI), ERD/schema, IaC (Terraform/k8s/Helm), thiết kế auth/IAM, threat model cũ (nếu có): <path>
+- Phạm vi compliance (nếu có): <GDPR/PCI/HIPAA...>
+## PHẠM VI
+- Component/service in-scope: <điền>  · Crown jewels: <auth/PII/payment/admin/secrets>
+- Out-of-scope: <phần không đánh giá>
+## ĐẦU RA mong đợi
+- Mỗi vấn đề: risk (threat+impact+asset+attacker-path) + severity + khuyến nghị thiết kế cụ thể + chuẩn thỏa (ASVS/API-Top10).
+- Cuối: review_report = danh sách CONFIRMED + QUESTIONS + roadmap + tóm tắt mức trưởng thành SDLC.
+EOF
+)
+echo "Creating the Design Review (SDLC) task template ..."
+create "Design Review (SDLC)" "$DR_GOAL" "$DR_DESC" "design-review"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ANDROID PENTEST (MASVS/MASTG) — engagement cấp phép (mission=android)
+# ─────────────────────────────────────────────────────────────────────────────
+AN_GOAL=$(cat <<'EOF'
+# ANDROID PENTEST — OWASP MASVS v2 / MASTG (chuyên gia mobile, engagement cấp phép)
+MISSION: đánh giá app Android <APK/package> theo MASVS v2 + MASTG; CHỨNG MINH lỗ tác động bằng evidence tái lập, DỪNG Ở PoC. Phần lớn impact cao nằm ở BACKEND API — test kỹ.
+## INVARIANTS (bất biến)
+1. CHỈ app ĐƯỢC CẤP PHÉP (app của bạn / có văn bản ủy quyền); KHÔNG exfil dữ liệu người dùng thật — chỉ lấy mẫu chứng minh.
+2. SONG SONG QUA FRONTIER: mỗi MASVS category = 1 intent qua add_intent; KHÔNG spawn_task.
+3. STATIC + DYNAMIC + BACKEND: tĩnh (apktool/jadx: manifest exported/debuggable/cleartext/deeplink, secrets, storage, crypto, WebView-bridge, ContentProvider SQLi/traversal, PendingIntent) + động (Frida/objection: bypass SSL-pinning & root-detection, IPC/deeplink qua `adb am`, hook crypto/auth) + test API backend như web (BOLA/IDOR/authz/injection/mass-assignment).
+4. VERIFY trên app THẬT; report có MASVS category + MASTG test-id + evidence (decompiled snippet / adb+Frida output / intercepted request) + impact + remediation; cái chưa chứng minh = suspected.
+DONE = mọi MASVS category covered (STORAGE/CRYPTO/AUTH/NETWORK/PLATFORM/CODE/RESILIENCE/PRIVACY) ở terminal state; backend API đã test; finding verify.
+> Phương pháp + lệnh công cụ đầy đủ ở brain android + skill android-pentest (load_skill). Tool trong container: apktool/jadx/dex2jar/adb/frida/objection.
+EOF
+)
+AN_DESC=$(cat <<'EOF'
+## ĐỐI TƯỢNG
+- APK/AAB: <path (upload qua "Project documents") hoặc package name để adb pull>
+- Backend API endpoints/host: <điền — hoặc để worker bóc từ code + traffic>
+- Thiết bị/emulator cho DYNAMIC: <có adb reachable? frida-server trên device?> (không có -> chỉ STATIC + backend)
+## PHẠM VI & ROE
+- In-scope: app + backend của app; Out-of-scope: <SDK bên thứ 3 thật, hạ tầng không thuộc app>
+- Tài khoản test (nhiều role cho BOLA ở API): <điền>
+## ĐẦU RA
+- Mỗi finding: MASVS + MASTG id + evidence + impact + remediation (như GOAL). Cuối: review_report tổng hợp theo category.
+EOF
+)
+echo "Creating the Android Pentest task template ..."
+create "Android Pentest" "$AN_GOAL" "$AN_DESC" "android"
 
 # The former standalone "Recon-Driven Pentest" template is now FOLDED INTO "Red Team".
 # Delete the old separate template if an earlier seed created it, so there is ONE template.
