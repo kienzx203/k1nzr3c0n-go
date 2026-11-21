@@ -71,6 +71,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
+# Mobile (Android) + document tooling for the `android` and `design-review` missions.
+# Required (reliable in debian): JRE (apktool/jadx), adb, poppler-utils (pdftotext for design docs).
+# Best-effort (never fail the build): apktool, jadx (GitHub release), frida-tools (needs a device at runtime).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends default-jre-headless adb poppler-utils dex2jar \
+    && (apt-get install -y --no-install-recommends apktool || echo "apktool: not available via apt, skipped") \
+    && (pip install --no-cache-dir frida-tools objection || echo "frida/objection: pip skipped") \
+    && (curl -fsSL -o /tmp/jadx.zip https://github.com/skylot/jadx/releases/download/v1.5.0/jadx-1.5.0.zip \
+          && unzip -q /tmp/jadx.zip -d /opt/jadx \
+          && ln -sf /opt/jadx/bin/jadx /usr/local/bin/jadx || echo "jadx: download skipped") \
+    ; rm -f /tmp/jadx.zip; rm -rf /var/lib/apt/lists/*
 # 预装 Playwright MCP 与 CLI（全局），运行时不再 npx 联网下载。
 # @playwright/mcp：browser MCP 直接 `npx @playwright/mcp`（已全局装好，无需 -y/@latest）。
 # @playwright/cli：提供 playwright-cli，装完顺带 --help 验证可执行。
