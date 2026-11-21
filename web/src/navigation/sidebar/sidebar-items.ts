@@ -122,4 +122,12 @@ export const sidebarItems: NavGroup[] = [
       { id: "upload", title: "Upload", url: "/runner/upload", icon: Upload },
     ],
   },
+  {
+    id: 9,
+    label: "Source Review (SAST)",
+    items: [
+      { id: "sast-upload", title: "Upload", url: "/sast/upload", icon: Upload },
+      { id: "sast-graph", title: "Graph", url: "/sast/graph", icon: Waypoints },
+    ],
+  },
 ];
