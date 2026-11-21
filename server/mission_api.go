@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/Autumn-27/artex/agent"
 )
 
 // Mission-profile API: edit the per-mission agent brains (M5) and the per-task agent
@@ -13,6 +15,38 @@ import (
 
 var missionAgentKeys = map[string]bool{"mainagent": true, "planner": true, "worker": true, "goals": true}
 var missionNames = map[string]bool{"bugbounty": true, "redteam": true, "review-source": true}
+
+// pgEffectivePrompts handles GET /api/mission-prompts/effective?mission=X → the prompt
+// that WOULD actually run for each agent under that mission, with its source. Precedence:
+// mission brain > global prompt override > built-in default. Lets the New-Task "override
+// agent brains" UI show the current prompt before the user overrides it.
+func (s *Server) pgEffectivePrompts(w http.ResponseWriter, r *http.Request) {
+	mission := strings.TrimSpace(r.URL.Query().Get("mission"))
+	if mission == "" {
+		mission = "bugbounty"
+	}
+	defaults := agent.BuiltinPromptSeeds()
+	type eff struct {
+		Body   string `json:"body"`
+		Source string `json:"source"` // mission | global | default
+	}
+	out := map[string]eff{}
+	for key := range missionAgentKeys {
+		if b, ok := s.m.pg.MissionPrompt(mission, key); ok {
+			out[key] = eff{Body: b, Source: "mission"}
+			continue
+		}
+		if a, err := s.m.pg.GetAgentByKey(key); err == nil && a != nil {
+			if b, err := s.m.pg.CurrentPrompt(a.ID); err == nil && b != "" {
+				out[key] = eff{Body: b, Source: "global"}
+				continue
+			}
+		}
+		out[key] = eff{Body: defaults[key], Source: "default"}
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"prompts": out})
+}
 
 // pgListMissionPrompts handles GET /api/mission-prompts → every stored mission brain.
 func (s *Server) pgListMissionPrompts(w http.ResponseWriter, r *http.Request) {

@@ -707,6 +707,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/sast/sources", s.sastDraftSources)
 	// Mission profiles: edit per-mission agent brains (M5) + per-task agent overrides (M4).
 	mux.HandleFunc("GET /api/mission-prompts", s.pgListMissionPrompts)
+	mux.HandleFunc("GET /api/mission-prompts/effective", s.pgEffectivePrompts)
 	mux.HandleFunc("PUT /api/mission-prompts/{mission}/{agent}", s.pgSaveMissionPrompt)
 	mux.HandleFunc("GET /api/tasks/{id}/agent-prompts", s.pgTaskAgentPrompts)
 	mux.HandleFunc("PUT /api/tasks/{id}/agent-prompt/{agent}", s.pgSaveTaskAgentPrompt)

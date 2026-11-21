@@ -3149,6 +3149,11 @@ function CreateTaskSheet({
   const [mission, setMission] = React.useState("bugbounty"); // bugbounty|redteam|review-source — selects Main/Planner/Worker brains
   const [agentPrompts, setAgentPrompts] = React.useState<Record<string, string>>({}); // M4: per-task brain override
   const [showBrainOverride, setShowBrainOverride] = React.useState(false);
+  // Current effective prompt per agent for the selected mission (shown under each override box).
+  const [currentPrompts, setCurrentPrompts] = React.useState<
+    Record<string, { body: string; source: string }>
+  >({});
+  const [viewPrompt, setViewPrompt] = React.useState<string>(""); // which agent's current prompt is expanded
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [companies, setCompanies] = React.useState<Company[]>([]);
   const [sourceTaskIDs, setSourceTaskIDs] = React.useState<string[]>([]);
@@ -3191,6 +3196,16 @@ function CreateTaskSheet({
     void refreshSources();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load the current effective brains for the selected mission when the override panel opens
+  // (or the mission changes), so the user sees what each agent currently runs before editing.
+  React.useEffect(() => {
+    if (!showBrainOverride) return;
+    api
+      .effectivePrompts(mission)
+      .then((r) => setCurrentPrompts(r.prompts ?? {}))
+      .catch(() => setCurrentPrompts({}));
+  }, [showBrainOverride, mission]);
 
   // pickFiles uploads the chosen files into this draft's staging dir and appends their
   // absolute paths to the description; the task's agents open them by path via Read/Bash.
@@ -3402,21 +3417,65 @@ function CreateTaskSheet({
                 {showBrainOverride ? "▾" : "▸"} Override agent brains (tùy chọn, cho task này)
               </button>
               {showBrainOverride && (
-                <div className="flex flex-col gap-2 rounded-md border p-2">
-                  {(["mainagent", "planner", "worker"] as const).map((k) => (
-                    <div key={k} className="grid gap-1">
-                      <Label htmlFor={`brain-${k}`} className="text-xs capitalize">
-                        {k} prompt (để trống = dùng brain của mission)
-                      </Label>
-                      <Textarea
-                        id={`brain-${k}`}
-                        className="min-h-20 font-mono text-xs"
-                        placeholder={`Custom ${k} system prompt for this task…`}
-                        value={agentPrompts[k] ?? ""}
-                        onChange={(e) => setAgentPrompts((p) => ({ ...p, [k]: e.target.value }))}
-                      />
-                    </div>
-                  ))}
+                <div className="flex flex-col gap-3 rounded-lg border p-3">
+                  <p className="text-muted-foreground text-xs">
+                    Mỗi agent dưới đây đang chạy brain của mission <b>{mission}</b>. Để trống = giữ brain hiện tại; nhập = override chỉ cho task này.
+                  </p>
+                  {([
+                    { k: "mainagent", label: "Main" },
+                    { k: "planner", label: "Planner" },
+                    { k: "worker", label: "Worker" },
+                  ] as const).map(({ k, label }) => {
+                    const cur = currentPrompts[k];
+                    const open = viewPrompt === k;
+                    const badge = cur?.source === "mission" ? "mission brain" : cur?.source === "global" ? "global override" : "built-in default";
+                    return (
+                      <div key={k} className="rounded-md border">
+                        <div className="bg-muted/40 flex items-center justify-between gap-2 rounded-t-md px-3 py-2">
+                          <span className="text-sm font-medium">{label}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground rounded border px-1.5 py-0.5 text-[10px]">{badge}</span>
+                            {agentPrompts[k]?.trim() ? (
+                              <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-500">overridden</span>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-foreground text-xs underline"
+                              onClick={() => setViewPrompt(open ? "" : k)}
+                            >
+                              {open ? "Ẩn prompt hiện tại" : "Xem prompt hiện tại"}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-2 p-3">
+                          {open && (
+                            <div className="grid gap-1">
+                              <span className="text-muted-foreground text-[10px] uppercase">Prompt đang chạy ({badge})</span>
+                              <pre className="bg-muted/50 max-h-56 overflow-auto whitespace-pre-wrap rounded p-2 font-mono text-[11px] leading-relaxed">
+                                {cur?.body ?? "(đang tải…)"}
+                              </pre>
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setAgentPrompts((p) => ({ ...p, [k]: cur?.body ?? "" }))}
+                                >
+                                  Chép vào ô override để sửa
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                          <Textarea
+                            className="min-h-24 font-mono text-xs"
+                            placeholder={`Override ${label} brain cho task này (để trống = dùng ${badge})…`}
+                            value={agentPrompts[k] ?? ""}
+                            onChange={(e) => setAgentPrompts((p) => ({ ...p, [k]: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -982,6 +982,11 @@ export const api = {
   },
   // Mission profiles: list + edit the per-mission agent brains (M5).
   missionPrompts: () => get<{ prompts: { mission: string; agent_key: string; body: string }[] }>("/mission-prompts"),
+  // The prompt that WOULD run per agent under a mission (+ its source), for the override UI.
+  effectivePrompts: (mission: string) =>
+    get<{ prompts: Record<string, { body: string; source: "mission" | "global" | "default" }> }>(
+      `/mission-prompts/effective?mission=${encodeURIComponent(mission)}`,
+    ),
   saveMissionPrompt: async (mission: string, agent: string, body: string) => {
     const token = getToken();
     const r = await fetch(`/api/mission-prompts/${encodeURIComponent(mission)}/${encodeURIComponent(agent)}`, {
