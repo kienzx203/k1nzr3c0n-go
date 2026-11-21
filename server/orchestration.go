@@ -515,6 +515,8 @@ func (s *Server) seedOrchestrationTools() {
 	s.seedVulnReviewSkill()           // SAST: bind appsec-vuln-verify skill to worker/planner/mainagent (one-time)
 	s.seedMissionPrompts()            // Mission profiles: seed expert Main/Planner/Worker brains per mission (one-time)
 	s.seedMissionSkills()             // Bind per-mission deep-knowledge skills (bb-methodology/redteam-attack/vuln-verify)
+	s.seedMissionPentestAgents()      // Solo pentest agents per offensive mission (red-team/bug-bounty/android)
+	s.seedReporterMissionFormats()    // Teach the reporter to format a report per engagement type
 	s.seedEndpointAgent()             // preset the "endpoint reconstructor" agent + tool bindings (one-time)
 	s.seedWorkerEndpointTools()       // bind endpoint JS tools to worker so every worker runs JS recon (one-time)
 	s.upgradeReporterTriggerMessage() // backfill migration for old DBs: make reporter return evidence_version (one-time)
